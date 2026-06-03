@@ -1,3 +1,5 @@
+<img width="2064" height="1110" alt="louis_smart_crm_release" src="https://github.com/user-attachments/assets/8033d26b-97c3-4587-868e-033392c28694" />
+
 # 🤖 Louis Smart CRM
 
 [![Tech Stack: TypeScript](https://img.shields.io/badge/Stack-TypeScript%20%2F%20React%20%2F%20Express-blue?style=flat-square)](https://www.typescriptlang.org/)
