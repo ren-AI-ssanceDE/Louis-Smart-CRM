@@ -7,6 +7,12 @@ coverage/
 .env*
 !.env.example
 
+# Local fallback databases
+.local_fallback_db.json*
+
+# End-to-end test outputs
+e2e-out/
+
 # Vendored build-time assets — provisioned by `npm run setup-assets`
 src/assets/fonts/*.ttf
 mustang-cli.jar
