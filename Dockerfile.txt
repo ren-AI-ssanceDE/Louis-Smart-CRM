@@ -12,10 +12,10 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Build-time toolchain for any native modules
+# Build-time toolchain for any native modules — GIT hier hinzugefügt
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl python3 make g++ \
+        ca-certificates curl python3 make g++ git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first for cache-friendly layering.
