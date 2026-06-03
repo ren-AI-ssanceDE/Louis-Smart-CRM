@@ -1,4 +1,3 @@
-```markdown
 # 🤖 Louis Smart CRM
 
 [![Tech Stack: TypeScript](https://img.shields.io/badge/Stack-TypeScript%20%2F%20React%20%2F%20Express-blue?style=flat-square)](https://www.typescriptlang.org/)
@@ -63,7 +62,6 @@ Die EASY Version:
    ```bash
    npm install
 
-```
 
 2. **Umgebungsvariablen konfigurieren**:
 Erstelle eine `.env`-Datei im Root-Verzeichnis (basierend auf `.env.example`):
