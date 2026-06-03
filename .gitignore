@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Vendored build-time assets — provisioned by `npm run setup-assets`
+src/assets/fonts/*.ttf
+mustang-cli.jar
+
+# Local invoice artifacts (PDF/A-3b output, generated XML, validation logs)
+companies_data_vault/
+contacts_data_vault/

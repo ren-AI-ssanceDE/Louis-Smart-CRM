@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Arial", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Rubik", sans-serif;
+  
+  --color-primary-dark: #0d0d0d;
+  --color-primary-light: #232323;
+  --color-accent-orange: #ff6716;
+  --color-accent-blue: #1e3d6f;
+  --color-neutral-white: #FFFFFF;
+}
+
+body {
+  @apply bg-primary-dark text-neutral-white font-sans;
+  color-scheme: dark;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+  position: relative;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: transparent;
+  color: transparent;
+  opacity: 0;
+  z-index: 10;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply font-display font-semibold;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

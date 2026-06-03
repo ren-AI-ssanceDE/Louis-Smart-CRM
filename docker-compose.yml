@@ -1,0 +1,59 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: louis-crm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: louis_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d louis_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: louis-crm-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      
+      # Database Configuration matching PostgreSQL container setup
+      - DATABASE_URL=postgres://user:password@db:5432/louis_crm
+      - PGHOST=db
+      - PGPORT=5432
+      - PGUSER=user
+      - PGPASSWORD=password
+      - PGDATABASE=louis_crm
+      
+      # Authentication and App Context Settings
+      - AUTH_SECRET=${AUTH_SECRET:-some_random_secret_at_least_32_chars_long_for_security}
+      - APP_URL=${APP_URL:-http://localhost:3000}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
+      
+      # Gemini Large Language Model Integration Key
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Native persistent volumes for GoBD compliance and multi-tenant isolation
+      - ./companies_data_vault:/app/companies_data_vault
+      - ./contacts_data_vault:/app/contacts_data_vault
+      - ./knowledge_data_vault:/app/knowledge_data_vault
+
+volumes:
+  postgres_data:
+
+

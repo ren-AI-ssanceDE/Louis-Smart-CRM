@@ -1,0 +1,58 @@
+[
+  {
+    "scenario": "01-zugferd-single-line",
+    "profile": "zugferd-comfort",
+    "detectedProfile": "n/a",
+    "xmlBytes": 0,
+    "pdfBytes": 0,
+    "validation": {
+      "ok": false,
+      "errors": -1,
+      "warnings": -1,
+      "notices": -1
+    },
+    "failureReason": "Failed to start Mustang CLI Java process: spawn java ENOENT"
+  },
+  {
+    "scenario": "02-zugferd-multi-line",
+    "profile": "zugferd-comfort",
+    "detectedProfile": "n/a",
+    "xmlBytes": 0,
+    "pdfBytes": 0,
+    "validation": {
+      "ok": false,
+      "errors": -1,
+      "warnings": -1,
+      "notices": -1
+    },
+    "failureReason": "Failed to start Mustang CLI Java process: spawn java ENOENT"
+  },
+  {
+    "scenario": "03-zugferd-mixed-vat",
+    "profile": "zugferd-comfort",
+    "detectedProfile": "n/a",
+    "xmlBytes": 0,
+    "pdfBytes": 0,
+    "validation": {
+      "ok": false,
+      "errors": -1,
+      "warnings": -1,
+      "notices": -1
+    },
+    "failureReason": "Failed to start Mustang CLI Java process: spawn java ENOENT"
+  },
+  {
+    "scenario": "04-xrechnung-b2g",
+    "profile": "xrechnung-3.0",
+    "detectedProfile": "n/a",
+    "xmlBytes": 0,
+    "pdfBytes": 0,
+    "validation": {
+      "ok": false,
+      "errors": -1,
+      "warnings": -1,
+      "notices": -1
+    },
+    "failureReason": "Failed to start Mustang CLI Java process: spawn java ENOENT"
+  }
+]

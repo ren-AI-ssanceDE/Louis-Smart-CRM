@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1.7
+#
+# Louis Smart CRM — production image (Optimized & Corrected)
+# - Node 20 application runtime
+# - OpenJDK 17 headless JRE for Mustang CLI (ZUGFeRD / XRechnung PDF/A-3b sealing)
+# - Build-time asset vendoring (Lato fonts, Mustang jar) keeps runtime zero-egress
+# - Secure privilege-dropping with gosu and dual-mode permission fixes
+# - Non-root execution, tini as PID 1
+
+# ---------- Stage 1: builder ----------
+FROM node:20-slim AS builder
+
+WORKDIR /app
+
+# Build-time toolchain for any native modules
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies first for cache-friendly layering.
+# --ignore-scripts prevents postinstall (setup-assets) from running here;
+# we invoke it explicitly below so the layer is cacheable on its own.
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Vendor build-time assets (fonts + Mustang CLI). Network is allowed during build.
+COPY scripts/ ./scripts/
+RUN node scripts/setup-assets.mjs
+
+# Bring in the rest of the source and produce the frontend bundle
+COPY . .
+RUN npm run build
+
+# ---------- Stage 2: runtime ----------
+FROM node:20-slim AS runtime
+
+# JRE for Mustang, Ghostscript for PDF/A-3 normalization, tini for signals, and gosu for step-down privileges.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-17-jre-headless ghostscript ca-certificates tini gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r app \
+    && useradd -r -g app -d /app -s /usr/sbin/nologin app
+
+WORKDIR /app
+
+# Copy artifacts with ownership set at COPY time. This avoids a recursive
+# `chown` over node_modules, which fails on Docker Desktop / overlayfs when
+# the dependency tree contains tens of thousands of files.
+COPY --from=builder --chown=app:app /app/node_modules ./node_modules
+COPY --from=builder --chown=app:app /app/dist ./dist
+COPY --from=builder --chown=app:app /app/mustang-cli.jar ./mustang-cli.jar
+COPY --from=builder --chown=app:app /app/scripts ./scripts
+COPY --from=builder --chown=app:app /app/src ./src
+COPY --from=builder --chown=app:app /app/server.ts ./server.ts
+COPY --from=builder --chown=app:app /app/package.json ./package.json
+COPY --from=builder --chown=app:app /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chown=app:app /app/index.html ./index.html
+COPY --from=builder --chown=app:app /app/vite.config.ts ./vite.config.ts
+
+# Persistent data dirs — overridden by volume mounts in docker-compose.
+# Created with explicit ownership; no recursive chown over node_modules.
+RUN install -d -o app -g app /app/companies_data_vault /app/contacts_data_vault
+
+ENV NODE_ENV=production
+ENV PORT=3000
+EXPOSE 3000
+
+# Copy and prepare entrypoint script (must be done as root BEFORE switching user)
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Use the actual health endpoint exposed by server.ts (line 241)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>{if(!r.ok)process.exit(1);}).catch(()=>process.exit(1))"
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+CMD ["npm", "start"]

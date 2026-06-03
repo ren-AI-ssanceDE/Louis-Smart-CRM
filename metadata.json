@@ -1,0 +1,6 @@
+{
+  "name": "Louis Smart CRM",
+  "description": "Smart, AI-ready CRM with semantic data structures and ZUGFeRD/Factur-X e-invoicing compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

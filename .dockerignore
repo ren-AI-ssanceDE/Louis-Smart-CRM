@@ -1,0 +1,32 @@
+# VCS / IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Build outputs (regenerated in container)
+node_modules
+dist
+build
+coverage
+
+# Locally vendored assets — re-fetched inside the builder stage
+mustang-cli.jar
+src/assets/fonts/*.ttf
+
+# Local persistent data (GoBD-relevant invoice artifacts) — mounted as volumes
+companies_data_vault
+contacts_data_vault
+
+# Logs and OS noise
+*.log
+.DS_Store
+
+# Local env files — image consumes env vars from docker-compose / runtime
+.env
+.env.local
+.env.*.local
+
+# Editor backups
+*.swp
+*~

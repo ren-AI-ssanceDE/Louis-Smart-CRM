@@ -1,0 +1,25 @@
+%!
+% This is a sample prefix file for creating a PDF/A-3 document.
+
+% Define entries in the document Info dictionary :
+/pages { /Title (E-Rechnung) /Creator (Louis Smart CRM) /Author (Louis Smart CRM) /Subject (E-Rechnung) } def
+
+% Define sRGB ICC profile path:
+/ICCProfile (__ICC_PROFILE_PATH__) def
+
+% Define OutputIntent dictionary:
+[ /_objdef {pdfa_ColorSpace} /type /stream /OBJ pdfmark
+[ {pdfa_ColorSpace} << /N 3 /Alternate /DeviceRGB >> /PUT pdfmark
+[ {pdfa_ColorSpace} ICCProfile (r) file /PUT pdfmark
+
+[ /_objdef {pdfa_OutputIntent} /type /dict /OBJ pdfmark
+[ {pdfa_OutputIntent} <<
+  /Type /OutputIntent
+  /S /GTS_PDFA1
+  /OutputConditionIdentifier (sRGB)
+  /RegistryName (http://www.color.org)
+  /Info (sRGB)
+  /DestOutputProfile {pdfa_ColorSpace}
+>> /PUT pdfmark
+
+[ {Catalog} << /OutputIntents [ {pdfa_OutputIntent} ] >> /PUT pdfmark
