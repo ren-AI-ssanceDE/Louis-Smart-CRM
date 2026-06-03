@@ -17,7 +17,6 @@ Louis Smart CRM ist eine hochperformante, typsichere und KI-zentrierte Fullstack
 * **⚖️ GoBD- & EN 16931-konforme E-Rechnung**: Vollautomatische Generierung von gesetzeskonformen ZUGFeRD (2.2+) / Factur-X 1.0 Hybriddateien und XRechnung 3.0 für Behörden inklusive Leitweg-ID-Validierung. 
 * **💾 Dualer Speicher-Layer (Maximale Resilienz)**: Unterstützt im Produktivbetrieb PostgreSQL mit `pgvector` für semantische KI-Vektorsuchen. Bei fehlender Datenbankverbindung weicht das System nahtlos auf ein lokales In-Memory Fallback-Dateisystem (`.local_fallback_db.json`) aus.
 * **🔒 DSGVO & Revisionssicherheit**: Integriert ein unveränderbares Append-Only Audit-Log für alle sensiblen Aktionen. Bietet DSGVO-Datenportabilität per 1-Klick-Export (Art. 20) sowie ein intelligentes, kaskadierendes Löschkonzept (Art. 17), das die 10-jährige GoBD-Aufbewahrungspflicht für Buchhaltungsdaten schützt.
-
 ---
 
 ## 🛑 WICHTIGER COMPLIANCE-HINWEIS (Read-Only)
@@ -50,6 +49,15 @@ Louis Smart CRM ist eine hochperformante, typsichere und KI-zentrierte Fullstack
 * **Datenbank**: PostgreSQL v14+ (mit Erweiterung `pgvector`) **oder** direkt starten via integriertem Local-JSON-Fallback.
 
 ### Lokale Einrichtung
+
+Die EASY Version:
+1. Lade dir Docker Desktop herunter.
+2. Öffne Docker Desktop
+3. Öfnne "Gordon" den Docker KI Assistenten
+4. Gib folgenden Prompt in das Chatfenster von Gordon ein: "Sieh dir das folgende Projekt an. Alle Dateien sind vorhanden. Erstelle ein sauberes Image und starte die Container. (füge den Link zum lokalen Download-Pfad des Projekts ein. z.B. C:/Dokumente/louis-smart-crm)
+5. Docker übernimmt den Rest. Warte bis die Container gestartet sind. Navigiere dann im Browser zu http://localhost:3000/
+
+### Reguläre Installation
 
 1. **Repository klonen und Abhängigkeiten installieren**:
    ```bash
