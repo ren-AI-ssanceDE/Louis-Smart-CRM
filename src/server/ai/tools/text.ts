@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { generateContentUniversal } from "../geminiHelper.js";
 import { pool, isUsingFallback, fallbackStore } from "../../db.js";
+import { LouisAiConfig, TextGeneratorConfig } from "../../../types.js";
 
 /**
  * Tool 8: Text Generator Tool
@@ -15,9 +16,9 @@ export async function executeTextGenerator(tenantId: string, instruction: string
   // Load provider setup from Louis AI Configuration
   try {
     if (isUsingFallback) {
-      const found = (fallbackStore.louisAiConfig || []).find((c: any) => c.tenant_id === tenantId) || (fallbackStore.louisAiConfig || []).find((c: any) => c.tenant_id === '1');
+      const found = (fallbackStore.louisAiConfig || []).find((c: LouisAiConfig) => c.tenant_id === tenantId) || (fallbackStore.louisAiConfig || []).find((c: LouisAiConfig) => c.tenant_id === '1');
       if (found) {
-        if (found.provider_type) providerType = found.provider_type;
+        if (found.provider_type) providerType = found.provider_type as 'gemini' | 'ollama' | 'openai' | 'anthropic';
         if (found.model_name) modelToUse = found.model_name;
         if (found.api_key_secret) apiKeySecret = found.api_key_secret.trim();
         if (found.base_url) baseUrl = found.base_url.trim();
@@ -46,7 +47,7 @@ export async function executeTextGenerator(tenantId: string, instruction: string
   try {
     if (isUsingFallback) {
       const list = fallbackStore.textGeneratorConfig || [];
-      const found = list.find((c: any) => c.tenant_id === tenantId) || list.find((c: any) => c.tenant_id === '1');
+      const found = list.find((c: TextGeneratorConfig) => c.tenant_id === tenantId) || list.find((c: TextGeneratorConfig) => c.tenant_id === '1');
       if (found) {
         if (found.system_prompt) systemPrompt = found.system_prompt;
         if (found.temperature !== undefined) temp = found.temperature;

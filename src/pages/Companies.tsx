@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../lib/math';
-import { Company } from '../types';
+import { Company, Invoice } from '../types';
 import { trpc } from '../lib/trpc';
 import { cn, getDueDateStatus, PAYMENT_METHODS } from '../lib/utils';
 import { Dialog } from '../components/ui/Dialog';
@@ -19,7 +19,7 @@ import { CompanySchema } from '../lib/schemas';
 import { z } from 'zod';
 
 export const Companies = () => {
-  const { t, i18n } = useTranslation(['companies', 'common']);
+  const { t, i18n } = useTranslation(['companies', 'common', 'dashboard']);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [selectedCompany, setSelectedCompany] = React.useState<Company | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -51,7 +51,7 @@ export const Companies = () => {
     }
   });
 
-  const handleEmitPaymentClick = (invoice: any) => {
+  const handleEmitPaymentClick = (invoice: Invoice) => {
     setFinalizeInvoice(invoice);
     setFinalizeDate(new Date().toISOString().split('T')[0]);
     setFinalizeMethod('transfer');
@@ -346,6 +346,8 @@ export const Companies = () => {
       if (selectedCompany) {
         setSelectedCompany(prev => prev ? { ...prev, ...variables } : null);
       }
+      setIsDialogOpen(false);
+      setSelectedCompany(null);
       utils.getCompanies.invalidate();
       toast.success(t('companies:save_success', { defaultValue: "Firma erfolgreich aktualisiert!" }));
     },
@@ -377,7 +379,13 @@ export const Companies = () => {
   });
 
   const exportCompanyToCSV = (comp: Company) => {
-    const headers = [
+    const headers = i18n.language === 'en' ? [
+      "ID", "Company Name", "VAT ID", "Tax Number", "Responsible Person",
+      "Street", "House Number", "City", "Postal Code", "Country",
+      "Email", "Email 2", "Website", "Phone", "Mobile Phone", "Fax",
+      "IBAN", "BIC", "Leitweg-ID", "Payment Term", "Price List",
+      "Documents_Notes", "Language", "Created By", "AI Confidence"
+    ] : [
       "ID", "Firmenname", "USt-IdNr.", "Steuernummer", "Ansprechpartner",
       "Strasse", "Hausnummer", "Ort", "PLZ", "Land",
       "E-Mail", "E-Mail 2", "Webseite", "Telefon", "Mobiltelefon", "Fax",
@@ -702,19 +710,18 @@ export const Companies = () => {
                           <svg className="w-5 h-5 animate-pulse shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                           </svg>
-                          <h4 className="text-xs font-black uppercase tracking-widest font-display">Louis AI Entwurf / Ungeprüft</h4>
+                          <h4 className="text-xs font-black uppercase tracking-widest font-display">{t('dashboard:pending_approvals_banner.title')}</h4>
                         </div>
                         <p className="text-xs text-slate-400 font-sans leading-relaxed">
-                          Aktion erforderlich: Bitte prüfen Sie diesen Eintrag und bestätigen Sie ihn, um ihn als verifiziert zu markieren.
+                          {t('dashboard:pending_approvals_banner.desc')}
                         </p>
                       </div>
                       <button
-                        type="button"
-                        onClick={() => verifyCompanyMutation.mutate({ id_uuid: selectedCompany.id_uuid })}
-                        disabled={verifyCompanyMutation.isPending}
+                        type="submit"
+                        disabled={updateCompanyMutation.isPending || createCompanyMutation.isPending}
                         className="w-full sm:w-auto shrink-0 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-600/50 text-neutral-black text-[10px] font-black uppercase tracking-widest px-5 py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)] cursor-pointer"
                       >
-                        {verifyCompanyMutation.isPending ? "Speichert..." : "Entwurf freigeben"}
+                        {updateCompanyMutation.isPending ? t('dashboard:pending_approvals_banner.saving') : t('dashboard:pending_approvals_banner.approve_action')}
                       </button>
                     </motion.div>
                   )}

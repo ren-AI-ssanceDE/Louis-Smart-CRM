@@ -22,7 +22,7 @@ export interface AIMetadata {
   ai_confidence_score?: number;
   is_verified_by_human?: boolean;
   raw_source_data?: string;
-  metadata?: Record<string, any> | null;
+  metadata?: { company_short_code?: string; [key: string]: unknown } | null;
 }
 
 export interface Company extends AIMetadata {
@@ -294,6 +294,78 @@ export interface CustomWorkflow {
     tool: string;
     instruction: string;
   }[];
+  trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
+  trigger_config?: Record<string, unknown> | null;
+  is_active?: boolean;
+  direct_send_email?: boolean;
+  created_at_utc?: string;
+  updated_at_utc?: string;
+}
+
+export interface MailDraftAttachment {
+  filename: string;
+  source: 'knowledge' | 'vault';
+  entity_id?: string;
+  entity_type?: 'companies' | 'contacts';
+  filePath?: string;
+}
+
+export interface MailDraft {
+  id_uuid: string;
+  tenant_id: string;
+  workflow_instance_id?: string | null;
+  recipient: string;
+  subject: string;
+  body: string;
+  attachments_json?: MailDraftAttachment[] | string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  created_at_utc?: string;
+  updated_at_utc?: string;
+}
+
+export interface KnowledgeFile {
+  name: string;
+  size: number;
+  mtime: string;
+  isIndexed: boolean;
+  chunkCount: number;
+}
+
+export interface ChatNote {
+  id_uuid: string;
+  entity_type: 'user' | 'contact' | 'company';
+  entity_id?: string | null;
+  content: string;
+  is_rag_indexed: boolean;
+  created_at_utc: string;
+}
+
+export interface WorkflowExecutionLogEntry {
+  timestamp: string;
+  step?: string;
+  details?: string;
+  step_index?: number;
+  tool?: string;
+  instruction?: string;
+  outputs?: { text: string } | Record<string, unknown>;
+  mailing_status?: string;
+  mailing_error?: string;
+  label_error?: string;
+  note_error?: string;
+  note_success?: string;
+  label_success?: string;
+  [key: string]: unknown;
+}
+
+export interface WorkflowInstance {
+  id_uuid?: string;
+  tenant_id: string;
+  workflow_id: string;
+  status: 'PENDING_DELAY' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_FOR_DRAFT_APPROVAL';
+  initial_payload: Record<string, unknown> | null;
+  current_step_index: number;
+  execution_log: WorkflowExecutionLogEntry[];
+  execute_at_utc?: string | null;
   created_at_utc?: string;
   updated_at_utc?: string;
 }
@@ -305,6 +377,11 @@ export interface LouisAiKnowledgeMetadata {
   file_size_bytes: number;
   mime_type: string;
   document_hash: string;
+  scope?: 'global' | 'company' | 'contact' | string;
+  associated_company_id?: string | null;
+  associated_contact_id?: string | null;
+  created_by_identity?: string | null;
+  is_verified_by_human?: boolean | null;
   created_at_utc: string;
   updated_at_utc: string;
 }
@@ -373,5 +450,53 @@ export interface ChatMessage {
   thought_log?: string | string[];
   proposed_changes?: ProposedChanges | null;
   metrics?: LouisAiMetrics | null;
+}
+
+export interface InvoicePaidPayload {
+  id_uuid: string;
+  invoice_number: string;
+  payment_date: string;
+  payment_method: string;
+  payment_amount: number;
+  total_gross_amount: number;
+  total_net_amount: number;
+  tax_amount: number;
+  currency: string;
+  associated_company_id: string | null;
+  associated_contact_id: string | null;
+}
+
+export interface InvoiceOverduePayload {
+  id_uuid: string;
+  invoice_number: string;
+  due_date: string;
+  days_overdue: number;
+  total_gross_amount: number;
+  payment_status: 'overdue';
+  associated_company_id: string | null;
+  associated_contact_id: string | null;
+}
+
+export interface ContactUpdatedPayload {
+  id_uuid: string;
+  full_legal_name: string;
+  first_name: string | null;
+  last_name: string;
+  email_address: string;
+  responsible_person: string | null;
+  city: string | null;
+  associated_company_id: string | null;
+  labels: string[];
+}
+
+export interface CompanyUpdatedPayload {
+  id_uuid: string;
+  full_legal_name: string;
+  short_code: string | null;
+  tax_vat_id: string | null;
+  city: string | null;
+  email_address: string | null;
+  responsible_person: string | null;
+  labels: string[];
 }
 

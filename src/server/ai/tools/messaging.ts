@@ -5,6 +5,7 @@ import path from "path";
 import { generateContentUniversal } from "../geminiHelper.js";
 import { pool, isUsingFallback, fallbackStore } from "../../db.js";
 import { getEntityStoragePath } from "../../storage.js";
+import { Contact, Company, SmtpSettings, LouisAiConfig } from "../../../types.js";
 
 interface Attachment {
   filename: string;
@@ -17,7 +18,7 @@ interface Attachment {
  * Recursively search for a filename across all known storage buckets/vaults.
  * Used as a robust fallback to guarantee draft attachments can be resolved even if the source is misaligned.
  */
-function searchFileAcrossAllVaults(filename: string, tenantId: string): { path: string; source: 'knowledge' | 'vault'; entityId?: string; entityType?: 'companies' | 'contacts' } | null {
+export function searchFileAcrossAllVaults(filename: string, tenantId: string): { path: string; source: 'knowledge' | 'vault'; entityId?: string; entityType?: 'companies' | 'contacts' } | null {
   const cleanFilename = filename.toLowerCase().trim();
   if (!cleanFilename) return null;
 
@@ -133,30 +134,103 @@ function searchFileAcrossAllVaults(filename: string, tenantId: string): { path: 
 }
 
 /**
+ * Resolves the actual physical file path on disk for an attachment.
+ */
+export function resolveAttachmentPhysicalPath(
+  tenantId: string,
+  filename: string,
+  source?: 'knowledge' | 'vault' | string,
+  entityId?: string,
+  entityType?: 'companies' | 'contacts' | string
+): string | null {
+  const cleanFilename = filename.trim();
+  if (!cleanFilename) return null;
+
+  // 1. If we have entityId and entityType, try searching in its vault directory first
+  if (entityId && entityType) {
+    const vaultFolder = entityType === "companies" ? "companies_data_vault" : "contacts_data_vault";
+    const tenantVaultRoot = path.resolve(process.cwd(), vaultFolder, tenantId);
+    if (fs.existsSync(tenantVaultRoot)) {
+      try {
+        const dirs = fs.readdirSync(tenantVaultRoot);
+        const matchedDir = dirs.find(d => d.startsWith(entityId + "__"));
+        if (matchedDir) {
+          const fullDirPath = path.join(tenantVaultRoot, matchedDir);
+          const files = fs.readdirSync(fullDirPath);
+          const matchedFile = files.find(f => f.toLowerCase() === cleanFilename.toLowerCase() || 
+                                              f.replace(/^\d+_/g, '').toLowerCase() === cleanFilename.toLowerCase() ||
+                                              f.toLowerCase().includes(cleanFilename.toLowerCase()));
+          if (matchedFile) {
+            const absolutePath = path.join(fullDirPath, matchedFile);
+            if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
+              return absolutePath;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[resolveAttachmentPhysicalPath] Failed listing vault dirs:`, err);
+      }
+    }
+  }
+
+  // 2. Try searching in knowledge_data_vault
+  const kDir = path.resolve(process.cwd(), "knowledge_data_vault", tenantId);
+  if (fs.existsSync(kDir)) {
+    try {
+      const files = fs.readdirSync(kDir);
+      const matchedFile = files.find(f => f.toLowerCase() === cleanFilename.toLowerCase() || 
+                                          f.replace(/^\d+_/g, '').toLowerCase() === cleanFilename.toLowerCase() ||
+                                          f.toLowerCase().includes(cleanFilename.toLowerCase()));
+      if (matchedFile) {
+        const absolutePath = path.join(kDir, matchedFile);
+        if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
+          return absolutePath;
+        }
+      }
+    } catch (err) {
+      console.warn(`[resolveAttachmentPhysicalPath] Failed listing knowledge files:`, err);
+    }
+  }
+
+  // 3. Fallback to global search across all vaults
+  const searchRes = searchFileAcrossAllVaults(cleanFilename, tenantId);
+  if (searchRes && fs.existsSync(searchRes.path)) {
+    return searchRes.path;
+  }
+
+  // 4. Fallback: Check if file exists directly if it is already an absolute path
+  if (path.isAbsolute(cleanFilename) && fs.existsSync(cleanFilename) && fs.statSync(cleanFilename).isFile()) {
+    return cleanFilename;
+  }
+
+  return null;
+}
+
+/**
  * Resolves filenames for Knowledge Base and Contact/Company Vaults dynamically on disk.
  * Uses exact match first, then falls back to case-insensitive partial/substring match.
  */
-async function resolveAttachments(tenantId: string, recipient: string, attachmentsIn: any[]): Promise<Attachment[]> {
+async function resolveAttachments(tenantId: string, recipient: string, attachmentsIn: unknown[]): Promise<Attachment[]> {
   const resolved: Attachment[] = [];
   if (!Array.isArray(attachmentsIn) || attachmentsIn.length === 0) {
     return resolved;
   }
 
   // Find associated contact and company for vault lookups
-  let contact: any = null;
-  let company: any = null;
+  let contact: Contact | null = null;
+  let company: Company | null = null;
 
   // Clean the recipient email address to handle name brackets like: "Max Mustermann <max@mustermann.de>" or trailing spaces
   const cleanRecipient = recipient.includes("<") ? (recipient.match(/<([^>]+)>/)?.[1] || recipient).trim() : recipient.trim();
 
   if (isUsingFallback) {
-    contact = fallbackStore.contacts?.find((c: any) => 
+    contact = fallbackStore.contacts?.find((c: Contact) => 
       c.email_address?.toLowerCase() === cleanRecipient.toLowerCase() && c.tenant_id === tenantId
-    );
+    ) || null;
     if (contact && contact.associated_company_id) {
-      company = fallbackStore.companies?.find((co: any) => 
+      company = fallbackStore.companies?.find((co: Company) => 
         co.id_uuid === contact.associated_company_id && co.tenant_id === tenantId
-      );
+      ) || null;
     }
   } else {
     try {
@@ -172,12 +246,12 @@ async function resolveAttachments(tenantId: string, recipient: string, attachmen
           id_uuid: row.id_uuid,
           full_legal_name: row.full_legal_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
           associated_company_id: row.associated_company_id
-        };
+        } as Contact;
         if (row.associated_company_id) {
           company = {
             id_uuid: row.associated_company_id,
             full_legal_name: row.co_name || "Unbekannt"
-          };
+          } as Company;
         }
       }
     } catch (err) {
@@ -195,8 +269,9 @@ async function resolveAttachments(tenantId: string, recipient: string, attachmen
       origFilename = att.trim();
       source = "knowledge"; 
     } else if (att && typeof att === 'object') {
-      origFilename = String(att.filename || att.name || "").trim();
-      source = String(att.source || "knowledge").toLowerCase() as 'knowledge' | 'vault';
+      const typedAtt = att as { filename?: string; name?: string; source?: string };
+      origFilename = String(typedAtt.filename || typedAtt.name || "").trim();
+      source = String(typedAtt.source || "knowledge").toLowerCase() as 'knowledge' | 'vault';
     }
 
     if (!origFilename) continue;
@@ -289,7 +364,7 @@ async function resolveAttachments(tenantId: string, recipient: string, attachmen
  */
 export async function executeSendSmtpEmail(tenantId: string, argsStr: string, actor: string = "system", aiClient?: GoogleGenAI): Promise<string> {
   try {
-    let rawArgs: any;
+    let rawArgs: unknown;
     try {
       rawArgs = JSON.parse(argsStr);
     } catch (parseErr) {
@@ -300,7 +375,7 @@ export async function executeSendSmtpEmail(tenantId: string, argsStr: string, ac
       let parsedInvoiceId = "";
       let parsedSubject = "";
       let parsedBody = "";
-      let parsedAttachments: any[] = [];
+      let parsedAttachments: unknown[] = [];
 
       // 1. Extract Email Address with regex
       const emailRegex = /([a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,10})/;
@@ -390,7 +465,7 @@ export async function executeSendSmtpEmail(tenantId: string, argsStr: string, ac
 
            // Load provider configuration of Louis AI
            if (isUsingFallback) {
-             const found = (fallbackStore.louisAiConfig || []).find((c: any) => c.tenant_id === tenantId) || (fallbackStore.louisAiConfig || []).find((c: any) => c.tenant_id === '1');
+             const found = (fallbackStore.louisAiConfig || []).find((c: LouisAiConfig) => c.tenant_id === tenantId) || (fallbackStore.louisAiConfig || []).find((c: LouisAiConfig) => c.tenant_id === '1');
              if (found) {
                if (found.provider_type) providerType = found.provider_type;
                if (found.model_name) modelToUse = found.model_name;
@@ -440,8 +515,8 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen oder s
 
            const textOutput = (res.text || "").replace(/```json/g, "").replace(/```/g, "").trim();
            rawArgs = JSON.parse(textOutput);
-         } catch (e: any) {
-           throw new Error(`Fehler bei der automatischen KI-Strukturierung der E-Mail-Argumente: ${e.message}`);
+         } catch (e: unknown) {
+           const errMsg = e instanceof Error ? e.message : String(e); throw new Error(`Fehler bei der automatischen KI-Strukturierung der E-Mail-Argumente: ${errMsg}`);
          }
        }
      }
@@ -451,11 +526,11 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen oder s
       throw new Error("Fehler: Argumente konnten nicht zu einem Objekt aufgelöst werden.");
     }
 
-    let recipient = String(rawArgs.recipient_email_address || "").trim();
-    const subject = String(rawArgs.email_subject_text || "").trim();
-    const body = String(rawArgs.email_body_content || "").trim();
-    const invoiceId = rawArgs.invoice_id ? String(rawArgs.invoice_id).trim() : undefined;
-    const rawAttachments = Array.isArray(rawArgs.attachments) ? rawArgs.attachments : [];
+    const argsMap = rawArgs as Record<string, any>; let recipient = String(argsMap.recipient_email_address || "").trim();
+    const subject = String(argsMap.email_subject_text || "").trim();
+    const body = String(argsMap.email_body_content || "").trim();
+    const invoiceId = argsMap.invoice_id ? String(argsMap.invoice_id).trim() : undefined;
+    const rawAttachments = Array.isArray(argsMap.attachments) ? argsMap.attachments : [];
 
     // Check if recipient is a valid email. If it does not contain a "@" and is not empty, resolve against CRM
     const isEmail = recipient.includes("@");
@@ -465,7 +540,7 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen oder s
       
       if (isUsingFallback) {
         // Try searching contacts first
-        const contact = fallbackStore.contacts?.find((c: any) => 
+        const contact = fallbackStore.contacts?.find((c: Contact) => 
           c.tenant_id === tenantId && (
             c.full_legal_name?.toLowerCase().includes(recipient.toLowerCase()) ||
             `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(recipient.toLowerCase())
@@ -476,7 +551,7 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen oder s
           console.log(`[SMTP Helper] Resolved contact from fallback store and found email: ${resolvedEmail}`);
         } else {
           // Try company
-          const company = fallbackStore.companies?.find((co: any) => 
+          const company = fallbackStore.companies?.find((co: Company) => 
             co.tenant_id === tenantId && co.full_legal_name?.toLowerCase().includes(recipient.toLowerCase())
           );
           if (company && (company.email_address || company.email_2)) {
@@ -526,7 +601,7 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen oder s
     }
 
     // Retrieve SMTP Settings to make sure it's set up
-    let smtp: any;
+    let smtp: SmtpSettings | undefined;
     if (isUsingFallback) {
       smtp = fallbackStore.smtpSettings;
     } else {

@@ -19,7 +19,7 @@ export const OpenInvoicesCard: React.FC<OpenInvoicesCardProps> = ({ onNavigate }
   );
 
   // Helper to determine if an invoice is expired/overdue by date
-  const isOverdueByDate = (inv: any) => {
+  const isOverdueByDate = (inv: { payment_status?: string | null; due_date?: string | null }) => {
     if (inv.payment_status === 'overdue') return true;
     if (inv.payment_status === 'pending' && inv.due_date) {
       const today = new Date();

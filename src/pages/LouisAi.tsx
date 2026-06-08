@@ -19,6 +19,7 @@ import {
   Bookmark
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { MailDraftAttachment } from '../types';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 
@@ -595,7 +596,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                             <span>Rechnungs-PDF (UUID: {String(msg.proposed_changes.proposed_state.invoice_id).substring(0, 8)}...)</span>
                           </div>
                         )}
-                        {Array.isArray(msg.proposed_changes.proposed_state.attachments) && msg.proposed_changes.proposed_state.attachments.map((att: any, idx: number) => (
+                        {Array.isArray(msg.proposed_changes.proposed_state.attachments) && msg.proposed_changes.proposed_state.attachments.map((att: MailDraftAttachment, idx: number) => (
                           <div key={idx} className="flex border-b border-white/5 pb-2 text-sky-400 font-bold">
                             <span className="text-slate-400 w-20 shrink-0 font-bold">
                               {idx === 0 ? t('louis_copilot:attachments', { defaultValue: "Anhänge" }) : ""}
@@ -695,17 +696,20 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-primary-dark/80 border-t border-white/5 flex gap-3">
-        <input
-          type="text"
+      <div className="p-4 bg-primary-dark/80 border-t border-white/5 flex items-end gap-3">
+        <textarea
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSend();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
           }}
           disabled={isPending}
           placeholder={t('louis_copilot:chat_placeholder', { defaultValue: "Frage LOUIS AI nach Analysen, Recherchen oder CRM-Mutierungen..." })}
-          className="flex-1 bg-primary-light border border-white/5 rounded-2xl px-5 text-sm font-medium text-white focus:outline-none focus:border-accent-orange/40 transition-all font-sans"
+          rows={2}
+          className="flex-1 bg-primary-light border border-white/5 rounded-2xl px-5 py-3 text-sm font-medium text-white focus:outline-none focus:border-accent-orange/40 transition-all font-sans resize-y min-h-[48px] max-h-40 leading-relaxed"
         />
         <button
           onClick={handleSend}

@@ -3,6 +3,7 @@ import { trpc } from '../../lib/trpc';
 import { toast } from 'sonner';
 import { Brain, Save, Shield, Settings, Info, Trash2, Edit2, Plus, Check, X, FileText, UploadCloud, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { KnowledgeFile, ChatNote, Company, Contact } from '../../types';
 
 const TextGeneratorSettingsPanel = () => {
   const { t } = useTranslation(['admin', 'common']);
@@ -244,8 +245,9 @@ export const LouisAiSettingsForm = () => {
   });
 
   const toggleRagMutation = trpc.toggleNoteRagIndex.useMutation({
-    onSuccess: (_, variables: any) => {
-      toast.success(variables.is_rag_indexed 
+    onSuccess: (_, variables: void | { id_uuid: string; is_rag_indexed: boolean }) => {
+      const isIndexed = (variables && variables.is_rag_indexed) ? true : false;
+      toast.success(isIndexed 
         ? t('admin:toast_rag_toggle_success_index', { defaultValue: 'Wissensnotiz erfolgreich indiziert!' })
         : t('admin:toast_rag_toggle_success_remove', { defaultValue: 'Wissensnotiz erfolgreich aus RAG entfernt!' })
       );
@@ -430,7 +432,7 @@ export const LouisAiSettingsForm = () => {
           <select
             value={providerType}
             onChange={(e) => {
-              const val = e.target.value as any;
+              const val = e.target.value as 'gemini' | 'ollama' | 'openai' | 'anthropic';
               setProviderType(val);
               if (val === 'gemini') setModelName('gemini-3.5-flash');
               else if (val === 'openai') setModelName('gpt-4o');
@@ -543,7 +545,7 @@ export const LouisAiSettingsForm = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-56 overflow-y-auto pr-2">
-                {modelsData?.models?.map((m: any) => (
+                {modelsData?.models?.map((m: { id: string; name?: string; description?: string }) => (
                   <button
                     key={m.id}
                     type="button"
@@ -685,7 +687,7 @@ export const LouisAiSettingsForm = () => {
               <select
                 value={embeddingProvider}
                 onChange={(e) => {
-                  const val = e.target.value as any;
+                  const val = e.target.value as 'gemini' | 'ollama' | 'openai';
                   setEmbeddingProvider(val);
                   if (val === 'gemini') {
                     setEmbeddingModelName('text-embedding-004');
@@ -1023,7 +1025,7 @@ export const LouisAiSettingsForm = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {kFiles.map((f: any) => (
+                      {(kFiles as KnowledgeFile[]).map((f: KnowledgeFile) => (
                         <tr key={f.name} className="hover:bg-white/[0.01] transition-colors">
                           <td className="px-4 py-3 font-semibold text-white flex items-center gap-2">
                             <FileText size={14} className="text-accent-blue scale-110" />
@@ -1117,8 +1119,8 @@ export const LouisAiSettingsForm = () => {
             <div>
               {/* Filter and display memory notes based on tab */}
               {(() => {
-                const filteredNotes = (memory?.chat_notes_json || []).filter(
-                  (note: any) => note.entity_type === activeMemoryTab
+                const filteredNotes = ((memory?.chat_notes_json || []) as ChatNote[]).filter(
+                  (note: ChatNote) => note.entity_type === activeMemoryTab
                 );
 
                 if (filteredNotes.length === 0) {
@@ -1137,19 +1139,19 @@ export const LouisAiSettingsForm = () => {
 
                 return (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {filteredNotes.map((note: any) => {
+                    {filteredNotes.map((note: ChatNote) => {
                       const isEditing = editingNoteId === note.id_uuid;
                       const isExpanded = expandedNoteIds.includes(note.id_uuid);
 
                       // Map entity target humans for clarity
                       let targetLabel = t('admin:ai_settings.note_target_user_admin', { defaultValue: 'Eigene Wissensdatenbank (Admin)' });
                       if (note.entity_type === 'contact' && note.entity_id) {
-                        const contactObj = contacts.find((c: any) => c.id_uuid === note.entity_id);
+                        const contactObj = (contacts as Contact[]).find((c: Contact) => c.id_uuid === note.entity_id);
                         targetLabel = contactObj 
-                          ? `${contactObj.first_name || ''} ${contactObj.last_name || ''}`.trim() || contactObj.email_address 
+                          ? `${contactObj.first_name || ''} ${contactObj.last_name || ''}`.trim() || contactObj.email_address || ''
                           : t('admin:ai_settings.note_target_contact_id', { id: note.entity_id.slice(0, 8), defaultValue: `Kontakt (ID: ${note.entity_id.slice(0, 8)})` });
                       } else if (note.entity_type === 'company' && note.entity_id) {
-                        const companyObj = companies.find((c: any) => c.id_uuid === note.entity_id);
+                        const companyObj = (companies as Company[]).find((c: Company) => c.id_uuid === note.entity_id);
                         targetLabel = companyObj 
                           ? companyObj.full_legal_name 
                           : t('admin:ai_settings.note_target_company_id', { id: note.entity_id.slice(0, 8), defaultValue: `Unternehmen (ID: ${note.entity_id.slice(0, 8)})` });

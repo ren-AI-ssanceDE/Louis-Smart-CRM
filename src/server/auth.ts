@@ -83,7 +83,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
                 return { id: user.id_uuid, name: user.full_legal_name, email: user.email_address };
               }
             } else if (email === "admin@louis-crm.de") {
-              const id = crypto.randomUUID();
+              const id = "00000000-0000-4000-8000-000000000099";
               const pHash = hashPassword("admin");
               await pool.query(
                 `INSERT INTO auth_access_identities (id_uuid, email_address, full_legal_name, account_role, password_hash)
@@ -98,7 +98,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
           } catch (err) {
             console.error("Authorize db access error:", err);
             if (email === "admin@louis-crm.de" && password === "admin") {
-              return { id: "1", name: "Admin", email: "admin@louis-crm.de" };
+              return { id: "00000000-0000-4000-8000-000000000099", name: "Admin", email: "admin@louis-crm.de" };
             }
           }
         }
@@ -110,6 +110,12 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
     strategy: "jwt"
   },
   callbacks: {
+    async jwt({ token, user } : { token: AuthToken; user?: AuthUser | null }) {
+      if (user) {
+        token.sub = user.id;
+      }
+      return token;
+    },
     async session({ session, token, user } : { session: AuthSession; token?: AuthToken | null; user?: AuthUser | null }) {
       if (session && session.user) {
         session.user.id = (token?.sub || user?.id) as string;
@@ -121,8 +127,12 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
   trustHost: true,
 };
 
+// Postgres adapter is disabled to prevent user ID/tenant ID split-brain issues with auth_access_identities table.
+// NextAuth runs in pure Credentials JWT mode instead, ensuring absolute tenant ID consistency.
+/*
 if (!isUsingFallback && pool) {
   authConfig.adapter = PostgresAdapter(pool);
 }
+*/
 
 export const authMiddleware = ExpressAuth(authConfig);

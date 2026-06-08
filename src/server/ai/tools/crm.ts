@@ -137,7 +137,7 @@ export function fuzzyMatch(text: string, term: string): boolean {
   return false;
 }
 
-export async function executeCrmDataAnalyst(tenantId: string, query: string): Promise<any> {
+export async function executeCrmDataAnalyst(tenantId: string, query: string): Promise<Record<string, unknown> | Array<unknown> | string | number | boolean | null | unknown> {
   const searchTerms = getSearchTerms(query);
   const isGeneric = searchTerms.length === 0;
 
@@ -261,9 +261,9 @@ export async function executeCrmDataAnalyst(tenantId: string, query: string): Pr
     const contCount = await pool.query("SELECT COUNT(*) FROM core_registry_contacts WHERE tenant_id = $1", [tenantId]);
     const invCount = await pool.query("SELECT COUNT(*), SUM(total_gross_amount) FILTER (WHERE payment_status = 'pending') as pending_sum, SUM(total_gross_amount) FILTER (WHERE payment_status = 'paid') as paid_sum FROM fiscal_billing_invoices WHERE tenant_id = $1", [tenantId]);
 
-    let compMatchRows: any[] = [];
-    let contMatchRows: any[] = [];
-    let invMatchRows: any[] = [];
+    let compMatchRows: { id_uuid: string; [key: string]: unknown }[] = [];
+    let contMatchRows: { id_uuid: string; [key: string]: unknown }[] = [];
+    let invMatchRows: { id_uuid: string; [key: string]: unknown }[] = [];
 
     if (!isGeneric) {
       // 1. Companies search conditions: Match each search term (hybrid OR with CASE WHEN scoring)
@@ -396,7 +396,7 @@ export async function executeCrmDataAnalyst(tenantId: string, query: string): Pr
  */
 export async function executeCreateDraftInvoice(tenantId: string, argsStr: string, actor: string = "system"): Promise<string> {
   try {
-    let rawArgs: any;
+    let rawArgs: unknown;
     try {
       rawArgs = JSON.parse(argsStr);
     } catch {
@@ -409,6 +409,51 @@ export async function executeCreateDraftInvoice(tenantId: string, argsStr: strin
       throw new Error(`Ungültige Argumente für 'create_draft_invoice'. Details: ${errorDetails}`);
     }
     const args = parseResult.data;
+
+    let resolvedCompanyId: string | null = null;
+    if (args.company_id) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.company_id);
+      if (isUuid) {
+        resolvedCompanyId = args.company_id;
+      } else {
+        if (isUsingFallback) {
+          const matched = fallbackStore.companies.find(c => 
+            c.tenant_id === tenantId && 
+            c.full_legal_name?.toLowerCase().includes(args.company_id!.toLowerCase())
+          );
+          if (matched) resolvedCompanyId = matched.id_uuid;
+        } else {
+          const res = await pool.query(
+            "SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND LOWER(full_legal_name) LIKE LOWER($2) LIMIT 1",
+            [tenantId, `%${args.company_id}%`]
+          );
+          if (res.rows.length > 0) resolvedCompanyId = res.rows[0].id_uuid;
+        }
+      }
+    }
+
+    let resolvedContactId: string | null = null;
+    if (args.contact_id) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.contact_id);
+      if (isUuid) {
+        resolvedContactId = args.contact_id;
+      } else {
+        if (isUsingFallback) {
+          const matched = fallbackStore.contacts.find(c => 
+            c.tenant_id === tenantId && 
+            (c.full_legal_name?.toLowerCase().includes(args.contact_id!.toLowerCase()) ||
+             `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(args.contact_id!.toLowerCase()))
+          );
+          if (matched) resolvedContactId = matched.id_uuid;
+        } else {
+          const res = await pool.query(
+            "SELECT id_uuid FROM core_registry_contacts WHERE tenant_id = $1 AND (LOWER(full_legal_name) LIKE LOWER($2) OR LOWER(CONCAT(first_name, ' ', last_name)) LIKE LOWER($2)) LIMIT 1",
+            [tenantId, `%${args.contact_id}%`]
+          );
+          if (res.rows.length > 0) resolvedContactId = res.rows[0].id_uuid;
+        }
+      }
+    }
 
     const id = uuidv4();
     const computedInvoiceNumber = `ENTWURF-${id}`;
@@ -441,13 +486,22 @@ export async function executeCreateDraftInvoice(tenantId: string, argsStr: strin
       }
     }
 
+    const sanitizedItems = items.map(item => ({
+      description: item.description || "",
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      vat_rate: Number(item.vat_rate) || 19,
+      total_net: Number(item.total_net) || 0,
+      unit_code: String(item.unit_code || "HUR")
+    }));
+
     if (isUsingFallback) {
       const newInvoice = {
         id_uuid: id,
         tenant_id: tenantId,
         invoice_number: computedInvoiceNumber,
-        associated_company_id: args.company_id || null,
-        associated_contact_id: args.contact_id || null,
+        associated_company_id: resolvedCompanyId,
+        associated_contact_id: resolvedContactId,
         bank_account: null,
         issue_date: issueDate,
         service_date: issueDate,
@@ -460,22 +514,8 @@ export async function executeCreateDraftInvoice(tenantId: string, argsStr: strin
         vat_rate: Number(items[0]?.vat_rate) || 19,
         currency_code: args.currency_code || "EUR",
         leitweg_id: args.leitweg_id || null,
-        invoice_line_items_json: JSON.stringify(items.map(item => ({
-          description: item.description || "",
-          quantity: Number(item.quantity) || 0,
-          unit_price: Number(item.unit_price) || 0,
-          vat_rate: Number(item.vat_rate) || 19,
-          total_net: Number(item.total_net) || 0,
-          unit_code: String(item.unit_code || "HUR")
-        }))),
-        invoice_line_items: items.map(item => ({
-          description: item.description || "",
-          quantity: Number(item.quantity) || 0,
-          unit_price: Number(item.unit_price) || 0,
-          vat_rate: Number(item.vat_rate) || 19,
-          total_net: Number(item.total_net) || 0,
-          unit_code: String(item.unit_code || "HUR")
-        })),
+        invoice_line_items_json: JSON.stringify(sanitizedItems),
+        invoice_line_items: sanitizedItems,
         raw_source_data: "AI Assisted Draft Tool execution",
         payment_status: "draft" as const,
         created_by_identity: "ai_assistant" as const,
@@ -502,10 +542,10 @@ export async function executeCreateDraftInvoice(tenantId: string, argsStr: strin
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
       `, [
-        id, tenantId, computedInvoiceNumber, args.company_id || null, args.contact_id || null,
+        id, tenantId, computedInvoiceNumber, resolvedCompanyId, resolvedContactId,
         issueDate, issueDate, dueDate, paymentTerm, !!args.is_vat_inclusive,
-        totalNet, totalVat, totalGross, items[0]?.vat_rate || 19,
-        args.currency_code || "EUR", args.leitweg_id || null, JSON.stringify(items), "AI Assisted Draft Tool execution",
+        totalNet, totalVat, totalGross, sanitizedItems[0]?.vat_rate || 19,
+        args.currency_code || "EUR", args.leitweg_id || null, JSON.stringify(sanitizedItems), "AI Assisted Draft Tool execution",
         "draft", "ai_assistant", 0.95, false,
         args.introductory_text || "", args.closing_text || "", JSON.stringify({ is_ai_draft: true })
       ]);
@@ -549,7 +589,7 @@ export async function executeCreateDraftInvoice(tenantId: string, argsStr: strin
  */
 export async function executeCreateDraftCompany(tenantId: string, argsStr: string, actor: string = "system"): Promise<string> {
   try {
-    let rawArgs: any;
+    let rawArgs: unknown;
     try {
       rawArgs = JSON.parse(argsStr);
     } catch {
@@ -670,7 +710,7 @@ export async function executeCreateDraftCompany(tenantId: string, argsStr: strin
  */
 export async function executeCreateDraftContact(tenantId: string, argsStr: string, actor: string = "system"): Promise<string> {
   try {
-    let rawArgs: any;
+    let rawArgs: unknown;
     try {
       rawArgs = JSON.parse(argsStr);
     } catch {

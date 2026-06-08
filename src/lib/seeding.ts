@@ -34,97 +34,8 @@ export async function runSeeding(pool: Pool, tenantId: string = '1') {
       ]);
     }
 
-    // 2. Companies (Only in non-production/dev environments)
-    if (process.env.NODE_ENV !== "production") {
-      for (const corp of seedData.companies) {
-        const check = await pool.query(
-          "SELECT COUNT(*) FROM core_registry_companies WHERE full_legal_name = $1 AND tenant_id = $2",
-          [corp.full_legal_name, tenantId]
-        );
-        if (parseInt(check.rows[0].count) === 0) {
-          console.log(`[Seeding] Inserting company: ${corp.full_legal_name} for tenant: ${tenantId}`);
-          const id = uuidv4();
-          await pool.query(`
-            INSERT INTO core_registry_companies (
-              id_uuid, tenant_id, full_legal_name, tax_vat_id, responsible_person, 
-              street, house_number, city, postal_code, country_code, 
-              email_address, website, iban, bic_swift, language,
-              payment_term, price_list, created_by_identity, ai_confidence_score, is_verified_by_human
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
-            )
-          `, [
-            id, tenantId, corp.full_legal_name, corp.tax_vat_id, corp.responsible_person,
-            corp.street, corp.house_number, corp.city, corp.postal_code, corp.country_code,
-            corp.email_address, corp.website, corp.iban, corp.bic_swift, corp.language,
-            corp.payment_term, corp.price_list, 'system', corp.ai_confidence_score, corp.is_verified_by_human
-          ]);
-        }
-      }
+    // 2. Companies, 3. Contacts, 4. Invoices - Seeding of mock/sample data completely disabled per user preference to keep installation clean
 
-      // 3. Contacts (Need to map to companies, only in non-production)
-      for (const contact of seedData.contacts) {
-        const check = await pool.query(
-          "SELECT COUNT(*) FROM core_registry_contacts WHERE first_name = $1 AND last_name = $2 AND tenant_id = $3",
-          [contact.first_name, contact.last_name, tenantId]
-        );
-        if (parseInt(check.rows[0].count) === 0) {
-          console.log(`[Seeding] Inserting contact: ${contact.first_name} ${contact.last_name} for tenant: ${tenantId}`);
-          // Find company ID
-          const companyRes = await pool.query(
-            "SELECT id_uuid FROM core_registry_companies WHERE full_legal_name = $1 AND tenant_id = $2", 
-            [contact.company_name, tenantId]
-          );
-          const companyId = companyRes.rows[0]?.id_uuid;
-
-          await pool.query(`
-            INSERT INTO core_registry_contacts (
-              id_uuid, tenant_id, full_legal_name, first_name, last_name, 
-              salutation, gender_identity, email_address, phone_number, 
-              language, associated_company_id, created_by_identity, is_verified_by_human
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-            )
-          `, [
-            uuidv4(), tenantId, `${contact.first_name} ${contact.last_name}`, 
-            contact.first_name, contact.last_name, contact.salutation, 
-            contact.gender_identity, contact.email_address, contact.phone_number, 
-            'de', companyId, 'system', true
-          ]);
-        }
-      }
-
-      // 4. Invoices (Only in non-production)
-      for (const inv of seedData.invoices as unknown as SeedInvoice[]) {
-        const check = await pool.query(
-          "SELECT COUNT(*) FROM fiscal_billing_invoices WHERE invoice_number = $1 AND tenant_id = $2",
-          [inv.invoice_number, tenantId]
-        );
-        if (parseInt(check.rows[0].count) === 0) {
-          console.log(`[Seeding] Inserting invoice: ${inv.invoice_number} for tenant: ${tenantId}`);
-          const companyRes = await pool.query(
-            "SELECT id_uuid FROM core_registry_companies WHERE full_legal_name = $1 AND tenant_id = $2", 
-            [inv.company_name, tenantId]
-          );
-          const companyId = companyRes.rows[0]?.id_uuid;
-
-          const lineItemsJson = JSON.stringify(inv.line_items || []);
-          await pool.query(`
-            INSERT INTO fiscal_billing_invoices (
-              id_uuid, tenant_id, invoice_number, associated_company_id,
-              total_gross_amount, total_net_amount, total_vat_amount,
-              currency_code, issue_date, due_date, payment_status, invoice_line_items_json, created_at_utc
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP
-            )
-          `, [
-            uuidv4(), tenantId, inv.invoice_number, companyId,
-            inv.total_gross, inv.total_net, inv.total_vat,
-            inv.currency_code, inv.issue_date_utc, inv.due_date_utc || null, inv.status, lineItemsJson
-          ]);
-        }
-      }
-    }
 
     // 5. Default Email Templates (Always seed standard "Vorlagen")
     const emailTemplatesCheck = await pool.query("SELECT COUNT(*) FROM sys_comms_email_templates WHERE tenant_id = $1 OR tenant_id = '1'", [tenantId]);
@@ -199,12 +110,7 @@ interface FallbackDatabaseStore {
 
 export function runInProcessSeedingFallback(store: FallbackDatabaseStore) {
   console.log("[Seeding Fallback] Checking if in-memory store needs seeding...");
-  if (store.companies.length > 0) return;
-
-  const companyId1 = uuidv4();
-  const companyId2 = uuidv4();
-  const contactId1 = uuidv4();
-  const contactId2 = uuidv4();
+  if (store.myCompany) return;
 
   // 1. My Company
   store.myCompany = {
@@ -217,84 +123,5 @@ export function runInProcessSeedingFallback(store: FallbackDatabaseStore) {
     is_verified_by_human: true
   };
 
-  // 2. Companies
-  store.companies.push(
-    { 
-      ...seedData.companies[0],
-      id_uuid: companyId1, 
-      tenant_id: '1',
-      created_at_utc: new Date().toISOString(), 
-      updated_at_utc: new Date().toISOString(), 
-      created_by_identity: 'system', 
-      labels: [],
-    },
-    { 
-      ...seedData.companies[1],
-      id_uuid: companyId2, 
-      tenant_id: '1',
-      created_at_utc: new Date().toISOString(), 
-      updated_at_utc: new Date().toISOString(), 
-      created_by_identity: 'system', 
-      labels: []
-    }
-  );
-
-  // 3. Contacts
-  store.contacts.push(
-    { 
-      ...seedData.contacts[0],
-      id_uuid: contactId1, 
-      tenant_id: '1',
-      full_legal_name: `${seedData.contacts[0].first_name} ${seedData.contacts[0].last_name}`,
-      associated_company_id: companyId1, 
-      company_name: seedData.companies[0].full_legal_name, 
-      created_at_utc: new Date().toISOString(), 
-      updated_at_utc: new Date().toISOString(), 
-      created_by_identity: 'system', 
-      is_verified_by_human: true, 
-      language: 'de', 
-      labels: [],
-    },
-    { 
-      ...seedData.contacts[1],
-      id_uuid: contactId2, 
-      tenant_id: '1',
-      full_legal_name: `${seedData.contacts[1].first_name} ${seedData.contacts[1].last_name}`,
-      associated_company_id: companyId2, 
-      company_name: seedData.companies[1].full_legal_name, 
-      created_at_utc: new Date().toISOString(), 
-      updated_at_utc: new Date().toISOString(), 
-      created_by_identity: 'system', 
-      is_verified_by_human: true, 
-      language: 'en', 
-      labels: [],
-    }
-  );
-
-  // 4. Invoices
-  store.invoices.push(
-    { 
-      id_uuid: uuidv4(), 
-      tenant_id: '1',
-      invoice_number: seedData.invoices[0].invoice_number, 
-      total_gross_amount: seedData.invoices[0].total_gross, 
-      total_net_amount: seedData.invoices[0].total_net, 
-      total_vat_amount: seedData.invoices[0].total_vat, 
-      vat_rate: 19, 
-      is_vat_inclusive: false, 
-      currency_code: seedData.invoices[0].currency_code, 
-      payment_status: seedData.invoices[0].status as 'pending' | 'paid' | 'overdue' | 'draft', 
-      company_name: seedData.invoices[0].company_name, 
-      issue_date: seedData.invoices[0].issue_date_utc, 
-      created_at_utc: new Date().toISOString(), 
-      updated_at_utc: new Date().toISOString(), 
-      invoice_line_items_json: '[]', 
-      invoice_line_items: [],
-      created_by_identity: 'system',
-      ai_confidence_score: 1.0,
-      is_verified_by_human: true
-    }
-  );
-
-  console.log("[Seeding Fallback] In-memory seeding complete.");
+  console.log("[Seeding Fallback] In-memory configuration seeding complete with zero sample data.");
 }

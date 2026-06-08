@@ -39,7 +39,7 @@ export const CompanySchema = z.object({
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
   raw_source_data: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const MyCompanySchema = CompanySchema.extend({
@@ -101,7 +101,7 @@ export const ContactSchema = z.object({
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
   raw_source_data: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const SmtpSettingsSchema = z.object({
@@ -117,7 +117,7 @@ export const SmtpSettingsSchema = z.object({
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
   raw_source_data: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const SmtpSettingsFullSchema = SmtpSettingsSchema.extend({
@@ -173,7 +173,7 @@ export const InvoiceSchema = z.object({
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const CompanyFullSchema = CompanySchema.extend({
@@ -204,7 +204,7 @@ export const EmailTemplateSchema = z.object({
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const EmailTemplateFullSchema = EmailTemplateSchema.extend({
@@ -221,7 +221,7 @@ export const SignatureSchema = z.object({
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const SignatureFullSchema = SignatureSchema.extend({
@@ -238,7 +238,7 @@ export const InvoiceTextTemplateSchema = z.object({
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const InvoiceTextTemplateFullSchema = InvoiceTextTemplateSchema.extend({
@@ -258,7 +258,7 @@ export const InvoiceItemTemplateSchema = z.object({
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export const InvoiceItemTemplateFullSchema = InvoiceItemTemplateSchema.extend({
@@ -314,14 +314,34 @@ export const CustomWorkflowSchema = z.object({
     tool: z.string(),
     instruction: z.string()
   })),
+  trigger_type: z.enum(['MANUAL', 'CRM_EVENT', 'TIMER']).default('MANUAL'),
+  trigger_config: z.record(z.string(), z.unknown()).nullable().optional(),
+  is_active: z.boolean().default(true),
+  direct_send_email: z.boolean().default(false).optional(),
+});
+
+export const WorkflowInstanceSchema = z.object({
+  id_uuid: z.string().uuid().optional(),
+  tenant_id: z.string().default('1'),
+  workflow_id: z.string().uuid(),
+  status: z.enum(['PENDING_DELAY', 'RUNNING', 'COMPLETED', 'FAILED', 'WAITING_FOR_DRAFT_APPROVAL']).default('RUNNING'),
+  initial_payload: z.record(z.string(), z.unknown()).nullable().optional(),
+  current_step_index: z.number().int().nonnegative().default(0),
+  execution_log: z.array(z.unknown()).default([]),
+  execute_at_utc: z.string().nullable().optional(),
+});
+
+export const WorkflowInstanceFullSchema = WorkflowInstanceSchema.extend({
+  created_at_utc: z.string().or(z.date()).optional(),
+  updated_at_utc: z.string().or(z.date()).optional(),
 });
 
 export const ProposedDiffSchema = z.object({
   entity_type: z.enum(['companies', 'contacts', 'invoices', 'emails']),
   id_uuid: z.string().uuid().optional().nullable(),
   action: z.enum(['CREATE', 'UPDATE', 'DELETE', 'SEND']),
-  previous_state: z.record(z.string(), z.any()).optional().nullable(),
-  proposed_state: z.record(z.string(), z.any()),
+  previous_state: z.record(z.string(), z.unknown()).optional().nullable(),
+  proposed_state: z.record(z.string(), z.unknown()),
   explanation_rational: z.string()
 });
 
@@ -353,8 +373,23 @@ export const WebSearchSettingsSchema = z.object({
 });
 
 export const WebSearchSettingsFullSchema = WebSearchSettingsSchema.extend({
-  created_at_utc: z.any().optional(),
-  updated_at_utc: z.any().optional(),
+  created_at_utc: z.string().or(z.date()).optional(),
+  updated_at_utc: z.string().or(z.date()).optional(),
 });
+
+export const TelegramSettingsSchema = z.object({
+  id_uuid: z.string().uuid().optional(),
+  tenant_id: z.string().default('1'),
+  bot_token: z.string().min(1, "Bot-Token ist erforderlich"),
+  allowed_user_ids: z.string().min(1, "Mindestens eine User-ID ist erforderlich"),
+  is_active: z.boolean().default(true)
+});
+
+export const TelegramSettingsFullSchema = TelegramSettingsSchema.extend({
+  created_at_utc: z.string().or(z.date()).optional(),
+  updated_at_utc: z.string().or(z.date()).optional(),
+});
+
+export type TelegramSettingsInput = z.infer<typeof TelegramSettingsSchema>;
 
 

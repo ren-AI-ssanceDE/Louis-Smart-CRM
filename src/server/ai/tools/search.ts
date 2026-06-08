@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { pool, isUsingFallback, fallbackStore } from "../../db.js";
+import { WebSearchConfig } from "../../../types.js";
 
 // Helper to sanitize/extract text from DuckDuckGo HTML output
 function extractTextFromHtml(html: string): string {
@@ -157,7 +158,7 @@ export async function executeWebSearch(query: string, attempt: number = 1, tenan
   try {
     if (isUsingFallback) {
       if (fallbackStore.webSearchConfig) {
-        const found = fallbackStore.webSearchConfig.find((c: any) => c.tenant_id === tenantId) || fallbackStore.webSearchConfig.find((c: any) => c.tenant_id === '1');
+        const found = fallbackStore.webSearchConfig.find((c: WebSearchConfig) => c.tenant_id === tenantId) || fallbackStore.webSearchConfig.find((c: WebSearchConfig) => c.tenant_id === '1');
         if (found) {
           selectedEngine = found.selected_engine || 'duckduckgo';
           duckduckgoUrl = found.duckduckgo_url || 'https://html.duckduckgo.com/html/';
@@ -209,7 +210,10 @@ export async function executeWebSearch(query: string, attempt: number = 1, tenan
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks && Array.isArray(chunks)) {
         const citedSources = chunks
-          .map((c: any) => c.web ? `- **${c.web.title || 'Quelle'}**: ${c.web.uri}` : null)
+          .map((c) => {
+            const chunk = c as { web?: { title?: string; uri?: string } };
+            return chunk.web ? `- **${chunk.web.title || 'Quelle'}**: ${chunk.web.uri}` : null;
+          })
           .filter(Boolean)
           .join('\n');
         if (citedSources) {
@@ -238,7 +242,10 @@ export async function executeWebSearch(query: string, attempt: number = 1, tenan
       const data = await response.json();
       if (data && data.items && Array.isArray(data.items)) {
         const textContent = data.items
-          .map((item: any) => `Titel: ${item.title || 'Ohne Titel'}\nBeschreibung: ${item.snippet || ''}\nURL: ${item.link || ''}`)
+          .map((item) => {
+            const it = item as { title?: string; snippet?: string; link?: string };
+            return `Titel: ${it.title || 'Ohne Titel'}\nBeschreibung: ${it.snippet || ''}\nURL: ${it.link || ''}`;
+          })
           .slice(0, 10)
           .join("\n\n");
         return textContent || "Google Custom Search hat keine Ergebnisse geliefert.";
@@ -271,7 +278,10 @@ export async function executeWebSearch(query: string, attempt: number = 1, tenan
       const data = await response.json();
       if (data && data.results && Array.isArray(data.results)) {
         const textContent = data.results
-          .map((r: any) => `${r.title || 'Untitled'}\n${r.content || ''}\nURL: ${r.url || ''}`)
+          .map((r) => {
+            const result = r as { title?: string; content?: string; url?: string };
+            return `${result.title || 'Untitled'}\n${result.content || ''}\nURL: ${result.url || ''}`;
+          })
           .slice(0, 10)
           .join("\n\n");
         return textContent || "No results found on SearXNG.";

@@ -6,7 +6,7 @@ import path from "path";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc.js";
 import { generateInvoiceFilesOnDisk } from "../pdfHelper.js";
-import { getEntityStoragePath } from "../storage.js";
+import { getEntityStoragePath, ingestEmailToRag } from "../storage.js";
 import { 
   pool, 
   isUsingFallback, 
@@ -36,9 +36,11 @@ import {
   InvoiceItemTemplateSchema,
   InvoiceItemTemplateFullSchema,
   WebSearchSettingsSchema,
-  WebSearchSettingsFullSchema
+  WebSearchSettingsFullSchema,
+  TelegramSettingsSchema,
+  TelegramSettingsFullSchema
 } from "../../lib/schemas.js";
-import { Invoice } from "../../types.js";
+import { Invoice, LouisAiConfig } from "../../types.js";
 
 const sanitizeTextLigatures = (str: string): string => {
   if (!str) return str;
@@ -60,16 +62,155 @@ const sanitizeInputLigatures = <T>(obj: T): T => {
     return obj.map(sanitizeInputLigatures) as unknown as T;
   }
   if (typeof obj === "object") {
-    const newObj: any = {};
-    for (const key of Object.keys(obj)) {
-      newObj[key] = sanitizeInputLigatures((obj as any)[key]);
+    const rawObj = obj as Record<string, unknown>;
+    const newObj: Record<string, unknown> = {};
+    for (const key of Object.keys(rawObj)) {
+      newObj[key] = sanitizeInputLigatures(rawObj[key]);
     }
-    return newObj as T;
+    return newObj as unknown as T;
   }
   return obj;
 };
 
 export const settingsRouter = router({
+  getTelegramSettings: protectedProcedure
+    .output(z.nullable(TelegramSettingsFullSchema))
+    .query(async ({ ctx }) => {
+      if (isUsingFallback) {
+        if (!fallbackStore.telegramConfig) fallbackStore.telegramConfig = [];
+        const found = fallbackStore.telegramConfig.find(x => x.tenant_id === ctx.tenantId);
+        return found || null;
+      }
+      const res = await pool.query("SELECT * FROM sys_integrations_telegram_config WHERE tenant_id = $1 LIMIT 1", [ctx.tenantId]);
+      return res.rows[0] ? cleanDbRow(res.rows[0]) : null;
+    }),
+
+  saveTelegramSettings: protectedProcedure
+    .input(TelegramSettingsSchema)
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const id = input.id_uuid || uuidv4();
+      if (isUsingFallback) {
+        if (!fallbackStore.telegramConfig) fallbackStore.telegramConfig = [];
+        const idx = fallbackStore.telegramConfig.findIndex(x => x.tenant_id === ctx.tenantId);
+        const record = {
+          ...input,
+          id_uuid: id,
+          tenant_id: ctx.tenantId,
+          created_at_utc: new Date().toISOString(),
+          updated_at_utc: new Date().toISOString()
+        };
+        if (idx !== -1) {
+          fallbackStore.telegramConfig[idx] = {
+            ...fallbackStore.telegramConfig[idx],
+            ...record,
+            updated_at_utc: new Date().toISOString()
+          };
+        } else {
+          fallbackStore.telegramConfig.push(record);
+        }
+        saveFallbackStore();
+        return { success: true };
+      }
+
+      const existing = await pool.query("SELECT id_uuid FROM sys_integrations_telegram_config WHERE tenant_id = $1 LIMIT 1", [ctx.tenantId]);
+      if (existing.rows.length > 0) {
+        await pool.query(`
+          UPDATE sys_integrations_telegram_config
+          SET bot_token = $1, allowed_user_ids = $2, is_active = $3,
+              updated_at_utc = CURRENT_TIMESTAMP
+          WHERE id_uuid = $4 AND tenant_id = $5
+        `, [
+          input.bot_token,
+          input.allowed_user_ids,
+          input.is_active,
+          existing.rows[0].id_uuid,
+          ctx.tenantId
+        ]);
+      } else {
+        const insertId = uuidv4();
+        await pool.query(`
+          INSERT INTO sys_integrations_telegram_config (
+            id_uuid, tenant_id, bot_token, allowed_user_ids, is_active
+          )
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          insertId,
+          ctx.tenantId,
+          input.bot_token,
+          input.allowed_user_ids,
+          input.is_active
+        ]);
+      }
+
+      await logAuditEvent({
+        tenantId: ctx.tenantId,
+        eventType: 'UPDATE_CONFIG',
+        entityType: 'TELEGRAM_SETTINGS',
+        eventDetails: `Updated Telegram bot configuration`,
+        actorIdentity: ctx.session?.user?.email || 'unknown'
+      });
+
+      return { success: true };
+    }),
+
+  testTelegramConnection: protectedProcedure
+    .input(z.object({
+      bot_token: z.string(),
+      allowed_user_ids: z.string()
+    }))
+    .output(z.object({ success: z.boolean(), message: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const ids = input.allowed_user_ids.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length === 0) {
+          return { success: false, message: "Keine gültigen Benutzer-IDs angegeben." };
+        }
+        
+        let successCount = 0;
+        let lastError = "";
+        
+        for (const userId of ids) {
+          try {
+            const response = await fetch(`https://api.telegram.org/bot${input.bot_token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: userId,
+                text: "✈ *Louis Smart CRM*\n\nVerbindungstest erfolgreich! Ihr Telegram Bot Gateway ist jetzt startklar.",
+                parse_mode: "Markdown"
+              })
+            });
+            const resData = await response.json() as { ok: boolean; description?: string };
+            if (resData.ok) {
+              successCount++;
+            } else {
+              lastError = resData.description || "Fehler von Telegram API";
+            }
+          } catch (e) {
+            lastError = e instanceof Error ? e.message : String(e);
+          }
+        }
+        
+        if (successCount > 0) {
+          return { 
+            success: true, 
+            message: `Erfolgreich! Testnachricht wurde an ${successCount} von ${ids.length} Empfängern gesendet.` 
+          };
+        } else {
+          return { 
+            success: false, 
+            message: `Verbindung fehlgeschlagen: ${lastError || "Unbekannter Fehler. Bitte überprüfen Sie Ihr Token."}` 
+          };
+        }
+      } catch (err) {
+        return { 
+          success: false, 
+          message: err instanceof Error ? err.message : String(err) 
+        };
+      }
+    }),
+
   getWebSearchSettings: protectedProcedure
     .output(z.nullable(WebSearchSettingsFullSchema))
     .query(async ({ ctx }) => {
@@ -344,6 +485,20 @@ export const settingsRouter = router({
           html: input.email_body_content,
           attachments,
         });
+
+        try {
+          await ingestEmailToRag({
+            tenantId: ctx.tenantId,
+            recipient: input.recipient_email_address,
+            senderType: 'Human',
+            subject: input.email_subject_text,
+            body: input.email_body_content,
+            attachments
+          });
+        } catch (ragErr) {
+          console.error("[sendMail] Failed to ingest sent mail to RAG:", ragErr);
+        }
+
         return { success: true };
       } catch (error) {
         console.error("Mail sending failed:", error);
@@ -394,14 +549,29 @@ export const settingsRouter = router({
       });
 
       try {
+        const testSubject = "Louis CRM SMTP Test";
+        const testBody = "This is a test email from Louis CRM to verify your SMTP configuration. If you received this, your connection is working correctly!";
         await transporter.sendMail({
           from: smtp.sender_display_name 
             ? `"${smtp.sender_display_name}" <${smtp.sender_email_address}>`
             : smtp.sender_email_address,
           to: input.recipient_email_address,
-          subject: "Louis CRM SMTP Test",
-          text: "This is a test email from Louis CRM to verify your SMTP configuration. If you received this, your connection is working correctly!",
+          subject: testSubject,
+          text: testBody,
         });
+
+        try {
+          await ingestEmailToRag({
+            tenantId: ctx.tenantId,
+            recipient: input.recipient_email_address,
+            senderType: 'Human',
+            subject: testSubject,
+            body: testBody,
+          });
+        } catch (ragErr) {
+          console.error("[sendTestMail] Failed to ingest test mail to RAG:", ragErr);
+        }
+
         return { success: true };
       } catch (error) {
         console.error("SMTP Test failed:", error);
@@ -641,7 +811,7 @@ export const settingsRouter = router({
       let customConf = null;
       if (isUsingFallback) {
         const list = fallbackStore.louisAiConfig || [];
-        customConf = list.find((c: any) => c.tenant_id === ctx.tenantId) || list.find((c: any) => c.tenant_id === "1");
+        customConf = list.find((c: LouisAiConfig) => c.tenant_id === ctx.tenantId) || list.find((c: LouisAiConfig) => c.tenant_id === "1");
       } else {
         try {
           const confRes = await pool.query(
@@ -1244,9 +1414,10 @@ export const settingsRouter = router({
       let importedCount = 0;
       let updatedCount = 0;
       for (const rawItem of input) {
-        const item: any = { ...rawItem };
-        for (const key of Object.keys(item)) {
-          if (item[key] === undefined) item[key] = null;
+        const item = { ...rawItem };
+        const typedItem = item as Record<string, unknown>;
+        for (const key of Object.keys(typedItem)) {
+          if (typedItem[key] === undefined) typedItem[key] = null;
         }
 
         const id = item.id_uuid || uuidv4();
@@ -1316,9 +1487,10 @@ export const settingsRouter = router({
       let importedCount = 0;
       let updatedCount = 0;
       for (const rawItem of input) {
-        const item: any = { ...rawItem };
-        for (const key of Object.keys(item)) {
-          if (item[key] === undefined) item[key] = null;
+        const item = { ...rawItem };
+        const typedItem = item as Record<string, unknown>;
+        for (const key of Object.keys(typedItem)) {
+          if (typedItem[key] === undefined) typedItem[key] = null;
         }
 
         const id = item.id_uuid || uuidv4();
@@ -1395,9 +1567,10 @@ export const settingsRouter = router({
       let importedCount = 0;
       let updatedCount = 0;
       for (const rawItem of input) {
-        const item: any = { ...rawItem };
-        for (const key of Object.keys(item)) {
-          if (item[key] === undefined) item[key] = null;
+        const item = { ...rawItem };
+        const typedItem = item as Record<string, unknown>;
+        for (const key of Object.keys(typedItem)) {
+          if (typedItem[key] === undefined) typedItem[key] = null;
         }
 
         const id = item.id_uuid || uuidv4();
@@ -1467,9 +1640,10 @@ export const settingsRouter = router({
       let importedCount = 0;
       let updatedCount = 0;
       for (const rawItem of input) {
-        const item: any = { ...rawItem };
-        for (const key of Object.keys(item)) {
-          if (item[key] === undefined) item[key] = null;
+        const item = { ...rawItem };
+        const typedItem = item as Record<string, unknown>;
+        for (const key of Object.keys(typedItem)) {
+          if (typedItem[key] === undefined) typedItem[key] = null;
         }
 
         const id = item.id_uuid || uuidv4();

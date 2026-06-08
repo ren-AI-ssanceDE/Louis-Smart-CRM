@@ -15,17 +15,20 @@ import {
   SignatureFullSchema,
   InvoiceTextTemplateFullSchema,
   InvoiceItemTemplateSchema,
-  InvoiceItemTemplateFullSchema
+  InvoiceItemTemplateFullSchema,
+  TelegramSettingsFullSchema
 } from "../lib/schemas.js";
 import { runSeeding, runInProcessSeedingFallback } from "../lib/seeding.js";
 import { 
   LouisAiConfig, 
   CustomWorkflow, 
+  WorkflowInstance,
   LouisAiKnowledgeMetadata, 
   LouisAiKnowledgeChunk, 
   TextGeneratorConfig, 
   WebSearchConfig,
-  ChatMessage
+  ChatMessage,
+  MailDraft
 } from "../types.js";
 import * as dotenv from "dotenv";
 
@@ -74,7 +77,7 @@ pool.query = function (this: any, ...args: any[]): any {
       }
     }
   }
-  return originalPoolQuery(...args);
+  return (originalPoolQuery as any)(...args);
 };
 
 function patchClient(client: any) {
@@ -111,7 +114,7 @@ function patchClient(client: any) {
           }
         }
       }
-      return originalClientQuery(...cArgs);
+      return (originalClientQuery as any)(...cArgs);
     };
   }
 }
@@ -195,6 +198,7 @@ export interface DatabaseStore {
   bankDirectory?: BankDirectoryEntry[];
   louisAiConfig?: LouisAiConfig[];
   customWorkflows?: CustomWorkflow[];
+  workflowInstances?: WorkflowInstance[];
   louisAiSessions?: {
     id_uuid: string;
     tenant_id: string;
@@ -209,6 +213,8 @@ export interface DatabaseStore {
   louisAiUserMemory?: LouisAiUserMemory[];
   textGeneratorConfig?: TextGeneratorConfig[];
   webSearchConfig?: WebSearchConfig[];
+  mailDrafts?: MailDraft[];
+  telegramConfig?: z.infer<typeof TelegramSettingsFullSchema>[];
   authAccessIdentities?: {
     id_uuid: string;
     email_address: string;
@@ -223,151 +229,9 @@ export interface DatabaseStore {
 export const fallbackStore: DatabaseStore = {
   authAccessIdentities: [],
   auditLogs: [],
-  companies: [
-    {
-      id_uuid: "00000000-0000-4000-8000-000000000001",
-      tenant_id: "1",
-      full_legal_name: "Muster GmbH & Co. KG",
-      tax_vat_id: "DE123456789",
-      tax_number: "21/440/12345",
-      responsible_person: "Manfred Muster",
-      street: "Beispielstraße",
-      house_number: "42",
-      city: "Musterstadt",
-      postal_code: "12345",
-      country_code: "DE",
-      email_address: "info@muster-gmbh.de",
-      phone_number: "+49 123 456789",
-      iban: "DE00123456780000123456",
-      bic_swift: "ABCDEFGH123",
-      language: "de",
-      vat_rate: 19,
-      currency_code: "EUR",
-      labels: ["Kunde", "Prio 1"],
-      opt_in_marketing: true,
-      opt_in_social_media: false,
-      opt_in_direct_message: false,
-      opt_in_sms: false,
-      opt_in_phone: false,
-      created_by_identity: 'system',
-      ai_confidence_score: 1.0,
-      is_verified_by_human: true,
-      created_at_utc: new Date().toISOString(),
-      updated_at_utc: new Date().toISOString()
-    },
-    {
-      id_uuid: "00000000-0000-4000-8000-000000000003",
-      tenant_id: "1",
-      full_legal_name: "Louis CRM Demo AG",
-      tax_vat_id: "DE888888888",
-      responsible_person: "Stefan Schmidt",
-      street: "Demostraße",
-      house_number: "1",
-      city: "Berlin",
-      postal_code: "10115",
-      country_code: "DE",
-      email_address: "demo@louis-crm.de",
-      phone_number: "+49 30 123456",
-      iban: "DE88888888888888888888",
-      bic_swift: "DEMOXXXX",
-      language: "de",
-      vat_rate: 19,
-      currency_code: "EUR",
-      labels: ["Partner"],
-      opt_in_marketing: false,
-      opt_in_social_media: true,
-      opt_in_direct_message: false,
-      opt_in_sms: false,
-      opt_in_phone: false,
-      created_by_identity: 'system',
-      ai_confidence_score: 1.0,
-      is_verified_by_human: true,
-      created_at_utc: new Date().toISOString(),
-      updated_at_utc: new Date().toISOString()
-    },
-    {
-      id_uuid: "00000000-0000-4000-8000-000000000004",
-      tenant_id: "1",
-      full_legal_name: "InnoTech Solutions",
-      tax_vat_id: "DE555666777",
-      responsible_person: "Dr. Julia Weber",
-      street: "Technologiepark",
-      house_number: "7",
-      city: "Hamburg",
-      postal_code: "20457",
-      country_code: "DE",
-      email_address: "contact@innotech.example",
-      phone_number: "+49 40 5557788",
-      iban: "DE55555555555555555555",
-      bic_swift: "INNOTXXX",
-      language: "de",
-      vat_rate: 19,
-      currency_code: "EUR",
-      labels: ["Lead", "High Volume"],
-      opt_in_marketing: true,
-      opt_in_social_media: false,
-      opt_in_direct_message: true,
-      opt_in_sms: true,
-      opt_in_phone: false,
-      created_by_identity: 'system',
-      ai_confidence_score: 0.95,
-      is_verified_by_human: true,
-      created_at_utc: new Date().toISOString(),
-      updated_at_utc: new Date().toISOString()
-    }
-  ],
-  contacts: [
-    {
-      id_uuid: "00000000-0000-4000-8000-000000000002",
-      tenant_id: "1",
-      full_legal_name: "Max Mustermann",
-      first_name: "Max",
-      last_name: "Mustermann",
-      salutation: "Herr",
-      email_address: "max.mustermann@example.com",
-      phone_number: "+49 170 1234567",
-      language: "de",
-      associated_company_id: "00000000-0000-4000-8000-000000000001",
-      labels: ["Ansprechpartner"],
-      opt_in_marketing: true,
-      opt_in_social_media: false,
-      opt_in_direct_message: false,
-      opt_in_sms: false,
-      opt_in_phone: false,
-      created_by_identity: 'system',
-      ai_confidence_score: 1.0,
-      is_verified_by_human: true,
-      created_at_utc: new Date().toISOString(),
-      updated_at_utc: new Date().toISOString()
-    }
-  ],
-  invoices: [
-    {
-      id_uuid: uuidv4(),
-      tenant_id: "1",
-      invoice_number: "RE-2024-001",
-      total_gross_amount: 1190.00,
-      total_net_amount: 1000.00,
-      total_vat_amount: 190.00,
-      vat_rate: 19,
-      is_vat_inclusive: false,
-      currency_code: "EUR",
-      issue_date: "2024-05-10",
-      payment_status: "draft",
-      company_name: "Muster GmbH & Co. KG",
-      associated_company_id: "00000000-0000-4000-8000-000000000001",
-      associated_contact_id: "00000000-0000-4000-8000-000000000002",
-      created_at_utc: new Date().toISOString(),
-      updated_at_utc: new Date().toISOString(),
-      invoice_line_items: [{ description: "CRM Consulting", quantity: 1, unit_price: 1000, vat_rate: 19, total_net: 1000, unit_code: "HUR" }],
-      invoice_line_items_json: JSON.stringify([{ description: "CRM Consulting", quantity: 1, unit_price: 1000, vat_rate: 19, total_net: 1000, unit_code: "HUR" }]),
-      introductory_text: "",
-      closing_text: "",
-      created_by_identity: 'system',
-      ai_confidence_score: 1.0,
-      is_verified_by_human: true
-    }
-  ],
+  companies: [],
+  contacts: [],
+  invoices: [],
   smtpSettings: null,
   myCompany: {
     id_uuid: "00000000-0000-4000-8000-000000000000",
@@ -506,12 +370,15 @@ export const fallbackStore: DatabaseStore = {
   bankDirectory: [],
   louisAiConfig: [],
   customWorkflows: [],
+  workflowInstances: [],
   louisAiSessions: [],
   louisAiKnowledgeMetadata: [],
   louisAiKnowledgeChunks: [],
   louisAiUserMemory: [],
   textGeneratorConfig: [],
-  webSearchConfig: []
+  webSearchConfig: [],
+  mailDrafts: [],
+  telegramConfig: []
 };
 
 export let FALLBACK_FILE_PATH = path.join(process.cwd(), ".local_fallback_db.json");
@@ -952,10 +819,39 @@ export async function initDatabase() {
         workflow_name TEXT NOT NULL,
         workflow_description TEXT NOT NULL,
         tool_chain_sequence JSONB NOT NULL,
+        trigger_type TEXT NOT NULL DEFAULT 'MANUAL',
+        trigger_config JSONB DEFAULT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_by_identity TEXT DEFAULT 'ai_assistant',
         created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (tenant_id, workflow_name)
+      );
+
+      CREATE TABLE IF NOT EXISTS sys_louis_ai_workflow_instances (
+        id_uuid UUID PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT '1',
+        workflow_id UUID REFERENCES sys_louis_ai_custom_workflows(id_uuid) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'RUNNING',
+        initial_payload JSONB DEFAULT '{}'::jsonb,
+        current_step_index INTEGER NOT NULL DEFAULT 0,
+        execution_log JSONB DEFAULT '[]'::jsonb,
+        execute_at_utc TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+        created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sys_louis_mail_drafts (
+        id_uuid UUID PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        workflow_instance_id UUID REFERENCES sys_louis_ai_workflow_instances(id_uuid) ON DELETE SET NULL,
+        recipient TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        attachments_json JSONB DEFAULT '[]'::jsonb,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS sys_louis_ai_sessions (
@@ -1025,6 +921,17 @@ export async function initDatabase() {
         updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (tenant_id)
       );
+
+      CREATE TABLE IF NOT EXISTS sys_integrations_telegram_config (
+        id_uuid UUID PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT '1',
+        bot_token TEXT NOT NULL,
+        allowed_user_ids TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id)
+      );
     `);
 
     await pool.query(`
@@ -1074,6 +981,11 @@ export async function initDatabase() {
       ALTER TABLE sys_integrations_web_search_config ADD COLUMN IF NOT EXISTS google_api_key TEXT;
       ALTER TABLE sys_integrations_web_search_config ADD COLUMN IF NOT EXISTS google_cx TEXT;
 
+      ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'MANUAL';
+      ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS trigger_config JSONB DEFAULT NULL;
+      ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+      ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS direct_send_email BOOLEAN NOT NULL DEFAULT FALSE;
+
       ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS short_term_summary_text TEXT DEFAULT '';
       ALTER TABLE sys_louis_ai_knowledge_metadata ADD COLUMN IF NOT EXISTS updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE sys_louis_ai_knowledge_metadata ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'global';
@@ -1110,8 +1022,8 @@ export async function initDatabase() {
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS embedding_provider TEXT DEFAULT 'gemini';
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS embedding_api_key_secret TEXT DEFAULT '';
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS embedding_base_url TEXT DEFAULT '';
-      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS embedding_model_name TEXT DEFAULT 'text-embedding-004';
-      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS vector_dimensions INTEGER DEFAULT 1536;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS embedding_model_name TEXT DEFAULT 'gemini-embedding-2-preview';
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS vector_dimensions INTEGER DEFAULT 3072;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS keep_alive_minutes INTEGER DEFAULT 5;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS parallel_slots INTEGER DEFAULT 1;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS chunk_size INTEGER DEFAULT 500;
@@ -1125,6 +1037,10 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_companies_name ON core_registry_companies (full_legal_name);
       CREATE INDEX IF NOT EXISTS idx_contacts_name ON core_registry_contacts (full_legal_name);
       CREATE INDEX IF NOT EXISTS idx_invoices_number ON fiscal_billing_invoices (invoice_number);
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_running_instance_idx 
+      ON sys_louis_ai_workflow_instances (workflow_id, tenant_id) 
+      WHERE (status = 'RUNNING' OR status = 'PENDING_DELAY');
     `);
     console.log("PostgreSQL schema initialized with pgvector and audit logs.");
 

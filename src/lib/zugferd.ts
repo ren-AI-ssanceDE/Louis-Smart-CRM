@@ -205,8 +205,9 @@ export function generateZugferdXML(
             <ram:ApplicableTradeTax>
                 <ram:CalculatedAmount>${roundFiscal(vals.tax).toFixed(2)}</ram:CalculatedAmount>
                 <ram:TypeCode>VAT</ram:TypeCode>
+                ${rate === 0 ? `<ram:ExemptionReason>Steuerfreie Leistung</ram:ExemptionReason>` : ''}
                 <ram:BasisAmount>${roundFiscal(vals.basis).toFixed(2)}</ram:BasisAmount>
-                <ram:CategoryCode>S</ram:CategoryCode>
+                <ram:CategoryCode>${rate === 0 ? 'E' : 'S'}</ram:CategoryCode>
                 <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
             </ram:ApplicableTradeTax>`).join('');
 
@@ -324,7 +325,8 @@ export function generateZugferdXML(
             <ram:SpecifiedLineTradeSettlement>
                 <ram:ApplicableTradeTax>
                     <ram:TypeCode>VAT</ram:TypeCode>
-                    <ram:CategoryCode>S</ram:CategoryCode>
+                    ${vatRate === 0 ? `<ram:ExemptionReason>Steuerfreie Leistung</ram:ExemptionReason>` : ''}
+                    <ram:CategoryCode>${vatRate === 0 ? 'E' : 'S'}</ram:CategoryCode>
                     <ram:RateApplicablePercent>${vatRate}</ram:RateApplicablePercent>
                 </ram:ApplicableTradeTax>
                 <ram:SpecifiedTradeSettlementLineMonetarySummation>

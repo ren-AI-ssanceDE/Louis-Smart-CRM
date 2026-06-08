@@ -15,7 +15,7 @@ import { ContactSchema } from '../lib/schemas';
 import { z } from 'zod';
 
 export const Contacts = () => {
-  const { t, i18n } = useTranslation(['contacts', 'common', 'companies']);
+  const { t, i18n } = useTranslation(['contacts', 'common', 'companies', 'dashboard']);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [selectedContact, setSelectedContact] = React.useState<Contact | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -302,7 +302,13 @@ export const Contacts = () => {
   });
 
   const exportContactToCSV = (cont: Contact) => {
-    const headers = [
+    const headers = i18n.language === 'en' ? [
+      "ID", "First Name", "Last Name", "Full Legal Name", "Responsible Person", "Salutation", "Gender",
+      "Date of Birth", "Region", "Street", "House Number", "Postal Code", "City",
+      "Email", "Email 2", "Website", "Phone", "Fax", "Mobile Phone",
+      "Language", "IBAN", "BIC", "Equipment_Payment", "Price List", "Remarks",
+      "Associated Company ID", "Created By", "AI Confidence"
+    ] : [
       "ID", "Vorname", "Nachname", "Vollstaendiger Name", "Ansprechpartner", "Anrede", "Geschlecht",
       "Geburtsdatum", "Region", "Strasse", "Hausnummer", "PLZ", "Ort",
       "E-Mail", "E-Mail 2", "Webseite", "Telefon", "Fax", "Mobiltelefon",
@@ -607,19 +613,18 @@ export const Contacts = () => {
                           <svg className="w-5 h-5 animate-pulse shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                           </svg>
-                          <h4 className="text-xs font-black uppercase tracking-widest font-display">Louis AI Entwurf / Ungeprüft</h4>
+                          <h4 className="text-xs font-black uppercase tracking-widest font-display">{t('dashboard:pending_approvals_banner.title')}</h4>
                         </div>
                         <p className="text-xs text-slate-400 font-sans leading-relaxed">
-                          Aktion erforderlich: Bitte prüfen Sie diesen Eintrag und bestätigen Sie ihn, um ihn als verifiziert zu markieren.
+                          {t('dashboard:pending_approvals_banner.desc')}
                         </p>
                       </div>
                       <button
-                        type="button"
-                        onClick={() => verifyContactMutation.mutate({ id_uuid: selectedContact.id_uuid })}
-                        disabled={verifyContactMutation.isPending}
+                        type="submit"
+                        disabled={updateContactMutation.isPending || createContactMutation.isPending}
                         className="w-full sm:w-auto shrink-0 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-600/50 text-neutral-black text-[10px] font-black uppercase tracking-widest px-5 py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)] cursor-pointer"
                       >
-                        {verifyContactMutation.isPending ? "Speichert..." : "Entwurf freigeben"}
+                        {updateContactMutation.isPending ? t('dashboard:pending_approvals_banner.saving') : t('dashboard:pending_approvals_banner.approve_action')}
                       </button>
                     </motion.div>
                   )}

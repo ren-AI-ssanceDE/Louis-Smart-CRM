@@ -25,6 +25,7 @@ import {
   InvoiceTextTemplate, 
   InvoiceItemTemplate 
 } from '../../types';
+import { CompanySchema, ContactSchema, EmailTemplateSchema, SignatureSchema, InvoiceTextTemplateSchema, InvoiceItemTemplateSchema } from '../../lib/schemas';
 
 // Normalization Helpers for Robust Duplicate Tracking
 const normalizeName = (s: string | null | undefined) => s ? String(s).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
@@ -415,14 +416,19 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
       
       const parsed = dataRows.map((row) => {
-        const obj: any = {};
+        const obj: Record<string, string | undefined> = {};
         headers.forEach((header, index) => {
           const val = String(row[index] || '').trim();
           obj[header] = val === '' ? undefined : val;
         });
-        if (!obj.template_name_text) throw new Error('Spalte "template_name_text" darf nicht leer sein.');
-        if (!obj.email_subject_text) throw new Error('Spalte "email_subject_text" darf nicht leer sein.');
-        return obj;
+        
+        obj.email_body_content = obj.email_body_content || '';
+        
+        const parseResult = EmailTemplateSchema.partial({ tenant_id: true }).safeParse(obj);
+        if (!parseResult.success) {
+          throw new Error(`Ungültige Daten in Zeile für E-Mail-Vorlage: ${parseResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+        }
+        return parseResult.data;
       });
 
       const res = await importEmailTemplatesMutation.mutateAsync(parsed);
@@ -435,9 +441,10 @@ export const DataPortabilityTab = () => {
         })
       });
       refetchEmailTemplates();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setEmailStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : 'Fehler beim CSV-Import.';
+      setEmailStatus({ type: 'error', message: errMsg });
     }
   };
 
@@ -452,7 +459,7 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
 
       const parsed = dataRows.map((row) => {
-        const obj: any = {};
+        const obj: Record<string, string | boolean | undefined> = {};
         headers.forEach((header, index) => {
           const val = String(row[index] || '').trim();
           if (header === 'is_default_signature') {
@@ -461,8 +468,14 @@ export const DataPortabilityTab = () => {
             obj[header] = val === '' ? undefined : val;
           }
         });
-        if (!obj.signature_name_text) throw new Error('Spalte "signature_name_text" darf nicht leer sein.');
-        return obj;
+        
+        obj.signature_body_content = (obj.signature_body_content as string) || '';
+        
+        const parseResult = SignatureSchema.partial({ tenant_id: true }).safeParse(obj);
+        if (!parseResult.success) {
+          throw new Error(`Ungültige Daten in Zeile für Signatur: ${parseResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+        }
+        return parseResult.data;
       });
 
       const res = await importSignaturesMutation.mutateAsync(parsed);
@@ -475,9 +488,10 @@ export const DataPortabilityTab = () => {
         })
       });
       refetchSignatures();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setSignatureStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : 'Fehler beim CSV-Import.';
+      setSignatureStatus({ type: 'error', message: errMsg });
     }
   };
 
@@ -492,14 +506,19 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
 
       const parsed = dataRows.map((row) => {
-        const obj: any = {};
+        const obj: Record<string, string | undefined> = {};
         headers.forEach((header, index) => {
           const val = String(row[index] || '').trim();
           obj[header] = val === '' ? undefined : val;
         });
-        if (!obj.template_name_text) throw new Error('Spalte "template_name_text" darf nicht leer sein.');
-        if (!obj.template_type_code) throw new Error('Spalte "template_type_code" (introductory oder closing) darf nicht leer sein.');
-        return obj;
+        
+        obj.template_body_content = obj.template_body_content || '';
+        
+        const parseResult = InvoiceTextTemplateSchema.partial({ tenant_id: true }).safeParse(obj);
+        if (!parseResult.success) {
+          throw new Error(`Ungültige Daten in Zeile für Rechnungstext-Vorlage: ${parseResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+        }
+        return parseResult.data;
       });
 
       const res = await importInvoiceTextTemplatesMutation.mutateAsync(parsed);
@@ -512,9 +531,10 @@ export const DataPortabilityTab = () => {
         })
       });
       refetchInvoiceTextTemplates();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setInvoiceTextStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : 'Fehler beim CSV-Import.';
+      setInvoiceTextStatus({ type: 'error', message: errMsg });
     }
   };
 
@@ -529,7 +549,7 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
 
       const parsed = dataRows.map((row) => {
-        const obj: any = {};
+        const obj: Record<string, string | number | undefined> = {};
         headers.forEach((header, index) => {
           const val = String(row[index] || '').trim();
           if (['quantity', 'unit_price', 'vat_rate'].includes(header)) {
@@ -538,8 +558,18 @@ export const DataPortabilityTab = () => {
             obj[header] = val === '' ? undefined : val;
           }
         });
-        if (!obj.template_name_text) throw new Error('Spalte "template_name_text" darf nicht leer sein.');
-        return obj;
+        
+        obj.description = (obj.description as string) || '';
+        obj.quantity = (obj.quantity as number) ?? 1;
+        obj.unit_price = (obj.unit_price as number) ?? 0;
+        obj.vat_rate = (obj.vat_rate as number) ?? 19;
+        obj.unit_code = (obj.unit_code as string) || 'HUR';
+        
+        const parseResult = InvoiceItemTemplateSchema.partial({ tenant_id: true }).safeParse(obj);
+        if (!parseResult.success) {
+          throw new Error(`Ungültige Daten in Zeile für Rechnungsartikel-Vorlage: ${parseResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+        }
+        return parseResult.data;
       });
 
       const res = await importInvoiceItemTemplatesMutation.mutateAsync(parsed);
@@ -552,9 +582,10 @@ export const DataPortabilityTab = () => {
         })
       });
       refetchInvoiceItemTemplates();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setInvoiceItemStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : 'Fehler beim CSV-Import.';
+      setInvoiceItemStatus({ type: 'error', message: errMsg });
     }
   };
 
@@ -784,38 +815,53 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
       
       const parsedCompanies = dataRows.map((row) => {
-        const obj: any = {};
+        const rawObj: Record<string, unknown> = {};
         headers.forEach((header, index) => {
-          let val: any = row[index];
+          let val = row[index];
           if (val === undefined) val = '';
-          
           const trimmedVal = String(val).trim();
           
           if (['opt_in_marketing', 'opt_in_social_media', 'opt_in_direct_message', 'opt_in_sms', 'opt_in_phone'].includes(header)) {
-            obj[header] = trimmedVal.toLowerCase() === 'true';
+            rawObj[header] = trimmedVal.toLowerCase() === 'true';
           } 
           else if (header === 'vat_rate') {
-            obj[header] = trimmedVal ? parseFloat(trimmedVal) : 19;
+            rawObj[header] = trimmedVal ? parseFloat(trimmedVal) : 19;
           }
           else if (header === 'labels') {
-            obj[header] = trimmedVal ? trimmedVal.split('|').map((l: string) => l.trim()).filter(Boolean) : [];
+            rawObj[header] = trimmedVal ? trimmedVal.split('|').map((l: string) => l.trim()).filter(Boolean) : [];
           }
           else if (header === 'website') {
-            obj[header] = cleanUrl(trimmedVal);
+            rawObj[header] = cleanUrl(trimmedVal) || '';
           }
           else if (header === 'email_address' || header === 'email_2') {
-            obj[header] = cleanEmail(trimmedVal);
+            rawObj[header] = cleanEmail(trimmedVal) || '';
+          }
+          else if (header === 'id_uuid') {
+            rawObj[header] = trimmedVal === '' ? undefined : trimmedVal;
           }
           else {
-            obj[header] = trimmedVal === '' ? undefined : trimmedVal;
+            const defaultNonNullableFields = [
+              'country_code', 'currency_code', 'vat_rate', 'language', 
+              'opt_in_marketing', 'opt_in_social_media', 'opt_in_direct_message', 'opt_in_sms', 'opt_in_phone',
+              'created_by_identity', 'ai_confidence_score', 'is_verified_by_human'
+            ];
+            if (trimmedVal === '') {
+              rawObj[header] = defaultNonNullableFields.includes(header) ? undefined : null;
+            } else {
+              rawObj[header] = trimmedVal;
+            }
           }
         });
 
-        if (!obj.full_legal_name) {
+        if (!rawObj.full_legal_name) {
           throw new Error('Spalte "full_legal_name" darf nicht leer sein.');
         }
 
-        return obj;
+        const parsed = CompanySchema.partial().safeParse(rawObj);
+        if (!parsed.success) {
+          throw new Error(`Zentrierte Validierung fehlgeschlagen für ${rawObj.full_legal_name || 'Unbekannt'}: ${parsed.error.message}`);
+        }
+        return parsed.data as Company;
       });
 
       // Analyze duplicates
@@ -838,9 +884,10 @@ export const DataPortabilityTab = () => {
         });
         refetchCompanies();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setCompanyStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setCompanyStatus({ type: 'error', message: errMsg || 'Fehler beim CSV-Import.' });
     }
   };
 
@@ -857,35 +904,49 @@ export const DataPortabilityTab = () => {
       const dataRows = rows.slice(1);
       
       const parsedContacts = dataRows.map((row) => {
-        const obj: any = {};
+        const rawObj: Record<string, unknown> = {};
         headers.forEach((header, index) => {
-          let val: any = row[index];
+          let val = row[index];
           if (val === undefined) val = '';
-          
           const trimmedVal = String(val).trim();
           
           if (['opt_in_marketing', 'opt_in_social_media', 'opt_in_direct_message', 'opt_in_sms', 'opt_in_phone'].includes(header)) {
-            obj[header] = trimmedVal.toLowerCase() === 'true';
+            rawObj[header] = trimmedVal.toLowerCase() === 'true';
           } 
           else if (header === 'labels') {
-            obj[header] = trimmedVal ? trimmedVal.split('|').map((l: string) => l.trim()).filter(Boolean) : [];
+            rawObj[header] = trimmedVal ? trimmedVal.split('|').map((l: string) => l.trim()).filter(Boolean) : [];
           }
           else if (header === 'website') {
-            obj[header] = cleanUrl(trimmedVal);
+            rawObj[header] = cleanUrl(trimmedVal) || '';
           }
           else if (header === 'email_address' || header === 'email_2') {
-            obj[header] = cleanEmail(trimmedVal);
+            rawObj[header] = cleanEmail(trimmedVal) || '';
+          }
+          else if (header === 'id_uuid') {
+            rawObj[header] = trimmedVal === '' ? undefined : trimmedVal;
           }
           else {
-            obj[header] = trimmedVal === '' ? undefined : trimmedVal;
+            const defaultNonNullableFields = [
+              'language', 'opt_in_marketing', 'opt_in_social_media', 'opt_in_direct_message', 'opt_in_sms', 'opt_in_phone',
+              'created_by_identity', 'ai_confidence_score', 'is_verified_by_human'
+            ];
+            if (trimmedVal === '') {
+              rawObj[header] = defaultNonNullableFields.includes(header) ? undefined : null;
+            } else {
+              rawObj[header] = trimmedVal;
+            }
           }
         });
 
-        if (!obj.last_name) {
+        if (!rawObj.last_name) {
           throw new Error('Spalte "last_name" darf nicht leer sein.');
         }
 
-        return obj;
+        const parsed = ContactSchema.partial().safeParse(rawObj);
+        if (!parsed.success) {
+          throw new Error(`Zentrierte Validierung fehlgeschlagen für ${rawObj.first_name || ''} ${rawObj.last_name || 'Unbekannt'}: ${parsed.error.message}`);
+        }
+        return parsed.data as Contact;
       });
 
       // Analyze duplicates
@@ -908,9 +969,10 @@ export const DataPortabilityTab = () => {
         });
         refetchContacts();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setContactStatus({ type: 'error', message: err.message || 'Fehler beim CSV-Import.' });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setContactStatus({ type: 'error', message: errMsg || 'Fehler beim CSV-Import.' });
     }
   };
 
@@ -919,7 +981,7 @@ export const DataPortabilityTab = () => {
     try {
       setCompanyStatus({ type: 'idle', message: t('admin:data_portability.applying_resolutions', { defaultValue: 'Wende Konfliktlösungen an...' }) });
       
-      const uploadPack: any[] = [...safeCompanies];
+      const uploadPack: Company[] = [...safeCompanies];
 
       for (const item of companyConflicts) {
         if (item.decision === 'discard') {
@@ -956,9 +1018,10 @@ export const DataPortabilityTab = () => {
       setSafeCompanies([]);
       setActiveView('upload');
       refetchCompanies();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setCompanyStatus({ type: 'error', message: err.message || t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' }) });
+      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
+      setCompanyStatus({ type: 'error', message: errMsg });
     }
   };
 
@@ -967,7 +1030,7 @@ export const DataPortabilityTab = () => {
     try {
       setContactStatus({ type: 'idle', message: t('admin:data_portability.applying_resolutions', { defaultValue: 'Wende Konfliktlösungen an...' }) });
       
-      const uploadPack: any[] = [...safeContacts];
+      const uploadPack: Contact[] = [...safeContacts];
 
       for (const item of contactConflicts) {
         if (item.decision === 'discard') {
@@ -1000,9 +1063,10 @@ export const DataPortabilityTab = () => {
       setSafeContacts([]);
       setActiveView('upload');
       refetchContacts();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setContactStatus({ type: 'error', message: err.message || t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' }) });
+      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
+      setContactStatus({ type: 'error', message: errMsg });
     }
   };
 

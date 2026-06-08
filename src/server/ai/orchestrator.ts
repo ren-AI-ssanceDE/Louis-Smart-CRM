@@ -2,13 +2,14 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
-import { ModelUsageMetadata } from "../../types.js";
+import { ModelUsageMetadata, CustomWorkflow, LouisAiKnowledgeMetadata } from "../../types.js";
 import { generateContentSafe, generateContentUniversal } from "./geminiHelper.js";
 import { 
   executeWebSearch, 
   executeLocalKnowledgeSearch, 
   executeCrmDataAnalyst, 
   learnWorkflow,
+  executeLearnWorkflow,
   getLearnedWorkflows,
   executeTextGenerator,
   executeCreateDraftInvoice,
@@ -17,6 +18,7 @@ import {
   executeSendSmtpEmail
 } from "./tools.js";
 import { validateProposalMathAndSchema, executeCritiqueLoop } from "./critic.js";
+import { workflowExecutor } from "./workflowExecutor.js";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent } from "../db.js";
 import { z } from "zod";
 
@@ -69,7 +71,7 @@ export interface ReActDecision {
     entity_type: 'companies' | 'contacts' | 'invoices' | 'emails';
     action: 'CREATE' | 'UPDATE' | 'DELETE' | 'SEND';
     id_uuid?: string;
-    proposed_state: any;
+    proposed_state: Record<string, unknown> | null;
     explanation_rational: string;
   } | null;
 }
@@ -350,7 +352,7 @@ export async function runLouisAiFlow(
   let dbMetadataFiles: string[] = [];
   if (isUsingFallback || !pool) {
     const metadata = fallbackStore.louisAiKnowledgeMetadata || [];
-    dbMetadataFiles = metadata.filter((m: any) => m.tenant_id === tenantId).map((m: any) => m.file_name);
+    dbMetadataFiles = metadata.filter((m: LouisAiKnowledgeMetadata) => m.tenant_id === tenantId).map((m: LouisAiKnowledgeMetadata) => m.file_name);
   } else {
     try {
       const res = await pool.query(
@@ -358,7 +360,7 @@ export async function runLouisAiFlow(
         [tenantId]
       );
       if (res && res.rows) {
-        dbMetadataFiles = res.rows.map((row: any) => String(row.file_name));
+        dbMetadataFiles = res.rows.map((row: { file_name: string }) => String(row.file_name));
       }
     } catch (err) {
       console.warn("Failed to read database metadata files inside runLouisAiFlow:", err);
@@ -458,7 +460,7 @@ export async function runLouisAiFlow(
     // Query learned custom workflows dynamically for Function Calling and Prompt awareness
     let learnedWorkflows: LearnedWorkflow[] = [];
     try {
-      learnedWorkflows = await getLearnedWorkflows(tenantId);
+      learnedWorkflows = await getLearnedWorkflows(tenantId) as unknown as LearnedWorkflow[];
     } catch (err) {
       console.warn("Failed to get learned workflows for dynamic tool injection:", err);
     }
@@ -514,7 +516,7 @@ export async function runLouisAiFlow(
       },
       {
         name: "learn_workflow",
-        desc: "4. 'learn_workflow': Teaches a custom workflow chain and persists as an automatic recipe sequence."
+        desc: "4. 'learn_workflow': Teaches/creates a custom automated sequential workflow recipe. You MUST provide a stringified JSON object in 'callToolQuery' with the following exact keys:\n- workflow_name (string, exact clean name of the workflow without placeholders, e.g. 'E-Mail Entwurf bei neuem Kontakt')\n- workflow_description (string, description of what this workflow achieves)\n- trigger_type ('MANUAL' | 'CRM_EVENT' | 'TIMER')\n- trigger_config (null for MANUAL; or {\"event_name\": \"contact.created\" | \"company.created\" | \"invoice.created\" | \"invoice.finalized\", \"delay_seconds\": number} for CRM_EVENT; or {\"frequency\": \"hourly\"|\"daily\", \"time\": \"HH:MM\"} for TIMER)\n- tool_chain_sequence (array of sequential steps matching the flow, each with keys {\"tool\": \"crm_data_analyst\"|\"local_knowledge\"|\"text_generator\"|\"send_smtp_email\", \"instruction\": \"precise operational direct instruction for this specific tool. Must NOT contain conversational preamble, meta-talk or create-workflow instructions. Tell the tool directly what to do using placeholders like {{first_name}} if relevant, e.g. 'Sende eine Begrüßungs-E-Mail an {{first_name}} {{last_name}}'\"})\n- direct_send_email (boolean)"
       },
       {
         name: "get_workflows",
@@ -553,16 +555,31 @@ export async function runLouisAiFlow(
           .map((w, idx) => `${idx + 11}. 'workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, '_')}': Gelerter custom Workflow Makro-Schritt. Beschreibung: ${w.workflow_description || w.description || 'Keine Beschreibung'}. Format: "Specific string command instruction query for this custom action sequenced macro"`).join('\n')
       : '';
 
-    const earlyExitDirective = (loopCount > 1 && context.toolResults.length > 0)
+    const sandboxToolResult = context.toolResults.find(r => 
+      ["create_draft_contact", "create_draft_company", "create_draft_invoice"].includes(r.toolName) &&
+      typeof r.result === "string" && r.result.startsWith("Erfolg!")
+    );
+
+    const isDataMutationDemand = context.intent === 'DATA_CREATION' || context.intent === 'DATA_CHANGE';
+    const shouldForceEarlyExit = loopCount > 1 && (
+      sandboxToolResult || 
+      (!isDataMutationDemand && context.toolResults.length > 0)
+    );
+
+    const earlyExitDirective = shouldForceEarlyExit
       ? `
       🚨🚨🚨 SYSTEM EARLY-EXIT COMPULSION MANDATE 🚨🚨🚨
-      You have already run primary CRM or Knowledge Vault searches (which yielded results).
+      ${sandboxToolResult 
+        ? `Das Sandbox-Tool "${sandboxToolResult.toolName}" wurde bereits erfolgreich im ersten Schritt ausgeführt und der Entwurf wurde in der Datenbank angelegt (Resultat: "${sandboxToolResult.result}"). Da der Entwurf bereits existiert, darfst du dieses Tool unter keinen Umständen erneut aufrufen! Deine Aufgabe ist bereits vollständig erledigt.`
+        : `You have already run primary CRM or Knowledge Vault searches (which yielded results).`
+      }
       The user's query can now be answered completely and robustly with the existing results.
       You are STRICTLY FORBIDDEN from calling any more tools.
       You MUST terminate the ReAct loop now:
       - Set "isComplete" to true
       - Set "callToolName" to null and "callToolQuery" to null
       - Assemble and write your complete final response directly in "finalDraftText" in ${preferredLanguageName}.
+      - CRITICAL: If a previous tool (like 'send_smtp_email') prepared an email draft/proposal, you MUST preserve, output, and populate this email draft exactly in the "proposedChanges" field as requested! Do NOT omit or discard it.
       `
       : '';
 
@@ -724,6 +741,25 @@ export async function runLouisAiFlow(
           context.proposedChanges = pChanges;
         }
 
+        // Recover missing email proposedChanges if send_smtp_email tool succeeded but model omitted proposedChanges
+        const mailToolResult = context.toolResults.find(r => r.toolName === "send_smtp_email" && typeof r.result === "string" && r.result.startsWith("Erfolg!"));
+        if (mailToolResult && (!context.proposedChanges || context.proposedChanges.entity_type !== 'emails')) {
+          const str = mailToolResult.result as string;
+          const jsonStart = str.indexOf('{');
+          const jsonEnd = str.lastIndexOf('}');
+          if (jsonStart !== -1 && jsonEnd > jsonStart) {
+            try {
+              const parsedMailProposal = JSON.parse(str.slice(jsonStart, jsonEnd + 1)) as ReActDecision['proposedChanges'];
+              if (parsedMailProposal && parsedMailProposal.entity_type === 'emails') {
+                context.proposedChanges = parsedMailProposal;
+                context.thoughtLog.push(`Orchestrator Recovery: Restored missing/omitted email proposedChanges from successful send_smtp_email tool execution.`);
+              }
+            } catch (pErr) {
+              console.warn("Failed to parse fallback mail proposal from tool result:", pErr);
+            }
+          }
+        }
+
         context.thoughtLog.push(`ReAct Loop completed successfully.`);
         break;
       }
@@ -814,7 +850,13 @@ export async function runLouisAiFlow(
           let result: ToolResultPayload = null;
           let allowedToExecute = true;
 
-          if (toolName === "create_draft_company") {
+          if (executedToolNames.has(toolName) && ["create_draft_contact", "create_draft_company", "create_draft_invoice"].includes(toolName)) {
+            context.thoughtLog.push(`Programmatic Guard: Blocked duplicate sandbox tool call "${toolName}" because it was already executed in this ReAct session.`);
+            allowedToExecute = false;
+            result = `System-Hinweis: Das Sandbox-Tool "${toolName}" wurde bereits in dieser ReAct-Sitzung erfolgreich ausgeführt und der Entwurf existiert in der Datenbank. Führe es nicht noch einmal aus! Du musst dieses Gespräch jetzt zwingend abschließen, indem du "isComplete" auf true setzt und den finalen Bestätigungstext in "finalDraftText" ausgibst.`;
+          }
+
+          if (allowedToExecute && toolName === "create_draft_company") {
             const alreadyCreatedContact = context.toolResults.some(r => r.toolName === "create_draft_contact") ||
                                            toolsToRun.some(t => t.toolName === "create_draft_contact");
             if (alreadyCreatedContact) {
@@ -829,7 +871,7 @@ export async function runLouisAiFlow(
                 result = "System-Hinweis: Um einen Kontakt anzulegen, darf NICHT zusätzlich das Tool 'create_draft_company' genutzt werden. Die Erstellung einer separaten Firma wurde blockiert.";
               }
             }
-          } else if (toolName === "create_draft_contact") {
+          } else if (allowedToExecute && toolName === "create_draft_contact") {
             const alreadyCreatedCompany = context.toolResults.some(r => r.toolName === "create_draft_company") ||
                                            toolsToRun.some(t => t.toolName === "create_draft_company");
             if (alreadyCreatedCompany) {
@@ -843,18 +885,6 @@ export async function runLouisAiFlow(
             if (toolName.startsWith("workflow_")) {
               const matched = learnedWorkflows.find(w => `workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, '_')}` === toolName);
               if (matched) {
-                context.thoughtLog.push(`Dynamic Workflow Interceptor: Triggering learned multi-step workflow "${matched.workflow_name}"`);
-                
-                // 1. Audit Log: RUN_WORKFLOW
-                await logAuditEvent({
-                  tenantId,
-                  eventType: "RUN_WORKFLOW",
-                  entityType: "louis_ai_workflow",
-                  entityId: matched.id_uuid,
-                  eventDetails: `Started workflow execution for "${matched.workflow_name}" with query: "${toolQuery}"`,
-                  actorIdentity: userId
-                });
-
                 // Parse tool chain sequence
                 let steps: { tool: string; instruction: string }[] = [];
                 if (Array.isArray(matched.tool_chain_sequence)) {
@@ -867,61 +897,124 @@ export async function runLouisAiFlow(
                   }
                 }
 
-                const chainResults: WorkflowStepResult[] = [];
-                
-                // Execute each step sequentially
-                for (let i = 0; i < steps.length; i++) {
-                  const step = steps[i];
-                  context.thoughtLog.push(`[Workflow step ${i + 1}/${steps.length}] Running sub-tool "${step.tool}"`);
-                  
-                  let stepResult: unknown = null;
-                  const stepQuery = `${step.instruction} ${toolQuery}`.trim();
-                  
-                  if (step.tool === "web_search" || step.tool === "executeWebSearch") {
-                    stepResult = await executeWebSearch(stepQuery, 1, tenantId, ai);
-                  } else if (step.tool === "local_knowledge" || step.tool === "executeLocalKnowledgeSearch") {
-                    stepResult = await executeLocalKnowledgeSearch(tenantId, stepQuery, ai);
-                  } else if (step.tool === "crm_data_analyst" || step.tool === "executeCrmDataAnalyst" || step.tool === "data_architect" || step.tool === "executeDataArchitect") {
-                    stepResult = await executeCrmDataAnalyst(tenantId, stepQuery);
-                  } else if (step.tool === "text_generator" || step.tool === "executeTextGenerator") {
-                    const fullTextQuery = `${step.instruction}\nContext from previous steps:\n${JSON.stringify(chainResults)}\nUser Instructions: ${toolQuery}`;
-                    stepResult = await executeTextGenerator(tenantId, fullTextQuery, ai);
-                  } else if (step.tool === "create_draft_invoice" || step.tool === "executeCreateDraftInvoice") {
-                    stepResult = await executeCreateDraftInvoice(tenantId, stepQuery, userId);
-                  } else if (step.tool === "create_draft_company" || step.tool === "executeCreateDraftCompany") {
-                    stepResult = await executeCreateDraftCompany(tenantId, stepQuery, userId);
-                  } else if (step.tool === "create_draft_contact" || step.tool === "executeCreateDraftContact") {
-                    stepResult = await executeCreateDraftContact(tenantId, stepQuery, userId);
-                  } else if (step.tool === "send_smtp_email" || step.tool === "executeSendSmtpEmail") {
-                    stepResult = await executeSendSmtpEmail(tenantId, stepQuery, userId, ai);
-                  } else {
-                    stepResult = `Unsupported sub-tool in workflow chain: ${step.tool}`;
-                  }
-
-                  chainResults.push({
-                    stepIndex: i + 1,
-                    tool: step.tool,
-                    result: stepResult
-                  });
-                }
-
-                // 2. Audit Log: RUN_WORKFLOW_SUCCESS
-                await logAuditEvent({
-                  tenantId,
-                  eventType: "RUN_WORKFLOW_SUCCESS",
-                  entityType: "louis_ai_workflow",
-                  entityId: matched.id_uuid,
-                  eventDetails: `Success executing workflow "${matched.workflow_name}" with ${steps.length} steps.`,
-                  actorIdentity: userId
+                const hasWaitStep = steps.some(step => {
+                  const t = (step.tool || "").toLowerCase();
+                  return t === "executewait" || t === "wait" || t === "delay" || t.includes("wait") || t.includes("delay");
                 });
 
-                result = {
-                  status: "success",
-                  workflowName: matched.workflow_name,
-                  totalSteps: steps.length,
-                  stepsExecuted: chainResults.map(cr => ({ tool: cr.tool, status: "completed" })),
-                  finalResultSummary: chainResults
-                };
+                if (hasWaitStep) {
+                  context.thoughtLog.push(`Dynamic Workflow Interceptor: Triggering learned multi-step workflow "${matched.workflow_name}" containing a wait/delay step in background mode.`);
+                  
+                  // 1. Audit Log: RUN_WORKFLOW
+                  await logAuditEvent({
+                    tenantId,
+                    eventType: "RUN_WORKFLOW",
+                    entityType: "louis_ai_workflow",
+                    entityId: matched.id_uuid,
+                    eventDetails: `Delegated delayed background workflow execution for "${matched.workflow_name}" with query: "${toolQuery}"`,
+                    actorIdentity: userId
+                  });
+
+                  // Execute workflow in background
+                  const payload = {
+                    query: toolQuery,
+                    triggered_by: "louis_chat"
+                  };
+
+                  const workflowToExecute: CustomWorkflow = {
+                    id_uuid: matched.id_uuid,
+                    tenant_id: tenantId,
+                    workflow_name: matched.workflow_name,
+                    workflow_description: matched.workflow_description || matched.description || "",
+                    tool_chain_sequence: steps,
+                    trigger_type: "MANUAL",
+                    trigger_config: null,
+                    is_active: true,
+                    direct_send_email: false,
+                    created_at_utc: new Date().toISOString(),
+                    updated_at_utc: new Date().toISOString()
+                  };
+
+                  workflowExecutor.execute(workflowToExecute, payload).catch(err => {
+                    console.error(`[Orchestrator] Failed executing background workflow ${matched.workflow_name}:`, err);
+                  });
+
+                  result = {
+                    status: "running_background",
+                    workflowName: matched.workflow_name,
+                    message: language === 'de'
+                      ? `Ich habe den mehrstufigen Workflow "${matched.workflow_name}" erfolgreich im Hintergrund gestartet.\n\nDa dieser Workflow zeitverzögerte Warteschritte (Timer) enthält, wird er nun vollständig automatisiert und technisch präzise über unseren Hintergrund-Scheduler ausgeführt, um exakte Wartezeiten zu garantieren. Sie können den Fortschritt im Ablaufs-Inspektor der Administration mitverfolgen!`
+                      : `I have successfully launched the multi-step workflow "${matched.workflow_name}" in the background.\n\nSince this workflow contains timed delay steps (timers), it is now executed fully automatically by our technical background scheduler to guarantee precise wait times. You can monitor its progression in the Workflow Inspector under Administration!`
+                  };
+                } else {
+                  context.thoughtLog.push(`Dynamic Workflow Interceptor: Triggering learned multi-step workflow "${matched.workflow_name}"`);
+                  
+                  // 1. Audit Log: RUN_WORKFLOW
+                  await logAuditEvent({
+                    tenantId,
+                    eventType: "RUN_WORKFLOW",
+                    entityType: "louis_ai_workflow",
+                    entityId: matched.id_uuid,
+                    eventDetails: `Started workflow execution for "${matched.workflow_name}" with query: "${toolQuery}"`,
+                    actorIdentity: userId
+                  });
+
+                  const chainResults: WorkflowStepResult[] = [];
+                  
+                  // Execute each step sequentially
+                  for (let i = 0; i < steps.length; i++) {
+                    const step = steps[i];
+                    context.thoughtLog.push(`[Workflow step ${i + 1}/${steps.length}] Running sub-tool "${step.tool}"`);
+                    
+                    let stepResult: unknown = null;
+                    const stepQuery = `${step.instruction} ${toolQuery}`.trim();
+                    
+                    if (step.tool === "web_search" || step.tool === "executeWebSearch") {
+                      stepResult = await executeWebSearch(stepQuery, 1, tenantId, ai);
+                    } else if (step.tool === "local_knowledge" || step.tool === "executeLocalKnowledgeSearch") {
+                      stepResult = await executeLocalKnowledgeSearch(tenantId, stepQuery, ai);
+                    } else if (step.tool === "crm_data_analyst" || step.tool === "executeCrmDataAnalyst" || step.tool === "data_architect" || step.tool === "executeDataArchitect") {
+                      stepResult = await executeCrmDataAnalyst(tenantId, stepQuery);
+                    } else if (step.tool === "text_generator" || step.tool === "executeTextGenerator") {
+                      const fullTextQuery = `${step.instruction}\nContext from previous steps:\n${JSON.stringify(chainResults)}\nUser Instructions: ${toolQuery}`;
+                      stepResult = await executeTextGenerator(tenantId, fullTextQuery, ai);
+                    } else if (step.tool === "create_draft_invoice" || step.tool === "executeCreateDraftInvoice") {
+                      stepResult = await executeCreateDraftInvoice(tenantId, stepQuery, userId);
+                    } else if (step.tool === "create_draft_company" || step.tool === "executeCreateDraftCompany") {
+                      stepResult = await executeCreateDraftCompany(tenantId, stepQuery, userId);
+                    } else if (step.tool === "create_draft_contact" || step.tool === "executeCreateDraftContact") {
+                      stepResult = await executeCreateDraftContact(tenantId, stepQuery, userId);
+                    } else if (step.tool === "send_smtp_email" || step.tool === "executeSendSmtpEmail") {
+                      stepResult = await executeSendSmtpEmail(tenantId, stepQuery, userId, ai);
+                    } else {
+                      stepResult = `Unsupported sub-tool in workflow chain: ${step.tool}`;
+                    }
+
+                    chainResults.push({
+                      stepIndex: i + 1,
+                      tool: step.tool,
+                      result: stepResult
+                    });
+                  }
+
+                  // 2. Audit Log: RUN_WORKFLOW_SUCCESS
+                  await logAuditEvent({
+                    tenantId,
+                    eventType: "RUN_WORKFLOW_SUCCESS",
+                    entityType: "louis_ai_workflow",
+                    entityId: matched.id_uuid,
+                    eventDetails: `Success executing workflow "${matched.workflow_name}" with ${steps.length} steps.`,
+                    actorIdentity: userId
+                  });
+
+                  result = {
+                    status: "success",
+                    workflowName: matched.workflow_name,
+                    totalSteps: steps.length,
+                    stepsExecuted: chainResults.map(cr => ({ tool: cr.tool, status: "completed" })),
+                    finalResultSummary: chainResults
+                  };
+                }
               } else {
                 result = `Custom workflow tool "${toolName}" was called but no matching workflow definition was found for tenant.`;
               }
@@ -932,8 +1025,7 @@ export async function runLouisAiFlow(
             } else if (toolName === "crm_data_analyst" || toolName === "data_architect") {
               result = await executeCrmDataAnalyst(tenantId, toolQuery);
             } else if (toolName === "learn_workflow") {
-              // Teaches standard template chain
-              result = await learnWorkflow(tenantId, "Automated AI Recipe", toolQuery, [{tool: "crm_data_analyst", instruction: toolQuery}]);
+              result = await executeLearnWorkflow(tenantId, toolQuery, "ai_assistant");
             } else if (toolName === "get_workflows") {
               result = await getLearnedWorkflows(tenantId);
             } else if (toolName === "text_generator") {
@@ -995,8 +1087,8 @@ export async function runLouisAiFlow(
     let val = { isValid: true, errors: [] as string[] };
     if (context.proposedChanges.entity_type !== 'emails') {
       val = validateProposalMathAndSchema(
-        context.proposedChanges.entity_type as any,
-        context.proposedChanges.action as any,
+        context.proposedChanges.entity_type as 'companies' | 'contacts' | 'invoices',
+        context.proposedChanges.action as 'CREATE' | 'UPDATE' | 'DELETE',
         context.proposedChanges.proposed_state
       );
     }

@@ -22,6 +22,7 @@ import { trpc } from '../../lib/trpc';
 import { toast } from 'sonner';
 import { EmailTemplate, Signature as SignatureType, InvoiceTextTemplate, InvoiceItemTemplate } from '../../types';
 import { AiTextGeneratorDialog } from '../AiTextGeneratorDialog';
+import { Dialog } from '../ui/Dialog';
 
 export const TemplatesTab = () => {
   const { t } = useTranslation(['admin', 'common', 'invoices', 'companies']);
@@ -37,6 +38,12 @@ export const TemplatesTab = () => {
   const [aiFieldId, setAiFieldId] = useState<string | null>(null);
   const [aiContext, setAiContext] = useState('');
   const [aiValue, setAiValue] = useState('');
+
+  // Delete confirmation dialog states
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteTargetType, setDeleteTargetType] = useState<'template' | 'signature' | 'invoice_text' | 'invoice_item' | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTargetName, setDeleteTargetName] = useState<string>('');
 
   // Queries
   const { data: templates = [], isLoading: loadingTemplates } = trpc.getEmailTemplates.useQuery();
@@ -204,6 +211,7 @@ export const TemplatesTab = () => {
   const [itemUnitCode, setItemUnitCode] = useState<string>('HUR');
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const invoiceTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Synchronizes contentEditable innerHTML with state if editor changes externally
   useEffect(() => {
@@ -248,6 +256,35 @@ export const TemplatesTab = () => {
       editorRef.current.innerHTML = '';
     }
   };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTargetId || !deleteTargetType) return;
+
+    if (editId === deleteTargetId) {
+      resetForm();
+    }
+
+    if (deleteTargetType === 'template') {
+      deleteTemplateMutation.mutate({ id_uuid: deleteTargetId });
+    } else if (deleteTargetType === 'signature') {
+      deleteSignatureMutation.mutate({ id_uuid: deleteTargetId });
+    } else if (deleteTargetType === 'invoice_text') {
+      deleteInvoiceTextMutation.mutate({ id_uuid: deleteTargetId });
+    } else if (deleteTargetType === 'invoice_item') {
+      deleteInvoiceItemMutation.mutate({ id_uuid: deleteTargetId });
+    }
+
+    setIsDeleteOpen(false);
+    setDeleteTargetId(null);
+    setDeleteTargetType(null);
+    setDeleteTargetName('');
+  };
+
+  const isDeletingInProgress = 
+    deleteTemplateMutation.isPending || 
+    deleteSignatureMutation.isPending || 
+    deleteInvoiceTextMutation.isPending || 
+    deleteInvoiceItemMutation.isPending;
 
   // WYSIWYG commands
   const execCmd = (command: string, value: string = '') => {
@@ -297,6 +334,27 @@ export const TemplatesTab = () => {
           editorRef.current.innerHTML = editorRef.current.innerHTML + tag;
         }
       }
+    }
+  };
+
+  const insertInvoiceTextPlaceholder = (tag: string) => {
+    const textarea = invoiceTextareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const before = text.substring(0, start);
+      const after  = text.substring(end, text.length);
+      const newValue = before + tag + after;
+      setInvoiceTextBody(newValue);
+      
+      // Reset cursor position after state updates
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + tag.length, start + tag.length);
+      }, 0);
+    } else {
+      setInvoiceTextBody(prev => prev + tag);
     }
   };
 
@@ -639,17 +697,10 @@ export const TemplatesTab = () => {
                         </button>
                         <button
                           onClick={() => {
-                            toast(t('templates.delete_confirm_template') || 'Möchten Sie diese Vorlage wirklich löschen?', {
-                              action: {
-                                label: t('common:delete', { defaultValue: 'Löschen' }),
-                                onClick: () => {
-                                  deleteTemplateMutation.mutate({ id_uuid: tmpl.id_uuid! });
-                                }
-                              },
-                              cancel: {
-                                label: t('common:cancel', { defaultValue: 'Abbrechen' })
-                              }
-                            });
+                            setDeleteTargetType('template');
+                            setDeleteTargetId(tmpl.id_uuid!);
+                            setDeleteTargetName(tmpl.template_name_text);
+                            setIsDeleteOpen(true);
                           }}
                           className="p-1.5 hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange rounded-lg transition-colors"
                           title={t('common:discard') || 'Delete'}
@@ -709,17 +760,10 @@ export const TemplatesTab = () => {
                         </button>
                         <button
                           onClick={() => {
-                            toast(t('templates.delete_confirm_signature') || 'Möchten Sie diese Signatur wirklich löschen?', {
-                              action: {
-                                label: t('common:delete', { defaultValue: 'Löschen' }),
-                                onClick: () => {
-                                  deleteSignatureMutation.mutate({ id_uuid: sig.id_uuid! });
-                                }
-                              },
-                              cancel: {
-                                label: t('common:cancel', { defaultValue: 'Abbrechen' })
-                              }
-                            });
+                            setDeleteTargetType('signature');
+                            setDeleteTargetId(sig.id_uuid!);
+                            setDeleteTargetName(sig.signature_name_text);
+                            setIsDeleteOpen(true);
                           }}
                           className="p-1.5 hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange rounded-lg transition-colors"
                           title={t('common:discard') || 'Delete'}
@@ -771,17 +815,10 @@ export const TemplatesTab = () => {
                         </button>
                         <button
                           onClick={() => {
-                            toast(t('templates.delete_confirm_invoice_text', { defaultValue: 'Möchten Sie diese Rechnungstext-Vorlage wirklich löschen?' }), {
-                              action: {
-                                label: t('common:delete', { defaultValue: 'Löschen' }),
-                                onClick: () => {
-                                  deleteInvoiceTextMutation.mutate({ id_uuid: it.id_uuid! });
-                                }
-                              },
-                              cancel: {
-                                label: t('common:cancel', { defaultValue: 'Abbrechen' })
-                              }
-                            });
+                            setDeleteTargetType('invoice_text');
+                            setDeleteTargetId(it.id_uuid!);
+                            setDeleteTargetName(it.template_name_text);
+                            setIsDeleteOpen(true);
                           }}
                           className="p-1.5 hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange rounded-lg transition-colors"
                           title={t('common:discard') || 'Delete'}
@@ -835,17 +872,10 @@ export const TemplatesTab = () => {
                         </button>
                         <button
                           onClick={() => {
-                            toast(t('templates.delete_confirm_invoice_item', { defaultValue: 'Möchten Sie diese Rechnungsposten-Vorlage wirklich löschen?' }), {
-                              action: {
-                                label: t('common:delete', { defaultValue: 'Löschen' }),
-                                onClick: () => {
-                                  deleteInvoiceItemMutation.mutate({ id_uuid: item.id_uuid! });
-                                }
-                              },
-                              cancel: {
-                                label: t('common:cancel', { defaultValue: 'Abbrechen' })
-                              }
-                            });
+                            setDeleteTargetType('invoice_item');
+                            setDeleteTargetId(item.id_uuid!);
+                            setDeleteTargetName(item.template_name_text);
+                            setIsDeleteOpen(true);
                           }}
                           className="p-1.5 hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange rounded-lg transition-colors"
                           title={t('common:discard') || 'Delete'}
@@ -1230,6 +1260,30 @@ export const TemplatesTab = () => {
                     </select>
                   </div>
 
+                  {/* Placeholders helper widget */}
+                  <div className="space-y-3 p-4 bg-primary-dark/40 border border-white/5 rounded-xl">
+                    <div className="flex items-center gap-2 text-accent-blue">
+                      <Info size={14} />
+                      <span className="text-[9px] font-mono tracking-wider font-extrabold uppercase">{t('templates.placeholders_invoice_helper_title', { defaultValue: 'Verfügbare Variablen' })}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">
+                      {t('templates.placeholders_invoice_helper_desc', { defaultValue: 'Klicken Sie auf eine Variable, um sie an der aktuellen Cursorposition in Ihre Vorlage einzufügen.' })}
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {templatePlaceholders.map((ph) => (
+                        <button
+                          key={ph.tag}
+                          type="button"
+                          onClick={() => insertInvoiceTextPlaceholder(ph.tag)}
+                          className="px-2.5 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 text-accent-blue border border-accent-blue/10 hover:border-accent-blue/30 rounded-lg text-[9px] font-mono font-black tracking-tighter transition-all flex items-center gap-1.5"
+                          title={ph.description || ''}
+                        >
+                          {ph.tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Content Body */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center mr-1">
@@ -1251,6 +1305,7 @@ export const TemplatesTab = () => {
                       </button>
                     </div>
                     <textarea 
+                      ref={invoiceTextareaRef}
                       value={invoiceTextBody}
                       onChange={(e) => setInvoiceTextBody(e.target.value)}
                       rows={6}
@@ -1480,6 +1535,81 @@ export const TemplatesTab = () => {
           }
         }}
       />
+      <Dialog
+        isOpen={isDeleteOpen}
+        onClose={() => {
+          setIsDeleteOpen(false);
+          setDeleteTargetId(null);
+          setDeleteTargetType(null);
+          setDeleteTargetName('');
+        }}
+        title={
+          deleteTargetType === 'template'
+            ? t('templates.delete_title_template', { defaultValue: 'E-Mail-Vorlage löschen' })
+            : deleteTargetType === 'signature'
+            ? t('templates.delete_title_signature', { defaultValue: 'Signatur löschen' })
+            : deleteTargetType === 'invoice_text'
+            ? t('templates.delete_title_invoice_text', { defaultValue: 'Rechnungstext-Vorlage löschen' })
+            : t('templates.delete_title_invoice_item', { defaultValue: 'Rechnungsposten-Vorlage löschen' })
+        }
+        size="md"
+      >
+        <div className="space-y-5 pt-4 text-left">
+          <div className="flex items-start gap-4 bg-orange-500/10 p-5 rounded-xl border border-orange-500/20">
+            <div className="text-orange-500 mt-0.5 shrink-0">
+              <Info size={24} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <h4 className="text-sm font-black text-orange-500 uppercase tracking-wider">
+                {t('templates.delete_modal_warning_title', { defaultValue: 'Achtung: Unwiderruflicher Schritt' })}
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
+                {deleteTargetType === 'template'
+                  ? t('templates.delete_confirm_template')
+                  : deleteTargetType === 'signature'
+                  ? t('templates.delete_confirm_signature')
+                  : deleteTargetType === 'invoice_text'
+                  ? t('templates.delete_confirm_invoice_text')
+                  : t('templates.delete_confirm_invoice_item')}
+                {deleteTargetName && (
+                  <span className="block mt-2 font-mono text-accent-orange font-black text-sm truncate bg-primary-dark/40 px-3 py-1.5 rounded-lg border border-white/5">
+                    {deleteTargetName}
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-slate-400 leading-relaxed font-sans font-medium">
+                {t('templates.delete_modal_warning_desc', { defaultValue: 'Diese Aktion kann nicht rückgängig gemacht werden.' })}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDeleteOpen(false);
+                setDeleteTargetId(null);
+                setDeleteTargetType(null);
+                setDeleteTargetName('');
+              }}
+              className="px-6 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-[0.2em] text-slate-400 hover:text-white transition-all bg-slate-905 border border-slate-800"
+            >
+              {t('common:cancel', { defaultValue: 'Abbrechen' })}
+            </button>
+            <button
+              type="button"
+              disabled={isDeletingInProgress}
+              onClick={handleConfirmDelete}
+              className="bg-red-600 text-white px-8 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-[0.2em] hover:bg-red-700 transition-all shadow-xl shadow-red-600/10 active:scale-95 flex items-center gap-2"
+            >
+              {isDeletingInProgress && (
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {t('common:delete', { defaultValue: 'Unwiderruflich Löschen' })}
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 };

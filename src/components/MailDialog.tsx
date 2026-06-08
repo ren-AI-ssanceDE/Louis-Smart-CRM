@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Invoice } from '../types';
+import { Invoice, Company, Contact } from '../types';
 import { Dialog } from './ui/Dialog';
 import { useTranslation } from 'react-i18next';
 import { AiTextGeneratorDialog } from './AiTextGeneratorDialog';
@@ -72,8 +72,8 @@ export const MailDialog = ({
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
 
   // Profile Context Inference
-  const profileType = associatedType || (invoice?.associated_company_id ? 'companies' : invoice?.associated_contact_id ? 'contacts' : undefined);
-  const profileId = associatedId || invoice?.associated_company_id || invoice?.associated_contact_id;
+  const profileType = associatedType || (invoice?.associated_contact_id ? 'contacts' : invoice?.associated_company_id ? 'companies' : undefined);
+  const profileId = associatedId || invoice?.associated_contact_id || invoice?.associated_company_id;
   const profileName = associatedName || recipientName;
 
   // tRPC endpoints
@@ -124,7 +124,7 @@ export const MailDialog = ({
 
     // Let's find if the recipient belongs to a contact or company
     if (profileType === 'companies' && profileId) {
-      const co = (companies as any[]).find((c) => c.id_uuid === profileId);
+      const co = (companies as Company[]).find((c) => c.id_uuid === profileId);
       if (co) {
         rName = co.full_legal_name || rName;
         rStreet = co.street || '';
@@ -144,7 +144,7 @@ export const MailDialog = ({
         rSalutation = 'Sehr geehrte Damen und Herren';
       }
     } else if (profileType === 'contacts' && profileId) {
-      const ct = (contacts as any[]).find((c) => c.id_uuid === profileId);
+      const ct = (contacts as Contact[]).find((c) => c.id_uuid === profileId);
       if (ct) {
         rName = ct.full_legal_name || `${ct.first_name || ''} ${ct.last_name || ''}`.trim() || rName;
         rFirstName = ct.first_name || '';
@@ -159,7 +159,7 @@ export const MailDialog = ({
         if (ct.company_name) {
           rCompany = ct.company_name;
         } else if (ct.associated_company_id) {
-          const assocCo = (companies as any[]).find((co) => co.id_uuid === ct.associated_company_id);
+          const assocCo = (companies as Company[]).find((co) => co.id_uuid === ct.associated_company_id);
           if (assocCo) {
             rCompany = assocCo.full_legal_name || '';
           }
@@ -182,7 +182,7 @@ export const MailDialog = ({
 
     // Try fallback lookup by email address or name if street details are not yet resolved
     if (!rStreet && !rCity) {
-      const foundCt = (contacts as any[]).find((c) => (c.email_address && c.email_address.toLowerCase() === recipientEmail.toLowerCase()) || c.full_legal_name === recipientName);
+      const foundCt = (contacts as Contact[]).find((c) => (c.email_address && c.email_address.toLowerCase() === recipientEmail.toLowerCase()) || c.full_legal_name === recipientName);
       if (foundCt) {
         rName = foundCt.full_legal_name || `${foundCt.first_name || ''} ${foundCt.last_name || ''}`.trim() || rName;
         rFirstName = foundCt.first_name || '';
@@ -197,7 +197,7 @@ export const MailDialog = ({
         if (foundCt.company_name) {
           rCompany = foundCt.company_name;
         } else if (foundCt.associated_company_id) {
-          const assocCo = (companies as any[]).find((co) => co.id_uuid === foundCt.associated_company_id);
+          const assocCo = (companies as Company[]).find((co) => co.id_uuid === foundCt.associated_company_id);
           if (assocCo) {
             rCompany = assocCo.full_legal_name || '';
           }
@@ -216,7 +216,7 @@ export const MailDialog = ({
         const cityFull = `${rPostalCode} ${rCity}`.trim();
         rAddress = [rName, rCompany, streetFull, cityFull].filter(Boolean).join('\n');
       } else {
-        const foundCo = (companies as any[]).find((c) => (c.email_address && c.email_address.toLowerCase() === recipientEmail.toLowerCase()) || c.full_legal_name === recipientName);
+        const foundCo = (companies as Company[]).find((c) => (c.email_address && c.email_address.toLowerCase() === recipientEmail.toLowerCase()) || c.full_legal_name === recipientName);
         if (foundCo) {
           rName = foundCo.full_legal_name || rName;
           rStreet = foundCo.street || '';
@@ -366,9 +366,10 @@ export const MailDialog = ({
         }]);
         toast.success(t('admin:mail.file_attached_success', { filename }));
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error fetching file content:", err);
-      toast.error(t('admin:mail.file_load_error', { filename, error: err.message || '' }));
+      const errMsg = err instanceof Error ? err.message : '';
+      toast.error(t('admin:mail.file_load_error', { filename, error: errMsg }));
     } finally {
       setLoadingFile(null);
     }
@@ -395,7 +396,7 @@ export const MailDialog = ({
       const reader = new FileReader();
       reader.onload = () => {
         const base64Content = (reader.result as string).split(',')[1];
-        const isStored = profileFiles.some((f: any) => f.name === file.name);
+        const isStored = profileFiles.some((f: { name: string }) => f.name === file.name);
         
         setCustomAttachments(prev => [...prev, {
           filename: file.name,
@@ -783,7 +784,7 @@ export const MailDialog = ({
                 {t('admin:mail.add_from_profile_manager')}
               </p>
               <div className="flex flex-wrap gap-2">
-                {profileFiles.map((file: any) => {
+                {profileFiles.map((file: { name: string; size: number }) => {
                   const isAttached = customAttachments.some(att => att.filename === file.name);
                   const isLoading = loadingFile === file.name;
                   return (

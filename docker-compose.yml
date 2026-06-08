@@ -53,6 +53,20 @@ services:
       - ./contacts_data_vault:/app/contacts_data_vault
       - ./knowledge_data_vault:/app/knowledge_data_vault
 
+  telegram-bot-gate:
+    build:
+      context: ./services/telegram-bot-gate
+      dockerfile: Dockerfile
+    container_name: louis-telegram-bot-gate
+    restart: unless-stopped
+    environment:
+      - CRM_CONFIG_API=http://app:3000/api/telegram/config
+      - MCP_SERVER_URL=http://app:3000/api/mcp/sse
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      app:
+        condition: service_started
+
 volumes:
   postgres_data:
 

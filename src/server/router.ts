@@ -6,6 +6,7 @@ import { settingsRouter } from "./routers/settings.js";
 import { filesAndLogsRouter } from "./routers/filesAndLogs.js";
 import { authRouter } from "./routers/auth.js";
 import { louisAiRouter } from "./routers/louisAi.js";
+import { mailDraftsRouter } from "./routers/mailDrafts.js";
 
 export const appRouter = mergeRouters(
   companiesRouter,
@@ -14,7 +15,8 @@ export const appRouter = mergeRouters(
   settingsRouter,
   filesAndLogsRouter,
   authRouter,
-  louisAiRouter
+  louisAiRouter,
+  mailDraftsRouter
 );
 
 export type AppRouter = typeof appRouter;

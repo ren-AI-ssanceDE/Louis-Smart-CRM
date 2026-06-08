@@ -6,10 +6,11 @@ import { router, protectedProcedure } from "../trpc.js";
 import { pool, isUsingFallback, fallbackStore, logAuditEvent, saveFallbackStore, cleanDbRow } from "../db.js";
 import { getEntityStoragePath } from "../storage.js";
 import { InvoiceSchema, InvoiceFullSchema } from "../../lib/schemas.js";
-import { Invoice } from "../../types.js";
+import { Invoice, InvoicePaidPayload } from "../../types.js";
 import { generateInvoiceFilesOnDisk } from "../pdfHelper.js";
 import { compareInvoiceNumbers } from "../../lib/utils.js";
 import { TRPCError } from "@trpc/server";
+import { workflowEventBus } from "../ai/workflowEventBus.js";
 
 const sanitizeTextLigatures = (str: string): string => {
   if (!str) return str;
@@ -268,6 +269,14 @@ export const invoicesRouter = router({
           // Automatically generate PDF and XML on disk for File Manager
           await generateInvoiceFilesOnDisk(id, ctx.tenantId);
 
+          workflowEventBus.emitEvent(ctx.tenantId, 'invoice.created', {
+            id_uuid: id,
+            invoice_number: computedInvoiceNumber,
+            total_gross_amount: input.total_gross_amount,
+            associated_company_id: input.associated_company_id,
+            associated_contact_id: input.associated_contact_id
+          });
+
           return { id_uuid: id };
         }
 
@@ -307,6 +316,14 @@ export const invoicesRouter = router({
 
         // Automatically generate PDF and XML on disk for File Manager
         await generateInvoiceFilesOnDisk(id, ctx.tenantId);
+
+        workflowEventBus.emitEvent(ctx.tenantId, 'invoice.created', {
+          id_uuid: id,
+          invoice_number: computedInvoiceNumber,
+          total_gross_amount: input.total_gross_amount,
+          associated_company_id: input.associated_company_id,
+          associated_contact_id: input.associated_contact_id
+        });
 
         return { id_uuid: id };
       } catch (err: unknown) {
@@ -557,6 +574,14 @@ export const invoicesRouter = router({
         });
 
         await generateInvoiceFilesOnDisk(id_uuid, ctx.tenantId);
+
+        workflowEventBus.emitEvent(ctx.tenantId, 'invoice.created', {
+          id_uuid: id_uuid,
+          invoice_number: computedInvoiceNumber,
+          total_gross_amount: draft.total_gross_amount,
+          associated_company_id: draft.associated_company_id,
+          associated_contact_id: draft.associated_contact_id
+        });
 
         return { success: true, invoice_number: computedInvoiceNumber };
       } catch (err: unknown) {
@@ -1014,6 +1039,33 @@ export const invoicesRouter = router({
 
       // 5. Regenerate files on disk to reflect the update and ensure files exist
       await generateInvoiceFilesOnDisk(id_uuid, ctx.tenantId);
+
+      const paidPayload: InvoicePaidPayload = {
+        id_uuid,
+        invoice_number: targetInvoice.invoice_number,
+        payment_date,
+        payment_method,
+        payment_amount,
+        total_gross_amount: targetInvoice.total_gross_amount,
+        total_net_amount: targetInvoice.total_net_amount,
+        tax_amount: targetInvoice.total_vat_amount || 0,
+        currency: targetInvoice.currency_code || 'EUR',
+        associated_company_id: targetInvoice.associated_company_id || null,
+        associated_contact_id: targetInvoice.associated_contact_id || null
+      };
+
+      workflowEventBus.emitEvent(ctx.tenantId, 'invoice.paid', paidPayload);
+
+      workflowEventBus.emitEvent(ctx.tenantId, 'invoice.finalized', { 
+        id_uuid, 
+        payment_date, 
+        payment_method, 
+        payment_amount, 
+        invoice_number: targetInvoice.invoice_number, 
+        total_gross_amount: targetInvoice.total_gross_amount, 
+        associated_company_id: targetInvoice.associated_company_id, 
+        associated_contact_id: targetInvoice.associated_contact_id 
+      });
 
       return { success: true };
     })

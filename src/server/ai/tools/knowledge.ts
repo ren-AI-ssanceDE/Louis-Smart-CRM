@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore } from "../../db.js";
 import { generateEmbedding } from "../embeddingHelper.js";
+import { LouisAiKnowledgeMetadata, LouisAiKnowledgeChunk, CustomWorkflow, Company, Contact } from "../../../types.js";
 
 /**
  * Tool 3: Local Knowledge Tool (RAG searching of metadata chunks)
@@ -16,7 +17,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     let dbMetadataFiles: string[] = [];
     if (isUsingFallback || !pool) {
       const metadata = fallbackStore.louisAiKnowledgeMetadata || [];
-      dbMetadataFiles = metadata.filter((m: any) => m.tenant_id === tenantId).map((m: any) => m.file_name);
+      dbMetadataFiles = metadata.filter((m: LouisAiKnowledgeMetadata) => m.tenant_id === tenantId).map((m: LouisAiKnowledgeMetadata) => m.file_name);
     } else {
       try {
         const res = await pool.query(
@@ -24,7 +25,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
           [tenantId]
         );
         if (res && res.rows) {
-          dbMetadataFiles = res.rows.map((row: any) => String(row.file_name));
+          dbMetadataFiles = res.rows.map((row: { file_name: string }) => String(row.file_name));
         }
       } catch (err) {
         console.warn("[LocalKnowledgeSearch] Failed to read database metadata files:", err);
@@ -61,8 +62,8 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
   let activeScope: 'company' | 'contact' | 'global' = 'global';
   let entityName = '';
 
-  let comList: any[] = [];
-  let conList: any[] = [];
+  let comList: Company[] = [];
+  let conList: Contact[] = [];
   if (isUsingFallback || !pool) {
     comList = fallbackStore.companies || [];
     conList = fallbackStore.contacts || [];
@@ -182,7 +183,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     
     // Filter metadata IDs based on scope & resolved entities (mit Einschluss von globalen Dokumenten)
     const filteredMetadataIds = metadata
-      .filter((m: any) => {
+      .filter((m: LouisAiKnowledgeMetadata) => {
         if (m.tenant_id !== tenantId) return false;
         
         if (resolvedCompanyId) {
@@ -201,14 +202,14 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
         
         return true; // Alle Dokumente des Mandanten durchsuchen
       })
-      .map((m: any) => m.id_uuid);
+      .map((m: LouisAiKnowledgeMetadata) => m.id_uuid);
 
-    const relevantChunks = chunks.filter((c: any) => 
+    const relevantChunks = chunks.filter((c: LouisAiKnowledgeChunk) => 
       c.tenant_id === tenantId && 
       (filteredMetadataIds.includes(c.document_id) || !c.document_id)
     );
 
-    const scored = relevantChunks.map((chunk: any) => {
+    const scored = relevantChunks.map((chunk: LouisAiKnowledgeChunk) => {
       let similarityScore = 0;
       if (queryEmbedding) {
         let chunkVector: number[] | null = null;
@@ -222,7 +223,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
 
       let keywordScore = 0;
       const textLower = chunk.chunk_text.toLowerCase().replace(/\s+/g, " ");
-      const doc = metadata.find((m: any) => m.id_uuid === chunk.document_id) as any;
+      const doc = metadata.find((m: LouisAiKnowledgeMetadata) => m.id_uuid === chunk.document_id);
       const fileLower = doc ? (doc.file_name || "").toLowerCase().replace(/\s+/g, " ") : "";
 
       for (const word of queryWords) {
@@ -275,7 +276,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
 
   // Postgres MODE with pgvector cosine similarity and keyword FTS selection
   try {
-    let vectorRows: any[] = [];
+    let vectorRows: unknown[] = [];
     if (queryEmbedding) {
       let vectorSql = `
         SELECT c.id_uuid, c.chunk_text, m.file_name, m.scope, m.associated_company_id, m.associated_contact_id,
@@ -284,7 +285,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
         JOIN sys_louis_ai_knowledge_metadata m ON c.document_id = m.id_uuid
         WHERE c.tenant_id = $2
       `;
-      const vectorParams: any[] = [`[${queryEmbedding.join(",")}]`, tenantId];
+      const vectorParams: unknown[] = [`[${queryEmbedding.join(",")}]`, tenantId];
       let paramIdx = 3;
 
       if (resolvedCompanyId) {
@@ -307,7 +308,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     }
 
     // 2. Keyword Matches holen
-    let keywordRows: any[] = [];
+    let keywordRows: unknown[] = [];
     if (queryWords.length > 0) {
       let textSql = `
         SELECT c.id_uuid, c.chunk_text, m.file_name, m.scope, m.associated_company_id, m.associated_contact_id,
@@ -316,7 +317,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
         JOIN sys_louis_ai_knowledge_metadata m ON c.document_id = m.id_uuid
         WHERE c.tenant_id = $1
       `;
-      const textParams: any[] = [tenantId];
+      const textParams: unknown[] = [tenantId];
       let paramIdx = 2;
 
       if (resolvedCompanyId) {
@@ -345,12 +346,16 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     }
 
     // 3. Zusammenführen und de-duplizieren nach Chunk ID
-    const mergedMap = new Map<string, any>();
-    for (const row of vectorRows) {
-      mergedMap.set(row.id_uuid, row);
+    const mergedMap = new Map<string, Record<string, unknown>>();
+    const typedVectorRows = vectorRows as Record<string, unknown>[];
+    const typedKeywordRows = keywordRows as Record<string, unknown>[];
+    for (const row of typedVectorRows) {
+      if (typeof row.id_uuid === 'string') {
+        mergedMap.set(row.id_uuid, row);
+      }
     }
-    for (const row of keywordRows) {
-      if (!mergedMap.has(row.id_uuid)) {
+    for (const row of typedKeywordRows) {
+      if (typeof row.id_uuid === 'string' && !mergedMap.has(row.id_uuid)) {
         mergedMap.set(row.id_uuid, row);
       }
     }
@@ -358,10 +363,10 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     const mergedChunks = Array.from(mergedMap.values());
 
     // 4. Hybrid Relevance Scoring
-    const scoredChunks = mergedChunks.map((chunk: any) => {
+    const scoredChunks = mergedChunks.map((chunk) => {
       let keywordScore = 0;
-      const textLower = chunk.chunk_text.toLowerCase().replace(/\s+/g, " ");
-      const fileLower = (chunk.file_name || "").toLowerCase().replace(/\s+/g, " ");
+      const textLower = (chunk.chunk_text as string).toLowerCase().replace(/\s+/g, " ");
+      const fileLower = ((chunk.file_name as string) || "").toLowerCase().replace(/\s+/g, " ");
 
       for (const word of queryWords) {
         if (fileLower.includes(word)) {
@@ -379,7 +384,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
         if (textLower.includes(cleanQueryPhrase)) keywordScore += 5;
       }
 
-      const vectorScore = chunk.similarity ? parseFloat(chunk.similarity) : 0;
+      const vectorScore = chunk.similarity ? parseFloat(String(chunk.similarity)) : 0;
       const normalizedKeywordScore = Math.min(keywordScore / 25.0, 1.0);
       
       let totalScore = queryEmbedding
@@ -396,8 +401,8 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
       totalScore *= boost;
 
       return {
-        chunk_text: chunk.chunk_text,
-        file_name: chunk.file_name,
+        chunk_text: chunk.chunk_text as string,
+        file_name: chunk.file_name as string,
         totalScore,
         vectorScore,
         keywordScore
@@ -405,7 +410,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
     });
 
     const finalScored = scoredChunks
-      .filter((c: any) => c.totalScore > 0.05)
+      .filter((c) => c.totalScore > 0.05)
       .sort((a, b) => b.totalScore - a.totalScore)
       .slice(0, 5);
 
@@ -427,7 +432,7 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
         WHERE c.tenant_id = $1 AND c.chunk_text ILIKE $2
       `;
       const plainQuery = `%${query.replace(/%/g, "")}%`;
-      const paramsText: any[] = [tenantId, plainQuery];
+      const paramsText: unknown[] = [tenantId, plainQuery];
 
       if (resolvedCompanyId) {
         sqlText += ` AND ( (m.scope = 'company' AND m.associated_company_id = $3) OR m.scope = 'global' )`;
@@ -440,9 +445,10 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
       sqlText += " LIMIT 5";
       const resText = await pool.query(sqlText, paramsText);
       if (resText.rows.length > 0) {
-        return resText.rows.map((row: any, i: number) => 
-          `[Result ${i + 1}] (Keyword MatchFallback, File: ${row.file_name || 'Wissensdatenbank'})\n${row.chunk_text}`
-        ).join("\n\n");
+        return resText.rows.map((row: unknown, i: number) => {
+          const r = row as { file_name?: string; chunk_text: string };
+          return `[Result ${i + 1}] (Keyword MatchFallback, File: ${r.file_name || 'Wissensdatenbank'})\n${r.chunk_text}`;
+        }).join("\n\n");
       }
     } catch (e) {}
     return `Local database knowledge query failed: ${(err as Error).message}`;
@@ -452,19 +458,34 @@ export async function executeLocalKnowledgeSearch(tenantId: string, query: strin
 /**
  * Tool 5: Custom Tool Learning (Persist a reusable workflow recipe)
  */
-export async function learnWorkflow(tenantId: string, name: string, description: string, toolChain: { tool: string; instruction: string }[], created_by_identity: string = "ai_assistant"): Promise<any> {
-  const id_uuid = uuidv4();
+export async function learnWorkflow(
+  tenantId: string, 
+  name: string, 
+  description: string, 
+  toolChain: { tool: string; instruction: string }[], 
+  created_by_identity: string = "ai_assistant",
+  trigger_type: 'MANUAL' | 'CRM_EVENT' | 'TIMER' = "MANUAL",
+  trigger_config: Record<string, unknown> | null = null,
+  is_active: boolean = true,
+  id_uuid?: string,
+  direct_send_email: boolean = false
+): Promise<CustomWorkflow> {
+  const final_id = id_uuid || uuidv4();
   
   // Dual write system: Always write to local fallback first to ensure no data loss during container migrations
   if (!fallbackStore.customWorkflows) {
     fallbackStore.customWorkflows = [];
   }
   const record = {
-    id_uuid,
+    id_uuid: final_id,
     tenant_id: tenantId,
     workflow_name: name,
     workflow_description: description,
     tool_chain_sequence: toolChain,
+    trigger_type,
+    trigger_config,
+    is_active,
+    direct_send_email,
     created_by_identity,
     created_at_utc: new Date().toISOString(),
     updated_at_utc: new Date().toISOString()
@@ -472,7 +493,7 @@ export async function learnWorkflow(tenantId: string, name: string, description:
 
   // Synchronise or replace same duplicate workflow if newly proposed
   fallbackStore.customWorkflows = fallbackStore.customWorkflows.filter(
-    (w: any) => !(w.tenant_id === tenantId && w.workflow_name === name)
+    (w: CustomWorkflow) => !(w.tenant_id === tenantId && w.workflow_name === name)
   );
   fallbackStore.customWorkflows.push(record);
   
@@ -483,11 +504,11 @@ export async function learnWorkflow(tenantId: string, name: string, description:
     // Postgres synchronization
     try {
       await pool.query(`
-        INSERT INTO sys_louis_ai_custom_workflows (id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence, created_by_identity)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO sys_louis_ai_custom_workflows (id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence, trigger_type, trigger_config, is_active, created_by_identity, direct_send_email)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (tenant_id, workflow_name)
-        DO UPDATE SET workflow_description = EXCLUDED.workflow_description, tool_chain_sequence = EXCLUDED.tool_chain_sequence, created_by_identity = EXCLUDED.created_by_identity, updated_at_utc = CURRENT_TIMESTAMP
-      `, [id_uuid, tenantId, name, description, JSON.stringify(toolChain), created_by_identity]);
+        DO UPDATE SET workflow_description = EXCLUDED.workflow_description, tool_chain_sequence = EXCLUDED.tool_chain_sequence, trigger_type = EXCLUDED.trigger_type, trigger_config = EXCLUDED.trigger_config, is_active = EXCLUDED.is_active, created_by_identity = EXCLUDED.created_by_identity, direct_send_email = EXCLUDED.direct_send_email, updated_at_utc = CURRENT_TIMESTAMP
+      `, [final_id, tenantId, name, description, JSON.stringify(toolChain), trigger_type, trigger_config ? JSON.stringify(trigger_config) : null, is_active, created_by_identity, direct_send_email]);
     } catch (err) {
       console.warn("Postgres synchronization failed in learnWorkflow, fallback store used:", err);
     }
@@ -497,39 +518,156 @@ export async function learnWorkflow(tenantId: string, name: string, description:
 }
 
 /**
+ * Auto-healing helper to mend workflows created via Telegram / falling back improperly
+ */
+async function healWorkflows(tenantId: string, workflows: unknown[]): Promise<unknown[]> {
+  let changed = false;
+  const healed: unknown[] = [];
+  for (const rawW of workflows) {
+    if (!rawW) continue;
+    const w = rawW as Record<string, unknown>;
+
+    // Guarantee that serialized string fields are correctly parsed into nested JS array/objects
+    if (typeof w.tool_chain_sequence === "string") {
+      try {
+        w.tool_chain_sequence = JSON.parse(w.tool_chain_sequence);
+      } catch (err) {
+        console.warn("[healWorkflows] Failed to parse tool_chain_sequence string JSON representation", err);
+      }
+    }
+    if (typeof w.trigger_config === "string") {
+      try {
+        w.trigger_config = JSON.parse(w.trigger_config);
+      } catch (err) {
+        console.warn("[healWorkflows] Failed to parse trigger_config string JSON representation", err);
+      }
+    }
+
+    const isFaultyName = w.workflow_name === "Automated AI Recipe";
+    const hasJsonDesc = typeof w.workflow_description === 'string' && w.workflow_description.trim().startsWith('{');
+    
+    if (isFaultyName || hasJsonDesc) {
+      try {
+        let descStr = (w.workflow_description as string || "").trim();
+        // Strip markdown backticks if any
+        if (descStr.startsWith("```")) {
+          descStr = descStr.replace(/^```[a-zA-Z0-9]*\s*/, "");
+          descStr = descStr.replace(/\s*```$/, "");
+        }
+        descStr = descStr.trim();
+        const parsed = JSON.parse(descStr);
+        if (parsed && typeof parsed === 'object' && (parsed.workflow_name || parsed.name)) {
+          w.workflow_name = parsed.workflow_name || parsed.name || w.workflow_name;
+          w.workflow_description = parsed.workflow_description || parsed.description || w.workflow_description;
+          w.trigger_type = parsed.trigger_type || w.trigger_type || "MANUAL";
+          w.trigger_config = parsed.trigger_config || w.trigger_config || null;
+          w.direct_send_email = parsed.direct_send_email !== undefined ? !!parsed.direct_send_email : !!w.direct_send_email;
+          
+          let seq = parsed.tool_chain_sequence || parsed.tool_chain || parsed.sequence || [];
+          if (Array.isArray(seq) && seq.length > 0) {
+            w.tool_chain_sequence = seq.map((step: any) => {
+              if (step && typeof step === 'object') {
+                return {
+                  tool: step.tool || "crm_data_analyst",
+                  instruction: step.instruction || step.description || ""
+                };
+              }
+              return { tool: "crm_data_analyst", instruction: String(step) };
+            });
+          }
+          
+          changed = true;
+          // Persist the healed workflow to PostgreSQL if not using fallback
+          if (!isUsingFallback && pool) {
+            try {
+              await pool.query(`
+                UPDATE sys_louis_ai_custom_workflows
+                SET workflow_name = $1, workflow_description = $2, tool_chain_sequence = $3, trigger_type = $4, trigger_config = $5, direct_send_email = $6, updated_at_utc = CURRENT_TIMESTAMP
+                WHERE id_uuid = $7 AND tenant_id = $8
+              `, [
+                w.workflow_name,
+                w.workflow_description,
+                JSON.stringify(w.tool_chain_sequence),
+                w.trigger_type,
+                w.trigger_config ? JSON.stringify(w.trigger_config) : null,
+                w.direct_send_email,
+                w.id_uuid,
+                tenantId
+              ]);
+            } catch (err) {
+              console.warn("Postgres heal sync failed:", err);
+            }
+          }
+        }
+      } catch (err) {
+        // Not valid JSON or can't be healed, leave it
+      }
+    }
+    healed.push(w);
+  }
+  if (changed) {
+    if (fallbackStore.customWorkflows) {
+      // Sync fallback store
+      for (const rawW of healed) {
+        const w = rawW as Record<string, unknown>;
+        const idx = fallbackStore.customWorkflows.findIndex((local: any) => local.id_uuid === w.id_uuid);
+        if (idx >= 0) {
+          fallbackStore.customWorkflows[idx] = { ...fallbackStore.customWorkflows[idx], ...w };
+        }
+      }
+      saveFallbackStore();
+    }
+  }
+  return healed;
+}
+
+/**
  * Tool 6: Get Learned Workflows List
  */
-export async function getLearnedWorkflows(tenantId: string): Promise<any[]> {
+export async function getLearnedWorkflows(tenantId: string): Promise<CustomWorkflow[]> {
   if (isUsingFallback) {
-    return (fallbackStore.customWorkflows || []).filter((w: any) => w.tenant_id === tenantId);
+    const list = (fallbackStore.customWorkflows || []).filter((w: CustomWorkflow) => w.tenant_id === tenantId);
+    return (await healWorkflows(tenantId, list)) as CustomWorkflow[];
   }
 
   try {
-    const result = await pool.query("SELECT id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence, created_by_identity, created_at_utc, updated_at_utc FROM sys_louis_ai_custom_workflows WHERE tenant_id = $1", [tenantId]);
+    const result = await pool.query("SELECT id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence, trigger_type, trigger_config, is_active, direct_send_email, created_by_identity, created_at_utc, updated_at_utc FROM sys_louis_ai_custom_workflows WHERE tenant_id = $1", [tenantId]);
     
     // Auto-recovery / Dual Database Symmetrie:
     // If PostgreSQL has 0 rows, but we find workflows in our local fallback store, sync them into PG
     if (result.rows.length === 0 && fallbackStore.customWorkflows && fallbackStore.customWorkflows.length > 0) {
-      const locals = fallbackStore.customWorkflows.filter((w: any) => w.tenant_id === tenantId);
+      const locals = fallbackStore.customWorkflows.filter((w: CustomWorkflow) => w.tenant_id === tenantId);
       if (locals.length > 0) {
         for (const local of locals) {
           try {
             await pool.query(`
-              INSERT INTO sys_louis_ai_custom_workflows (id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence)
-              VALUES ($1, $2, $3, $4, $5)
+              INSERT INTO sys_louis_ai_custom_workflows (id_uuid, tenant_id, workflow_name, workflow_description, tool_chain_sequence, trigger_type, trigger_config, is_active, direct_send_email)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
               ON CONFLICT (tenant_id, workflow_name) DO NOTHING
-            `, [local.id_uuid, local.tenant_id, local.workflow_name, local.workflow_description, JSON.stringify(local.tool_chain_sequence)]);
+            `, [
+              local.id_uuid, 
+              local.tenant_id, 
+              local.workflow_name, 
+              local.workflow_description, 
+              JSON.stringify(local.tool_chain_sequence),
+              local.trigger_type || 'MANUAL',
+              local.trigger_config ? JSON.stringify(local.trigger_config) : null,
+              local.is_active !== undefined ? local.is_active : true,
+              local.direct_send_email !== undefined ? local.direct_send_email : false
+            ]);
           } catch (e) {
             console.warn("Failed background Postgres sync of custom workflow", e);
           }
         }
-        return locals;
+        const localsHealed = await healWorkflows(tenantId, locals);
+        return localsHealed as CustomWorkflow[];
       }
     }
-    return result.rows;
+    const dbHealed = await healWorkflows(tenantId, result.rows);
+    return dbHealed as CustomWorkflow[];
   } catch (err) {
     console.warn("Postgres query failed in getLearnedWorkflows, falling back to local fallbackStore:", err);
-    return (fallbackStore.customWorkflows || []).filter((w: any) => w.tenant_id === tenantId);
+    return (fallbackStore.customWorkflows || []).filter((w: CustomWorkflow) => w.tenant_id === tenantId);
   }
 }
 
@@ -544,7 +682,7 @@ export async function deleteWorkflow(tenantId: string, id_uuid: string): Promise
   }
   const initialLen = fallbackStore.customWorkflows.length;
   fallbackStore.customWorkflows = fallbackStore.customWorkflows.filter(
-    (w: any) => !(w.id_uuid === id_uuid && w.tenant_id === tenantId)
+    (w: CustomWorkflow) => !(w.id_uuid === id_uuid && w.tenant_id === tenantId)
   );
   if (fallbackStore.customWorkflows.length < initialLen) {
     fallbackUpdated = true;
@@ -568,3 +706,110 @@ export async function deleteWorkflow(tenantId: string, id_uuid: string): Promise
 
   return fallbackUpdated || dbDeleted;
 }
+
+interface WorkflowStepArgs {
+  tool?: string;
+  instruction?: string;
+  description?: string;
+}
+
+interface WorkflowArgs {
+  workflow_name?: string;
+  name?: string;
+  workflow_description?: string;
+  description?: string;
+  tool_chain_sequence?: WorkflowStepArgs[];
+  tool_chain?: WorkflowStepArgs[];
+  sequence?: WorkflowStepArgs[];
+  trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
+  trigger_config?: Record<string, unknown> | null;
+  direct_send_email?: boolean;
+  is_active?: boolean;
+}
+
+export async function executeLearnWorkflow(
+  tenantId: string,
+  argsStr: string,
+  actor: string = "ai_assistant"
+): Promise<unknown> {
+  try {
+    let rawArgs: WorkflowArgs | null = null;
+    let cleanedArgsStr = (argsStr || "").trim();
+    if (cleanedArgsStr.startsWith("```")) {
+      cleanedArgsStr = cleanedArgsStr.replace(/^```[a-zA-Z0-9]*\s*/, "");
+      cleanedArgsStr = cleanedArgsStr.replace(/\s*```$/, "");
+    }
+    cleanedArgsStr = cleanedArgsStr.trim();
+
+    try {
+      rawArgs = JSON.parse(cleanedArgsStr) as WorkflowArgs;
+    } catch {
+      // Fallback if the AI passes unstructured string
+      const fallbackName = "Automated AI Recipe";
+      const fallbackDesc = argsStr;
+      const fallbackSeq = [{ tool: "crm_data_analyst", instruction: argsStr }];
+      return await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
+    }
+
+    if (!rawArgs || typeof rawArgs !== "object") {
+      const fallbackName = "Automated AI Recipe";
+      const fallbackDesc = argsStr;
+      const fallbackSeq = [{ tool: "crm_data_analyst", instruction: argsStr }];
+      return await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
+    }
+
+    const name = rawArgs.workflow_name || rawArgs.name || "Automated AI Recipe";
+    const description = rawArgs.workflow_description || rawArgs.description || name;
+    
+    // Parse tool chain sequence
+    const toolChain: { tool: string; instruction: string }[] = [];
+    const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || [];
+    if (Array.isArray(seq) && seq.length > 0) {
+      for (const step of seq) {
+        if (step && typeof step === "object") {
+          const tool = step.tool || "crm_data_analyst";
+          const rawInst = step.instruction || step.description || "";
+          
+          // Clean the instruction: remove prefixes like "Schritt X:", "Step X:", "1.", etc., or system directive patterns.
+          let cleanedInst = rawInst.trim();
+          
+          // Helper string cleanups to remove potential leading step markers
+          cleanedInst = cleanedInst.replace(/^(Schritt\s+\d+|Step\s+\d+|\d+\.)\s*:\s*/i, "");
+          
+          toolChain.push({
+            tool,
+            instruction: cleanedInst
+          });
+        }
+      }
+    }
+
+    if (toolChain.length === 0) {
+      toolChain.push({
+        tool: "crm_data_analyst",
+        instruction: description
+      });
+    }
+
+    const trigger_type = rawArgs.trigger_type || "MANUAL";
+    const trigger_config = rawArgs.trigger_config || null;
+    const direct_send_email = !!rawArgs.direct_send_email;
+    const is_active = rawArgs.is_active !== undefined ? !!rawArgs.is_active : true;
+
+    return await learnWorkflow(
+      tenantId,
+      name,
+      description,
+      toolChain,
+      actor,
+      trigger_type,
+      trigger_config,
+      is_active,
+      undefined,
+      direct_send_email
+    );
+  } catch (err) {
+    return `Fehler beim Erstellen des Workflows: ${(err as Error).message}`;
+  }
+}
+

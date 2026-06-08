@@ -30,11 +30,13 @@ import {
   TextGeneratorConfigSchema
 } from "../../lib/schemas.js";
 import { runLouisAiFlow, executePassiveShortTermCompression } from "../ai/orchestrator.js";
+import { workflowEventBus } from "../ai/workflowEventBus.js";
+import { workflowExecutor } from "../ai/workflowExecutor.js";
 import { getLearnedWorkflows, learnWorkflow, deleteWorkflow } from "../ai/tools.js";
 import { generateContentSafe, generateContentUniversal } from "../ai/geminiHelper.js";
 import { generateEmbedding, getRagConfig } from "../ai/embeddingHelper.js";
-import { forceManualIngest, unindexFileFromRag, isTextBasedFile, mimeTypeFromFilename, intelligentChunkAndProcess } from "../storage.js";
-import { ChatMessage, Company, Contact, Invoice, LouisAiConfig } from "../../types.js";
+import { forceManualIngest, unindexFileFromRag, isTextBasedFile, mimeTypeFromFilename, intelligentChunkAndProcess, ingestEmailToRag } from "../storage.js";
+import { ChatMessage, Company, Contact, Invoice, LouisAiConfig, CustomWorkflow, SmtpSettings } from "../../types.js";
 
 interface EntityNote {
   id_uuid: string;
@@ -177,8 +179,8 @@ export const louisAiRouter = router({
       embedding_provider: z.enum(['ollama', 'openai', 'gemini']).optional().default('gemini'),
       embedding_api_key_secret: z.string().optional().nullable().default(''),
       embedding_base_url: z.string().optional().nullable().default(''),
-      embedding_model_name: z.string().optional().default('text-embedding-004'),
-      vector_dimensions: z.number().optional().default(1536),
+      embedding_model_name: z.string().optional().default('gemini-embedding-2-preview'),
+      vector_dimensions: z.number().optional().default(3072),
       keep_alive_minutes: z.number().optional().default(5),
       parallel_slots: z.number().optional().default(1),
       chunk_size: z.number().optional().default(500),
@@ -204,8 +206,8 @@ export const louisAiRouter = router({
             embedding_provider: found.embedding_provider || 'gemini',
             embedding_api_key_secret: found.embedding_api_key_secret || '',
             embedding_base_url: found.embedding_base_url || '',
-            embedding_model_name: found.embedding_model_name || 'text-embedding-004',
-            vector_dimensions: found.vector_dimensions || 1536,
+            embedding_model_name: found.embedding_model_name || 'gemini-embedding-2-preview',
+            vector_dimensions: found.vector_dimensions || 3072,
             keep_alive_minutes: found.keep_alive_minutes ?? 5,
             parallel_slots: found.parallel_slots ?? 1,
             chunk_size: found.chunk_size ?? 500,
@@ -236,8 +238,8 @@ export const louisAiRouter = router({
             embedding_provider: (row.embedding_provider as LouisAiConfig['embedding_provider']) || 'gemini',
             embedding_api_key_secret: row.embedding_api_key_secret || '',
             embedding_base_url: row.embedding_base_url || '',
-            embedding_model_name: row.embedding_model_name || 'text-embedding-004',
-            vector_dimensions: row.vector_dimensions ?? 1536,
+            embedding_model_name: row.embedding_model_name || 'gemini-embedding-2-preview',
+            vector_dimensions: row.vector_dimensions ?? 3072,
             keep_alive_minutes: row.keep_alive_minutes ?? 5,
             parallel_slots: row.parallel_slots ?? 1,
             chunk_size: row.chunk_size ?? 500,
@@ -259,8 +261,8 @@ export const louisAiRouter = router({
         embedding_provider: 'gemini',
         embedding_api_key_secret: '',
         embedding_base_url: '',
-        embedding_model_name: 'text-embedding-004',
-        vector_dimensions: 1536,
+        embedding_model_name: 'gemini-embedding-2-preview',
+        vector_dimensions: 3072,
         keep_alive_minutes: 5,
         parallel_slots: 1,
         chunk_size: 500,
@@ -330,8 +332,8 @@ export const louisAiRouter = router({
           input.embedding_provider || 'gemini',
           input.embedding_api_key_secret || '',
           input.embedding_base_url || '',
-          input.embedding_model_name || 'text-embedding-004',
-          input.vector_dimensions || 1536,
+          input.embedding_model_name || 'gemini-embedding-2-preview',
+          input.vector_dimensions || 3072,
           input.keep_alive_minutes || 5,
           input.parallel_slots || 1,
           input.chunk_size || 500,
@@ -490,7 +492,7 @@ export const louisAiRouter = router({
         const invoiceId = pState.invoice_id && pState.invoice_id !== 'null' ? String(pState.invoice_id).trim() : undefined;
 
         // Retrieve SMTP Settings
-        let smtp: any;
+        let smtp: SmtpSettings | undefined;
         if (isUsingFallback) {
           smtp = fallbackStore.smtpSettings;
         } else {
@@ -515,12 +517,12 @@ export const louisAiRouter = router({
           }
         });
 
-        const attachments: any[] = [];
+        const attachments: { filename: string; path: string }[] = [];
         if (invoiceId) {
           try {
             console.log(`[SMTP AI Human-In-The-Loop] Compiling invoice files from disk for Invoice-UUID: ${invoiceId}`);
             await generateInvoiceFilesOnDisk(invoiceId, tenantId);
-            let invoice: any = null;
+            let invoice: (Invoice & { entityType?: string; entityId?: string; entityName?: string; co_name?: string; ct_name?: string; company_name?: string }) | null = null;
             if (isUsingFallback) {
               const found = fallbackStore.invoices.find(i => i.id_uuid === invoiceId);
               if (found) {
@@ -639,11 +641,11 @@ export const louisAiRouter = router({
               
               // If entity_id or entity_type is missing, try to resolve via recipient contact first, then company
               if (!eId || !eType) {
-                let contact: any = null;
+                let contact: Contact | null = null;
                 if (isUsingFallback) {
-                  contact = fallbackStore.contacts?.find((c: any) => 
+                  contact = fallbackStore.contacts?.find((c: Contact) => 
                     c.email_address?.toLowerCase() === cleanRecipient.toLowerCase() && c.tenant_id === tenantId
-                  );
+                  ) || null;
                 } else {
                   try {
                     const contactRes = await pool.query(
@@ -660,11 +662,11 @@ export const louisAiRouter = router({
                   eType = "contacts";
                 } else {
                   // Fallback to company
-                  let company: any = null;
+                  let company: Company | null = null;
                   if (isUsingFallback) {
-                    company = fallbackStore.companies?.find((co: any) => 
+                    company = fallbackStore.companies?.find((co: Company) => 
                       co.email_address?.toLowerCase() === cleanRecipient.toLowerCase() && co.tenant_id === tenantId
-                    );
+                    ) || null;
                   } else {
                     try {
                       const companyRes = await pool.query(
@@ -749,11 +751,11 @@ export const louisAiRouter = router({
               } else {
                 // If source says knowledge but not found, try to search the recipient contact/company vault
                 const cleanRecipient = recipient.includes("<") ? (recipient.match(/<([^>]+)>/)?.[1] || recipient).trim() : recipient.trim();
-                let contact: any = null;
+                let contact: Contact | null = null;
                 if (isUsingFallback) {
-                  contact = fallbackStore.contacts?.find((c: any) => 
+                  contact = fallbackStore.contacts?.find((c: Contact) => 
                     c.email_address?.toLowerCase() === cleanRecipient.toLowerCase() && c.tenant_id === tenantId
-                  );
+                  ) || null;
                 } else {
                   try {
                     const contactRes = await pool.query(
@@ -765,7 +767,7 @@ export const louisAiRouter = router({
                 }
                 if (contact) {
                   const entityName = contact.full_legal_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || "Vault";
-                  const entityPath = getEntityStoragePath("contacts", contact.id_uuid || contact.id, entityName, tenantId);
+                  const entityPath = getEntityStoragePath("contacts", contact.id_uuid, entityName, tenantId);
                   if (fs.existsSync(entityPath)) {
                     const filesInDir = fs.readdirSync(entityPath);
                     const matched = filesInDir.find(f => f.toLowerCase() === filename.toLowerCase()) ||
@@ -811,6 +813,19 @@ export const louisAiRouter = router({
           attachments,
         });
 
+        try {
+          await ingestEmailToRag({
+            tenantId,
+            recipient: recipient,
+            senderType: 'AI',
+            subject: subject,
+            body: body,
+            attachments: attachments
+          });
+        } catch (ragErr) {
+          console.error("[approveProposedChange] Failed to ingest sent mail to RAG:", ragErr);
+        }
+
         console.log(`[SMTP Human-In-The-Loop] Mail successfully sent to ${recipient} via approved proposal.`);
       } else if (isUsingFallback) {
         // Fallback Store mutations
@@ -828,10 +843,10 @@ export const louisAiRouter = router({
               } as typeof fallbackStore.companies[number];
             }
           } else {
-            const pState = input.proposed_state as any;
+            const pState = input.proposed_state as Record<string, unknown>;
             let existingIdx = fallbackStore.companies.findIndex((c) => c.id_uuid === appliedId);
             if (existingIdx === -1 && pState.full_legal_name) {
-              existingIdx = fallbackStore.companies.findIndex((c) => c.full_legal_name?.toLowerCase() === pState.full_legal_name.toLowerCase() && c.tenant_id === tenantId);
+              existingIdx = fallbackStore.companies.findIndex((c) => c.full_legal_name?.toLowerCase() === (pState.full_legal_name as string).toLowerCase() && c.tenant_id === tenantId);
             }
             if (existingIdx >= 0) {
               const targetId = fallbackStore.companies[existingIdx].id_uuid;
@@ -841,7 +856,7 @@ export const louisAiRouter = router({
                 id_uuid: targetId,
                 is_verified_by_human: true,
                 updated_at_utc: new Date().toISOString()
-              } as any;
+              } as typeof fallbackStore.companies[number];
             } else {
               fallbackStore.companies.unshift({
                 ...(input.proposed_state as unknown as Company),
@@ -854,6 +869,7 @@ export const louisAiRouter = router({
                 updated_at_utc: new Date().toISOString()
               } as unknown as typeof fallbackStore.companies[number]);
             }
+            workflowEventBus.emitEvent(tenantId, 'company.created', { id_uuid: existingIdx >= 0 ? fallbackStore.companies[existingIdx].id_uuid : appliedId, ...pState });
           }
         } else if (entityType === "contacts") {
           if (action === "DELETE") {
@@ -869,13 +885,13 @@ export const louisAiRouter = router({
               } as typeof fallbackStore.contacts[number];
             }
           } else {
-            const pState = input.proposed_state as any;
+            const pState = input.proposed_state as Record<string, unknown>;
             let existingIdx = fallbackStore.contacts.findIndex((c) => c.id_uuid === appliedId);
             if (existingIdx === -1 && pState.email_address) {
-              existingIdx = fallbackStore.contacts.findIndex((c) => c.email_address?.toLowerCase() === pState.email_address.toLowerCase() && c.tenant_id === tenantId);
+              existingIdx = fallbackStore.contacts.findIndex((c) => c.email_address?.toLowerCase() === (pState.email_address as string).toLowerCase() && c.tenant_id === tenantId);
             }
             if (existingIdx === -1 && pState.last_name) {
-              existingIdx = fallbackStore.contacts.findIndex((c) => (c.first_name || '').toLowerCase() === (pState.first_name || '').toLowerCase() && c.last_name?.toLowerCase() === pState.last_name.toLowerCase() && c.tenant_id === tenantId);
+              existingIdx = fallbackStore.contacts.findIndex((c) => (c.first_name || '').toLowerCase() === ((pState.first_name as string) || '').toLowerCase() && c.last_name?.toLowerCase() === (pState.last_name as string).toLowerCase() && c.tenant_id === tenantId);
             }
 
             if (existingIdx >= 0) {
@@ -884,10 +900,10 @@ export const louisAiRouter = router({
                 ...fallbackStore.contacts[existingIdx],
                 ...pState,
                 id_uuid: targetId,
-                full_legal_name: pState.full_legal_name || fallbackStore.contacts[existingIdx].full_legal_name || `${pState.first_name || fallbackStore.contacts[existingIdx].first_name || ''} ${pState.last_name || fallbackStore.contacts[existingIdx].last_name || ''}`.trim(),
+                full_legal_name: (pState.full_legal_name as string) || fallbackStore.contacts[existingIdx].full_legal_name || `${(pState.first_name as string) || fallbackStore.contacts[existingIdx].first_name || ''} ${(pState.last_name as string) || fallbackStore.contacts[existingIdx].last_name || ''}`.trim(),
                 is_verified_by_human: true,
                 updated_at_utc: new Date().toISOString()
-              } as any;
+              } as typeof fallbackStore.contacts[number];
             } else {
               const fullName = pState.full_legal_name || `${pState.first_name || ''} ${pState.last_name || ''}`.trim() || 'Unbekannter Kontakt';
               fallbackStore.contacts.unshift({
@@ -902,6 +918,7 @@ export const louisAiRouter = router({
                 updated_at_utc: new Date().toISOString()
               } as unknown as typeof fallbackStore.contacts[number]);
             }
+            workflowEventBus.emitEvent(tenantId, 'contact.created', { id_uuid: existingIdx >= 0 ? fallbackStore.contacts[existingIdx].id_uuid : appliedId, ...pState });
           }
         } else if (entityType === "invoices") {
           if (action === "DELETE") {
@@ -932,7 +949,7 @@ export const louisAiRouter = router({
                 invoice_line_items_json: JSON.stringify(pState.invoice_line_items || fallbackStore.invoices[existingIdx].invoice_line_items || []),
                 is_verified_by_human: true,
                 updated_at_utc: new Date().toISOString()
-              } as any;
+              } as typeof fallbackStore.invoices[number];
             } else {
               fallbackStore.invoices.unshift({
                 ...pState,
@@ -946,6 +963,14 @@ export const louisAiRouter = router({
                 updated_at_utc: new Date().toISOString()
               } as unknown as typeof fallbackStore.invoices[number]);
             }
+            
+            workflowEventBus.emitEvent(tenantId, 'invoice.created', {
+              id_uuid: existingIdx >= 0 ? fallbackStore.invoices[existingIdx].id_uuid : appliedId,
+              invoice_number: pState.invoice_number,
+              total_gross_amount: pState.total_gross_amount,
+              associated_company_id: pState.associated_company_id,
+              associated_contact_id: pState.associated_contact_id
+            });
           }
         }
         saveFallbackStore();
@@ -1014,6 +1039,7 @@ export const louisAiRouter = router({
                 actorIdentity
               ]);
             }
+            workflowEventBus.emitEvent(tenantId, 'company.created', { id_uuid: existingId, ...pState });
           }
         } else if (entityType === "contacts") {
           if (action === "DELETE") {
@@ -1076,6 +1102,7 @@ export const louisAiRouter = router({
                 actorIdentity
               ]);
             }
+            workflowEventBus.emitEvent(tenantId, 'contact.created', { id_uuid: existingId, ...pState });
           }
         } else if (entityType === "invoices") {
           if (action === "DELETE") {
@@ -1136,6 +1163,14 @@ export const louisAiRouter = router({
                 JSON.stringify(pState.invoice_line_items || []), actorIdentity
               ]);
             }
+            
+            workflowEventBus.emitEvent(tenantId, 'invoice.created', {
+              id_uuid: existingId,
+              invoice_number: pState.invoice_number,
+              total_gross_amount: pState.total_gross_amount,
+              associated_company_id: pState.associated_company_id,
+              associated_contact_id: pState.associated_contact_id
+            });
           }
         }
       }
@@ -1192,7 +1227,18 @@ export const louisAiRouter = router({
         }
       }
 
-      const result = await learnWorkflow(tenantId, input.workflow_name, input.workflow_description, input.tool_chain_sequence, actorIdentity);
+      const result = await learnWorkflow(
+        tenantId, 
+        input.workflow_name, 
+        input.workflow_description, 
+        input.tool_chain_sequence, 
+        actorIdentity,
+        input.trigger_type,
+        input.trigger_config,
+        input.is_active,
+        input.id_uuid,
+        input.direct_send_email
+      );
       return result;
     }),
 
@@ -1211,6 +1257,173 @@ export const louisAiRouter = router({
         eventDetails: `Deleted LOUIS AI workflow tool: ${input.id_uuid}`
       });
       return { success };
+    }),
+
+  getWorkflowInstancesLog: protectedProcedure
+    .query(async ({ ctx }) => {
+      const tenantId = ctx.tenantId;
+      if (isUsingFallback) {
+        return (fallbackStore.workflowInstances || []).filter(i => i.tenant_id === tenantId);
+      }
+      try {
+        const res = await pool.query(
+          "SELECT id_uuid, tenant_id, workflow_id, status, initial_payload, current_step_index, execution_log, execute_at_utc, created_at_utc, updated_at_utc FROM sys_louis_ai_workflow_instances WHERE tenant_id = $1 ORDER BY created_at_utc DESC",
+          [tenantId]
+        );
+        return res.rows.map(row => ({
+          ...row,
+          initial_payload: typeof row.initial_payload === 'string' ? JSON.parse(row.initial_payload) : row.initial_payload,
+          execution_log: typeof row.execution_log === 'string' ? JSON.parse(row.execution_log) : row.execution_log
+        }));
+      } catch (err) {
+        console.error("Failed to query postgres workflow instances, utilizing fallback store:", err);
+        return (fallbackStore.workflowInstances || []).filter(i => i.tenant_id === tenantId);
+      }
+    }),
+
+  updateWorkflowTrigger: protectedProcedure
+    .input(z.object({
+      id_uuid: z.string().uuid(),
+      trigger_type: z.enum(['MANUAL', 'CRM_EVENT', 'TIMER']),
+      trigger_config: z.record(z.string(), z.unknown()).nullable().optional()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const tenantId = ctx.tenantId;
+      if (isUsingFallback) {
+        const idx = (fallbackStore.customWorkflows || []).findIndex(w => w.id_uuid === input.id_uuid && w.tenant_id === tenantId);
+        if (idx !== -1) {
+          fallbackStore.customWorkflows[idx].trigger_type = input.trigger_type;
+          fallbackStore.customWorkflows[idx].trigger_config = input.trigger_config || {};
+          saveFallbackStore();
+          return { success: true };
+        }
+        throw new TRPCError({ code: "NOT_FOUND", message: "Workflow wurde nicht gefunden" });
+      }
+
+      try {
+        const res = await pool.query(
+          "UPDATE sys_louis_ai_custom_workflows SET trigger_type = $1, trigger_config = $2, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $3 AND tenant_id = $4 RETURNING id_uuid",
+          [input.trigger_type, JSON.stringify(input.trigger_config || {}), input.id_uuid, tenantId]
+        );
+        if (res.rows.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Workflow wurde in Postgres nicht gefunden" });
+        }
+        return { success: true };
+      } catch (err: unknown) {
+        // Safe write-through in case write fails
+        console.error("Postgres updateWorkflowTrigger failed, using fallback:", err);
+        const idx = (fallbackStore.customWorkflows || []).findIndex(w => w.id_uuid === input.id_uuid && w.tenant_id === tenantId);
+        if (idx !== -1) {
+          fallbackStore.customWorkflows[idx].trigger_type = input.trigger_type;
+          fallbackStore.customWorkflows[idx].trigger_config = input.trigger_config || {};
+          saveFallbackStore();
+          return { success: true };
+        }
+        const errMsg = err instanceof Error ? err.message : "Fehler beim Aktualisieren";
+        throw new TRPCError({ code: "NOT_FOUND", message: errMsg });
+      }
+    }),
+
+  toggleWorkflowStatus: protectedProcedure
+    .input(z.object({
+      id_uuid: z.string().uuid(),
+      is_active: z.boolean()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const tenantId = ctx.tenantId;
+      if (isUsingFallback) {
+        const idx = (fallbackStore.customWorkflows || []).findIndex(w => w.id_uuid === input.id_uuid && w.tenant_id === tenantId);
+        if (idx !== -1) {
+          fallbackStore.customWorkflows[idx].is_active = input.is_active;
+          saveFallbackStore();
+          return { success: true };
+        }
+        throw new TRPCError({ code: "NOT_FOUND", message: "Workflow wurde nicht gefunden" });
+      }
+
+      try {
+        const res = await pool.query(
+          "UPDATE sys_louis_ai_custom_workflows SET is_active = $1, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $2 AND tenant_id = $3 RETURNING id_uuid",
+          [input.is_active, input.id_uuid, tenantId]
+        );
+        if (res.rows.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Workflow wurde in Postgres nicht gefunden" });
+        }
+        return { success: true };
+      } catch (err: unknown) {
+        console.error("Postgres toggleWorkflowStatus failed, using fallback:", err);
+        const idx = (fallbackStore.customWorkflows || []).findIndex(w => w.id_uuid === input.id_uuid && w.tenant_id === tenantId);
+        if (idx !== -1) {
+          fallbackStore.customWorkflows[idx].is_active = input.is_active;
+          saveFallbackStore();
+          return { success: true };
+        }
+        const errMsg = err instanceof Error ? err.message : "Fehler beim Umschalten";
+        throw new TRPCError({ code: "NOT_FOUND", message: errMsg });
+      }
+    }),
+
+  triggerWorkflowManually: protectedProcedure
+    .input(z.object({
+      id_uuid: z.string().uuid()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const tenantId = ctx.tenantId;
+      let workflow: CustomWorkflow | null = null;
+
+      if (isUsingFallback) {
+        workflow = (fallbackStore.customWorkflows || []).find(w => w.id_uuid === input.id_uuid && w.tenant_id === tenantId) || null;
+      } else {
+        const res = await pool.query("SELECT * FROM sys_louis_ai_custom_workflows WHERE id_uuid = $1 AND tenant_id = $2", [input.id_uuid, tenantId]);
+        if (res.rows.length > 0) {
+          workflow = res.rows[0];
+        }
+      }
+
+      if (!workflow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Workflow wurde nicht gefunden" });
+      }
+
+       // Convert tool chain sequence format to standard array if it's string JSON
+      let steps = workflow.tool_chain_sequence;
+      if (typeof steps === "string") {
+        try {
+          steps = JSON.parse(steps);
+        } catch (_) {}
+      }
+
+      let config = workflow.trigger_config;
+      if (typeof config === "string") {
+        try {
+          config = JSON.parse(config);
+        } catch (_) {}
+      }
+
+      const workflowToRun: CustomWorkflow = {
+        id_uuid: workflow.id_uuid,
+        tenant_id: tenantId,
+        workflow_name: workflow.workflow_name,
+        workflow_description: workflow.workflow_description || (workflow as { description?: string }).description || "",
+        tool_chain_sequence: steps,
+        trigger_type: workflow.trigger_type || "MANUAL",
+        trigger_config: config || {},
+        is_active: workflow.is_active !== false,
+        direct_send_email: workflow.direct_send_email === true,
+        created_at_utc: workflow.created_at_utc,
+        updated_at_utc: workflow.updated_at_utc
+      };
+
+      const payload = {
+        triggered_by: "manual_ui",
+        timestamp: new Date().toISOString()
+      };
+
+      // Trigger the background scheduler / executor
+      workflowExecutor.execute(workflowToRun, payload).catch((err: unknown) => {
+        console.error(`[triggerWorkflowManually] Error executing workflow ID ${input.id_uuid}:`, err);
+      });
+
+      return { success: true };
     }),
 
   getUserMemory: protectedProcedure
@@ -2366,11 +2579,15 @@ ${input.content.trim()}
 
           const entity = list.find((e) => e.id_uuid === foundEntityId && e.tenant_id === tenantId);
           if (entity && entity.metadata) {
-            const metadataObj = entity.metadata as Record<string, any>;
-            if (metadataObj.notes && Array.isArray(metadataObj.notes)) {
-              const index = metadataObj.notes.findIndex((n: any) => n.id_uuid === input.id_uuid);
+            const metadataObj = entity.metadata as Record<string, unknown>;
+            const notes = metadataObj.notes;
+            if (notes && Array.isArray(notes)) {
+              const index = notes.findIndex((n: unknown) => {
+                const noteObj = n as Record<string, unknown>;
+                return noteObj.id_uuid === input.id_uuid;
+              });
               if (index !== -1) {
-                metadataObj.notes.splice(index, 1);
+                notes.splice(index, 1);
                 entity.metadata = metadataObj;
               }
             }

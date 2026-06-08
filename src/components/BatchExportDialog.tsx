@@ -168,9 +168,10 @@ export const BatchExportDialog: React.FC<BatchExportDialogProps> = ({
       toast.success(t('batch_export_success_toast', { defaultValue: 'Export erfolgreich abgeschlossen' }));
       setIsExporting(false);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Batch Export Error:", err);
-      toast.error(`${t('batch_export_failed', { defaultValue: 'Sammel-Export fehlgeschlagen' })}: ${err.message || err}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      toast.error(`${t('batch_export_failed', { defaultValue: 'Sammel-Export fehlgeschlagen' })}: ${errMsg}`);
       setIsExporting(false);
     }
   };

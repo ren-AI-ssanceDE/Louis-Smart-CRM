@@ -21,18 +21,21 @@ Bevor Sie das Projekt starten, stellen Sie sicher, dass folgende Softwarekompone
 Kopieren Sie die Beispieldatei `.env.example` in Ihr Project-Root-Verzeichnis und benennen Sie diese in `.env` um.
 
 ```env
-# .env.example
-PORT=3000
-NODE_ENV=development
-
-# Gemini API-Schlüssel für Louis AI
-GEMINI_API_KEY=dein_gemini_api_key_hier
+# .env
+GEMINI_API_KEY="MY_GEMINI_API_KEY"
+APP_URL="MY_APP_URL"
 
 # Datenbank-Verbindungszeichenfolge (für Option A)
-DATABASE_URL=postgresql://postgres:password@localhost:5432/louis_crm
+DATABASE_URL=postgres://user:password@localhost:5432/dbname
+PGHOST=localhost
+PGPORT=5432
+PGUSER=user
+PGPASSWORD=password
+PGDATABASE=dbname
 
-# Verschlüsselungs-Schlüssel für Session-Cookies (Auth)
-SESSION_SECRET=ein_sehr_sicherer_zufaelliger_string
+# Auth-Verschlüsselung & URL
+AUTH_SECRET=your_auth_secret_here
+AUTH_URL=http://localhost:3000
 ```
 
 > **Wichtig:** Verwenden Sie für Client-Bibliotheken im Frontend das Präfix `VITE_` (z.B. `VITE_PUBLIC_API_URL`). Sicherheitsrelevante Passwörter wie `GEMINI_API_KEY` oder `DATABASE_URL` dürfen **niemals** mit `VITE_` deklariert werden, da sie sonst in den kompilierte Javascript-Code des Browsers eingebettet würden.
@@ -57,30 +60,31 @@ Um das Projekt lokal in der Entwicklungsumgebung zu booten:
 
 ## 🏗️ 4. Produktions-Build und Start
 
-In einer Live-Umgebung (z.B. Docker-Container oder Cloud Run) wird das Frontend für maximale Ladegeschwindigkeiten vorkompiliert und der TypeScript Express-Server in ein optimiertes CommonJS-Bündel übersetzt.
+In einer Live-Umgebung (z.B. Docker-Container oder Cloud Run) wird das Frontend für maximale Ladegeschwindigkeiten über Vite vorkompiliert und der Express-Server läuft direkt und performant mit nativer TypeScript-Ausführung über `tsx`.
 
-Die Build-Scripte in `package.json` sind dafür exakt vorkonfiguriert:
+Die Build- und Start-Scripte in `package.json` sind dafür exakt vorkonfiguriert:
 
 ```json
 {
   "scripts": {
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs"
+    "dev": "tsx server.ts",
+    "start": "cross-env NODE_ENV=production tsx server.ts",
+    "build": "vite build"
   }
 }
 ```
 
 ### Build- und Start-Ablauf:
-1. **Bauen des Projekts**:
+1. **Bauen des Frontends**:
    ```bash
    npm run build
    ```
-   Dieses Kommando erzeugt einen statischen Client-Ordner unter `/dist` und kompiliert den Server zu der komprimierten Datei `dist/server.cjs`.
-2. **Produktions-Start**:
+   Dieses Kommando erzeugt einen statischen Client-Ordner unter `/dist`.
+2. **Produktions-Start des Fullstack-Servers**:
    ```bash
    npm run start
    ```
-   Dieser Schritt startet den HTTP-Server auf Port 3000 directly über Node, ohne TS-Kompilierungsschritte zur Laufzeit, was Ausführungszeiten minimiert.
+   Dieser Schritt startet den integrierten Express- und tRPC-Server im Produktionsmodus auf Port 3000 unter Nutzung von optimiertem Caching und statischer Asset-Zustellung.
 
 ---
 

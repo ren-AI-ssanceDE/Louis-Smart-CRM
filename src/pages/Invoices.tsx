@@ -9,7 +9,7 @@ import {
 import { useTranslation, Trans } from 'react-i18next';
 import { TFunction } from 'i18next';
 import { toast } from 'sonner';
-import { Invoice, Company, Contact } from '../types';
+import { Invoice, Company, Contact, InvoiceItemTemplate } from '../types';
 import { trpc } from '../lib/trpc';
 import { formatCurrency, calculateInvoiceTotals, calculateLineItemNet, calculateLineItemVat, LineItem } from '../lib/math';
 import { cn, compareInvoiceNumbers, getDueDateStatus, PAYMENT_METHODS } from '../lib/utils';
@@ -178,6 +178,44 @@ export const Invoices = () => {
   const [introductoryText, setIntroductoryText] = React.useState('');
   const [closingText, setClosingText] = React.useState('');
 
+  const introTextareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const closingTextareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const insertTextareaPlaceholder = (
+    ref: React.RefObject<HTMLTextAreaElement | null>,
+    tag: string,
+    setter: React.Dispatch<React.SetStateAction<string>>
+  ) => {
+    const textarea = ref.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const before = text.substring(0, start);
+      const after  = text.substring(end, text.length);
+      const newValue = before + tag + after;
+      setter(newValue);
+      
+      // Reset cursor position after state updates
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + tag.length, start + tag.length);
+      }, 0);
+    } else {
+      setter(prev => prev + tag);
+    }
+  };
+
+  const invoiceVariables = [
+    { tag: '{{invoice_number}}', label: t('dialog.var_invoice_number', { defaultValue: 'Rechnungsnummer' }) },
+    { tag: '{{due_date}}', label: t('dialog.var_due_date', { defaultValue: 'Zahlungsziel' }) },
+    { tag: '{{my_contact_person}}', label: t('dialog.var_my_contact_person', { defaultValue: 'Eigener Ansprechpartner' }) },
+    { tag: '{{total_gross}}', label: t('dialog.var_total_gross', { defaultValue: 'Bruttobetrag' }) },
+    { tag: '{{recipient_name}}', label: t('dialog.var_recipient_name', { defaultValue: 'Kundenname' }) },
+    { tag: '{{my_company_name}}', label: t('dialog.var_my_company', { defaultValue: 'Eigene Firma' }) },
+    { tag: '{{currency}}', label: t('dialog.var_currency', { defaultValue: 'Währung' }) },
+  ];
+
   // Search & Pagination constraints
   const [searchQuery, setSearchQuery] = React.useState('');
   const [limit, setLimit] = React.useState(10);
@@ -247,6 +285,13 @@ export const Invoices = () => {
   const { data: invoiceTextTemplates = [] } = trpc.getInvoiceTextTemplates.useQuery();
   const { data: invoiceItemTemplates = [] } = trpc.getInvoiceItemTemplates.useQuery();
 
+  // Keep bank account state synchronized with the configured bank from the Admin Panel
+  React.useEffect(() => {
+    if (myCompany?.bank_name && (bankAccount === 'standard' || bankAccount === 'sparkasse' || !bankAccount)) {
+      setBankAccount(myCompany.bank_name);
+    }
+  }, [myCompany, bankAccount]);
+
   const replaceInvoicePlaceholders = (text: string) => {
     if (!text) return '';
     let replaced = text;
@@ -288,7 +333,7 @@ export const Invoices = () => {
         if (ct.company_name) {
           rCompany = ct.company_name;
         } else if (ct.associated_company_id) {
-          const assocCo = companies.find((co: any) => co.id_uuid === ct.associated_company_id);
+          const assocCo = companies.find((co: { id_uuid?: string; full_legal_name?: string | null }) => co.id_uuid === ct.associated_company_id);
           if (assocCo) {
             rCompany = assocCo.full_legal_name || '';
           }
@@ -347,7 +392,30 @@ export const Invoices = () => {
       dueDateStr = date.toLocaleDateString(activeLocale);
     }
 
-    const nextInvoiceNumber = selectedInvoice?.invoice_number || '';
+    // Resolve active invoice number securely, resolving a predicted next sequencial number if in creation/draft mode
+    let nextInvoiceNumber = '';
+    if (editingInvoiceId) {
+      nextInvoiceNumber = invoices.find(i => i.id_uuid === editingInvoiceId)?.invoice_number || '';
+    } else if (myCompany) {
+      const prefix = myCompany.invoice_number_prefix ?? "RE-";
+      const yearFixed = myCompany.invoice_number_year_fixed ?? true;
+      const nextSeq = myCompany.invoice_number_next_seq ?? 1;
+      const minDigits = myCompany.invoice_number_min_digits ?? 4;
+      const issueDateYear = issueDate ? new Date(issueDate).getFullYear() : new Date().getFullYear();
+      const paddedSeq = String(nextSeq).padStart(minDigits, "0");
+
+      if (yearFixed) {
+        if (prefix.includes("YYYY")) {
+          nextInvoiceNumber = prefix.replace("YYYY", String(issueDateYear)) + paddedSeq;
+        } else if (prefix.includes("{year}")) {
+          nextInvoiceNumber = prefix.replace("{year}", String(issueDateYear)) + paddedSeq;
+        } else {
+          nextInvoiceNumber = `${prefix}${issueDateYear}-${paddedSeq}`;
+        }
+      } else {
+        nextInvoiceNumber = `${prefix}${paddedSeq}`;
+      }
+    }
 
     replaced = replaced
       .replace(/\{\{my_company_name\}\}/g, myCompanyName)
@@ -489,7 +557,8 @@ export const Invoices = () => {
       setIsVatInclusive(false);
       setIntroductoryText('');
       setClosingText('');
-      if ((variables as any)?.payment_status === 'draft') {
+      const vars = variables as { payment_status?: string } | undefined;
+      if (vars?.payment_status === 'draft') {
         setStatusFilter('draft');
       } else {
         setStatusFilter('all');
@@ -502,8 +571,9 @@ export const Invoices = () => {
 
   const generatePdfMutation = trpc.generateFiscalPdf.useMutation({
     onSuccess: (data, variables) => {
-      if (data.success && (variables as any)?.invoiceId) {
-        handleDownloadPdf((variables as any).invoiceId);
+      const vars = variables as { invoiceId?: string } | undefined;
+      if (data.success && vars?.invoiceId) {
+        handleDownloadPdf(vars.invoiceId);
       } else {
         toast.error(`${t('preview.pdf_export_error')}: ${data.error}`);
       }
@@ -592,7 +662,7 @@ export const Invoices = () => {
         setSelectedCompanyId(comp.id_uuid);
         setCompanySearchQuery(comp.full_legal_name);
         setAssociatedContactId('');
-        setBankAccount('standard');
+        setBankAccount(myCompany?.bank_name || 'Standard');
         setIssueDate(new Date().toISOString().split('T')[0]);
         setServiceDate('');
         setPaymentTerm(comp.payment_term || '14');
@@ -637,7 +707,7 @@ export const Invoices = () => {
     setSelectedCompanyId('');
     setCompanySearchQuery('');
     setAssociatedContactId('');
-    setBankAccount('standard');
+    setBankAccount(myCompany?.bank_name || 'Standard');
     setIssueDate(new Date().toISOString().split('T')[0]);
     setServiceDate('');
     setPaymentTerm('14');
@@ -670,7 +740,13 @@ export const Invoices = () => {
     setSelectedCompanyId(invoice.associated_company_id || '');
     setCompanySearchQuery(invoice.company_name || '');
     setAssociatedContactId(invoice.associated_contact_id || '');
-    setBankAccount(invoice.bank_account || 'standard');
+    
+    // Resolve legacy "standard" or "sparkasse" bank accounts to the real company bank name
+    const resolvedBank = (!invoice.bank_account || invoice.bank_account.toLowerCase() === 'standard' || invoice.bank_account.toLowerCase() === 'sparkasse')
+      ? (myCompany?.bank_name || 'Standard')
+      : invoice.bank_account;
+    setBankAccount(resolvedBank);
+    
     setIssueDate(invoice.issue_date);
     setServiceDate(invoice.service_date || '');
     setPaymentTerm(invoice.payment_term || '14');
@@ -724,7 +800,7 @@ export const Invoices = () => {
   };
 
   const addLineItem = () => setLineItems([...lineItems, { description: '', quantity: 1, unit_price: 0, vat_rate: 19, unit_code: 'HUR' }]);
-  const addLineItemFromTemplate = (template: any) => {
+  const addLineItemFromTemplate = (template: { description?: string | null; template_name_text?: string | null; quantity?: number | null; unit_price?: number | null; vat_rate?: number | null; unit_code?: string | null }) => {
     const rawDesc = template.description || template.template_name_text || '';
     const resolvedDesc = replaceInvoicePlaceholders(rawDesc);
     if (lineItems.length === 1 && lineItems[0].description === '' && lineItems[0].unit_price === 0) {
@@ -825,13 +901,17 @@ export const Invoices = () => {
       ? (typeof originalInvoice.metadata === 'string' ? JSON.parse(originalInvoice.metadata) : originalInvoice.metadata)
       : {};
 
+    const resolvedBankToSubmit = (!bankAccount || bankAccount === 'standard' || bankAccount === 'sparkasse')
+      ? (myCompany?.bank_name || 'Standard')
+      : bankAccount;
+
     const invoiceData = {
       invoice_number: editingInvoiceId 
         ? (invoices.find(i => i.id_uuid === editingInvoiceId)?.invoice_number || '')
         : `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
       associated_company_id: selectedCompanyId || null,
       associated_contact_id: associatedContactId || null,
-      bank_account: bankAccount || null,
+      bank_account: resolvedBankToSubmit || null,
       issue_date: issueDate,
       service_date: serviceDate || null,
       due_date: calcDueDate(),
@@ -843,8 +923,8 @@ export const Invoices = () => {
       vat_rate: 19,
       currency_code: currencyCode || 'EUR',
       leitweg_id: leitwegId || null,
-      introductory_text: introductoryText || '',
-      closing_text: closingText || '',
+      introductory_text: replaceInvoicePlaceholders(introductoryText),
+      closing_text: replaceInvoicePlaceholders(closingText),
       payment_status: 'pending' as 'pending' | 'paid' | 'overdue' | 'draft',
       invoice_line_items: lineItems.map(item => ({
         description: item.description,
@@ -1333,10 +1413,12 @@ export const Invoices = () => {
                     name="bank_account"
                     value={bankAccount}
                     onChange={(e) => setBankAccount(e.target.value)}
-                    className="w-full bg-primary-light border-2 border-white/5 rounded-xl px-5 py-4 text-white text-sm font-bold focus:outline-none focus:ring-4 focus:ring-accent-blue/10 focus:border-accent-blue transition-all appearance-none"
+                    className="w-full bg-primary-light border-2 border-white/5 rounded-xl px-5 py-4 text-white text-sm font-bold focus:outline-none focus:ring-4 focus:ring-accent-blue/10 focus:border-accent-blue transition-all appearance-none cursor-not-allowed"
+                    disabled
                   >
-                    <option value="standard">{t('dialog.standard')}</option>
-                    <option value="sparkasse">{t('dialog.sparkasse')}</option>
+                    <option value={myCompany?.bank_name || 'Standard'}>
+                      {myCompany?.bank_name || 'Standard'}
+                    </option>
                   </select>
                   <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={18} />
                 </div>
@@ -1427,21 +1509,39 @@ export const Invoices = () => {
                 )}
               </div>
               <textarea
+                ref={introTextareaRef}
                 value={introductoryText}
                 onChange={(e) => setIntroductoryText(e.target.value)}
                 placeholder={t('dialog.introductory_text_placeholder')}
                 rows={3}
                 className="w-full bg-primary-light border-2 border-white/5 rounded-xl px-5 py-4 text-white text-sm font-bold focus:outline-none focus:ring-4 focus:ring-accent-blue/10 focus:border-accent-blue transition-all resize-none placeholder:text-slate-700 font-sans"
               />
+              {/* Dynamic Variable Helper Chips */}
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider self-center mr-1">
+                  {t('dialog.variables_label', { defaultValue: 'Variablen einfügen:' })}
+                </span>
+                {invoiceVariables.map((v) => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => insertTextareaPlaceholder(introTextareaRef, v.tag, setIntroductoryText)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-accent-blue/10 text-slate-400 hover:text-accent-blue border border-white/5 hover:border-accent-blue/25 rounded-lg text-[9px] font-mono font-bold transition-all shadow-sm"
+                    title={v.tag}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
               {introductoryTemplates.length > 0 && (
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-2">
                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                     {t('dialog.select_template_label', { defaultValue: 'Vorlage einfügen:' })}
                   </span>
                   <select
                     onChange={(e) => {
                       if (e.target.value) {
-                        setIntroductoryText(replaceInvoicePlaceholders(e.target.value));
+                        setIntroductoryText(e.target.value);
                         e.target.value = '';
                       }
                     }}
@@ -1476,21 +1576,39 @@ export const Invoices = () => {
                 )}
               </div>
               <textarea
+                ref={closingTextareaRef}
                 value={closingText}
                 onChange={(e) => setClosingText(e.target.value)}
                 placeholder={t('dialog.closing_text_placeholder')}
                 rows={3}
                 className="w-full bg-primary-light border-2 border-white/5 rounded-xl px-5 py-4 text-white text-sm font-bold focus:outline-none focus:ring-4 focus:ring-accent-blue/10 focus:border-accent-blue transition-all resize-none placeholder:text-slate-700 font-sans"
               />
+              {/* Dynamic Variable Helper Chips */}
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider self-center mr-1">
+                  {t('dialog.variables_label', { defaultValue: 'Variablen einfügen:' })}
+                </span>
+                {invoiceVariables.map((v) => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => insertTextareaPlaceholder(closingTextareaRef, v.tag, setClosingText)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-accent-blue/10 text-slate-400 hover:text-accent-blue border border-white/5 hover:border-accent-blue/25 rounded-lg text-[9px] font-mono font-bold transition-all shadow-sm"
+                    title={v.tag}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
               {closingTemplates.length > 0 && (
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-2">
                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                     {t('dialog.select_template_label', { defaultValue: 'Vorlage einfügen:' })}
                   </span>
                   <select
                     onChange={(e) => {
                       if (e.target.value) {
-                        setClosingText(replaceInvoicePlaceholders(e.target.value));
+                        setClosingText(e.target.value);
                         e.target.value = '';
                       }
                     }}
@@ -1854,7 +1972,11 @@ export const Invoices = () => {
                     </div>
                     <div className="flex justify-between items-center py-[1mm]">
                       <span className="text-[8pt] font-bold text-slate-500 uppercase tracking-wider">{t('preview.bank_account')}:</span>
-                      <span className="text-[8pt] font-bold text-slate-900 uppercase tracking-tighter">{selectedInvoice.bank_account || 'SPARKASSE'}</span>
+                      <span className="text-[8pt] font-bold text-slate-900 uppercase tracking-tighter">
+                        {(!selectedInvoice.bank_account || selectedInvoice.bank_account.toLowerCase() === 'standard' || selectedInvoice.bank_account.toLowerCase() === 'sparkasse')
+                          ? (myCompany?.bank_name || 'Standard').toUpperCase()
+                          : selectedInvoice.bank_account.toUpperCase()}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1949,7 +2071,7 @@ export const Invoices = () => {
                   <div className="font-bold text-slate-600 uppercase mb-1">{t('preview.bank_details')}</div>
                   <div>
                     <div>IBAN: {myCompany?.iban || t('preview.fallback_iban', { defaultValue: 'DE89 1005 0000 0123 4567 89' })}</div>
-                    <div>BIC: {myCompany?.bic_swift || t('preview.fallback_bic', { defaultValue: 'WELADED1100' })} • Bank: {myCompany?.bank_name || t('preview.fallback_bank_name', { defaultValue: 'Sparkasse Berlin' })}</div>
+                    <div>BIC: {myCompany?.bic_swift || t('preview.fallback_bic', { defaultValue: 'WELADED1100' })} • Bank: {myCompany?.bank_name || 'Standard Bank'}</div>
                   </div>
                 </div>
 
@@ -2134,6 +2256,9 @@ export const Invoices = () => {
         recipientEmail={mailRecipientEmail}
         recipientName={mailRecipientName}
         invoice={mailSelectedInvoice || undefined}
+        associatedType={mailSelectedInvoice?.associated_contact_id ? 'contacts' : mailSelectedInvoice?.associated_company_id ? 'companies' : undefined}
+        associatedId={mailSelectedInvoice?.associated_contact_id || mailSelectedInvoice?.associated_company_id}
+        associatedName={mailRecipientName}
       />
 
       <Dialog

@@ -4,6 +4,7 @@ import { Database, CheckCircle2, AlertCircle, RefreshCw, Activity, Shield } from
 import { trpc } from '../../lib/trpc';
 import { SmtpSettingsForm } from './SmtpSettingsForm';
 import { WebSearchSettingsForm } from './WebSearchSettingsForm';
+import { TelegramSettingsForm } from './TelegramSettingsForm';
 
 export const ConnectionsTab = () => {
   const { t } = useTranslation(['admin', 'common']);
@@ -173,10 +174,18 @@ export const ConnectionsTab = () => {
 
         {/* Web Search Engine Configuration */}
         <div className="space-y-6">
-          <h4 className="text-[10px] font-black text-accent-orange uppercase tracking-[0.2em] font-display border-b border-white/5 pb-2">
+          <h4 className="text-[10px] font-black text-accent-orange uppercase tracking-[0.2em] font-display border-b border-white/5 pb-2 font-sans">
             {t('admin:connections_tab.websearch_parameters_header', { defaultValue: 'WEBSUCHE PARAMETER' })}
           </h4>
           <WebSearchSettingsForm />
+        </div>
+
+        {/* Telegram Bot Gateway Configuration */}
+        <div className="space-y-6">
+          <h4 className="text-[10px] font-black text-accent-orange uppercase tracking-[0.2em] font-display border-b border-white/5 pb-2 font-sans">
+            {t('admin:connections_tab.telegram_parameters_header', { defaultValue: 'TELEGRAM GATEWAY' })}
+          </h4>
+          <TelegramSettingsForm />
         </div>
 
         {/* AI & Intelligence Nodes */}

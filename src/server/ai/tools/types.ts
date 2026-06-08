@@ -90,8 +90,8 @@ export const CreateInvoiceItemZodSchema = z.object({
 });
 
 export const CreateInvoiceArgsZodSchema = z.object({
-  company_id: z.string().uuid("company_id_must_be_uuid").optional().nullable(),
-  contact_id: z.string().uuid("contact_id_must_be_uuid").optional().nullable(),
+  company_id: z.string().optional().nullable(),
+  contact_id: z.string().optional().nullable(),
   is_vat_inclusive: z.boolean().optional(),
   items_list: z.array(CreateInvoiceItemZodSchema).min(1, "items_list_cannot_be_empty"),
   introductory_text: z.string().optional().nullable(),

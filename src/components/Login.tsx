@@ -61,8 +61,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         setErrorMsg(t('login:wrong_credentials'));
         toast.error(t('login:wrong_password'));
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || t('login:unexpected_error'));
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(errMsg || t('login:unexpected_error'));
       toast.error(t('login:login_error'));
     } finally {
       setIsLoading(false);

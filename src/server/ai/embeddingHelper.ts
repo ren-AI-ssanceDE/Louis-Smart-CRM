@@ -154,6 +154,38 @@ export async function getRagConfig(tenantId: string) {
   return ragConfig;
 }
 
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  retries = 5,
+  delayMs = 1000,
+  factor = 2
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const errorString = String(error?.message || error || "").toLowerCase();
+    const isRateLimitOrRetryable = 
+      error?.status === 429 ||
+      error?.statusCode === 429 ||
+      error?.code === 429 ||
+      errorString.includes("429") ||
+      errorString.includes("resource_exhausted") ||
+      errorString.includes("exhausted") ||
+      errorString.includes("rate limit") ||
+      errorString.includes("too many requests") ||
+      errorString.includes("limit exceeded") ||
+      errorString.includes("503") ||
+      errorString.includes("service unavailable");
+
+    if (isRateLimitOrRetryable && retries > 0) {
+      console.warn(`[EmbeddingHelper] Temporary API error or rate limit matched. Retrying in ${delayMs}ms... (Remaining retries: ${retries})`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return callWithRetry(fn, retries - 1, delayMs * factor, factor);
+    }
+    throw error;
+  }
+}
+
 export async function generateEmbedding(text: string, tenantId: string): Promise<number[]> {
   const config = await getRagConfig(tenantId);
   console.log(`[EmbeddingHelper] Generating embedding using provider: ${config.provider}, model: ${config.modelName}`);
@@ -161,15 +193,24 @@ export async function generateEmbedding(text: string, tenantId: string): Promise
   const cleanText = text.replace(/\s+/g, " ").trim() || " ";
 
   if (config.provider === "gemini") {
-    const key = config.apiKey;
+    const key = config.apiKey || process.env.GEMINI_API_KEY;
     if (!key) {
       throw new Error("Fehler: Kein gültiger API-Schlüssel für Gemini Embeddings in den Admin-Einstellungen hinterlegt.");
     }
     const ai = new GoogleGenAI({ apiKey: key });
+
+    // Dynamically map legacy/unsupported models to compatible library versions
+    let targetModel = config.modelName || "gemini-embedding-2-preview";
+    if (targetModel === "text-embedding-004") {
+      targetModel = "gemini-embedding-2-preview";
+    }
+
     try {
-      const res = await ai.models.embedContent({
-        model: config.modelName || "gemini-embedding-2-preview",
-        contents: cleanText,
+      const res = await callWithRetry(async () => {
+        return await ai.models.embedContent({
+          model: targetModel,
+          contents: cleanText,
+        });
       });
       const embedResponse = res as GeminiEmbedResponse;
       const embeddingValues = embedResponse.embedding?.values || embedResponse.embeddings?.[0]?.values;
@@ -178,18 +219,7 @@ export async function generateEmbedding(text: string, tenantId: string): Promise
       }
       return padOrTrimEmbedding(embeddingValues, config.vectorDimensions);
     } catch (e) {
-      console.warn("[EmbeddingHelper] Gemini embedContent failed, attempting gemini-embedding-2-preview fallback:", e);
-      try {
-        const fallbackRes = await ai.models.embedContent({
-          model: "gemini-embedding-2-preview",
-          contents: cleanText,
-        });
-        const fallbackResponse = fallbackRes as GeminiEmbedResponse;
-        const vals = fallbackResponse.embedding?.values || fallbackResponse.embeddings?.[0]?.values;
-        if (vals) return padOrTrimEmbedding(vals, config.vectorDimensions);
-      } catch (innerErr) {
-        // ignore and propagate first error
-      }
+      console.warn(`[EmbeddingHelper] Gemini embedContent failed for ${targetModel}:`, e);
       throw e;
     }
   }
@@ -200,29 +230,38 @@ export async function generateEmbedding(text: string, tenantId: string): Promise
       throw new Error("Missing API Key for OpenAI Embeddings.");
     }
     const url = `${config.baseUrl || "https://api.openai.com/v1"}/embeddings`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        input: cleanText,
-        model: config.modelName || "text-embedding-3-small",
-      }),
-    });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`OpenAI Embeddings returned HTTP ${res.status}: ${errText}`);
-    }
+    try {
+      const res = await callWithRetry(async () => {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            input: cleanText,
+            model: config.modelName || "text-embedding-3-small",
+          }),
+        });
 
-    const data = await res.json() as OpenAIEmbedResponse;
-    const vals = data?.data?.[0]?.embedding;
-    if (!vals) {
-      throw new Error("No embedding data returned from OpenAI API.");
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`OpenAI Embeddings returned HTTP ${response.status}: ${errText}`);
+        }
+        return response;
+      });
+
+      const data = await res.json() as OpenAIEmbedResponse;
+      const vals = data?.data?.[0]?.embedding;
+      if (!vals) {
+        throw new Error("No embedding data returned from OpenAI API.");
+      }
+      return padOrTrimEmbedding(vals, config.vectorDimensions);
+    } catch (e) {
+      console.warn("[EmbeddingHelper] OpenAI embedContent failed:", e);
+      throw e;
     }
-    return padOrTrimEmbedding(vals, config.vectorDimensions);
   }
 
   if (config.provider === "ollama") {

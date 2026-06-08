@@ -4,6 +4,8 @@ import { router, protectedProcedure } from "../trpc.js";
 import { pool, isUsingFallback, fallbackStore, logAuditEvent, saveFallbackStore, cleanDbRow, cleanLigatureHacksFromValue } from "../db.js";
 import { getEntityStoragePath, generateEmbedding } from "../storage.js";
 import { CompanySchema, CompanyFullSchema } from "../../lib/schemas.js";
+import { workflowEventBus } from "../ai/workflowEventBus.js";
+import { CompanyUpdatedPayload } from "../../types.js";
 
 export const companiesRouter = router({
   getCompanies: protectedProcedure
@@ -47,6 +49,7 @@ export const companiesRouter = router({
         fallbackStore.companies.unshift(newComp);
         saveFallbackStore();
         getEntityStoragePath("companies", id, input.full_legal_name, ctx.tenantId);
+        workflowEventBus.emitEvent(ctx.tenantId, 'company.created', { id_uuid: id, ...input });
         return { id_uuid: id };
       }
       await pool.query(`
@@ -82,6 +85,7 @@ export const companiesRouter = router({
       });
 
       getEntityStoragePath("companies", id, input.full_legal_name, ctx.tenantId);
+      workflowEventBus.emitEvent(ctx.tenantId, 'company.created', { id_uuid: id, ...input });
       return { id_uuid: id };
     }),
 
@@ -92,6 +96,33 @@ export const companiesRouter = router({
       const { id_uuid, ...data } = input;
       const embedding = await generateEmbedding(`${data.full_legal_name} ${data.street} ${data.city} ${data.responsible_person}`, ctx.tenantId);
       
+      const updatedCompanyPayload: CompanyUpdatedPayload = {
+        id_uuid,
+        full_legal_name: data.full_legal_name,
+        short_code: data.short_code || null,
+        tax_vat_id: data.tax_vat_id || null,
+        city: data.city || null,
+        email_address: data.email_address || null,
+        responsible_person: data.responsible_person || null,
+        labels: Array.isArray(data.labels) ? data.labels : []
+      };
+
+      let wasDraft = false;
+      if (isUsingFallback) {
+        const found = fallbackStore.companies.find(c => c.id_uuid === id_uuid);
+        if (found && found.is_verified_by_human === false) {
+          wasDraft = true;
+        }
+      } else {
+        const checkRes = await pool.query(
+          "SELECT is_verified_by_human FROM core_registry_companies WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')",
+          [id_uuid, ctx.tenantId]
+        );
+        if (checkRes.rows.length > 0 && checkRes.rows[0].is_verified_by_human === false) {
+          wasDraft = true;
+        }
+      }
+
       if (isUsingFallback) {
         const idx = fallbackStore.companies.findIndex(c => c.id_uuid === id_uuid);
         if (idx !== -1) {
@@ -103,6 +134,18 @@ export const companiesRouter = router({
             created_by_identity: 'human'
           };
           saveFallbackStore();
+        }
+        
+        if (wasDraft) {
+          const rowData = fallbackStore.companies.find(c => c.id_uuid === id_uuid);
+          workflowEventBus.emitEvent(ctx.tenantId, 'company.created', {
+            ...(rowData || {}),
+            id_uuid,
+            ...data,
+            labels: data.labels || []
+          });
+        } else {
+          workflowEventBus.emitEvent(ctx.tenantId, 'company.updated', updatedCompanyPayload);
         }
         return { success: true };
       }
@@ -129,14 +172,47 @@ export const companiesRouter = router({
         id_uuid, ctx.tenantId
       ]);
 
-      await logAuditEvent({
-        tenantId: ctx.tenantId,
-        eventType: 'UPDATE',
-        entityType: 'COMPANY',
-        entityId: id_uuid,
-        eventDetails: `Updated company: ${data.full_legal_name}`,
-        actorIdentity: ctx.session?.user?.email || 'unknown'
-      });
+      if (wasDraft) {
+        const rowRes = await pool.query("SELECT * FROM core_registry_companies WHERE id_uuid = $1 AND tenant_id = $2", [id_uuid, ctx.tenantId]);
+        const rowData = rowRes.rows[0];
+        let labels = [];
+        if (rowData) {
+          if (typeof rowData.labels_json === "string") {
+            try {
+              labels = JSON.parse(rowData.labels_json);
+            } catch (_) {}
+          } else if (Array.isArray(rowData.labels_json)) {
+            labels = rowData.labels_json;
+          }
+        }
+
+        await logAuditEvent({
+          tenantId: ctx.tenantId,
+          eventType: 'UPDATE',
+          entityType: 'COMPANY',
+          entityId: id_uuid,
+          eventDetails: `Verified/Approved company draft: ${data.full_legal_name}`,
+          actorIdentity: ctx.session?.user?.email || 'unknown'
+        });
+
+        workflowEventBus.emitEvent(ctx.tenantId, 'company.created', {
+          ...(rowData || {}),
+          id_uuid,
+          ...data,
+          labels
+        });
+      } else {
+        await logAuditEvent({
+          tenantId: ctx.tenantId,
+          eventType: 'UPDATE',
+          entityType: 'COMPANY',
+          entityId: id_uuid,
+          eventDetails: `Updated company: ${data.full_legal_name}`,
+          actorIdentity: ctx.session?.user?.email || 'unknown'
+        });
+
+        workflowEventBus.emitEvent(ctx.tenantId, 'company.updated', updatedCompanyPayload);
+      }
 
       return { success: true };
     }),
@@ -150,10 +226,11 @@ export const companiesRouter = router({
       let updatedCount = 0;
       for (const rawItem of input) {
         // Map any undefined values to null for safe pg parameters alignment
-        const item: any = { ...rawItem };
-        for (const key of Object.keys(item)) {
-          if (item[key] === undefined) {
-            item[key] = null;
+        const item = { ...rawItem };
+        const typedItem = item as Record<string, unknown>;
+        for (const key of Object.keys(typedItem)) {
+          if (typedItem[key] === undefined) {
+            typedItem[key] = null;
           }
         }
         // Ensure imported entities are marked as verified by human and not AI-generated drafts
@@ -291,9 +368,15 @@ export const companiesRouter = router({
             updated_at_utc: new Date().toISOString() 
           };
           saveFallbackStore();
+          // Emit company.created event to start automatic workflows
+          workflowEventBus.emitEvent(ctx.tenantId, 'company.created', fallbackStore.companies[idx]);
         }
         return { success: true };
       }
+
+      // Query company details before updating so we have the full payload (e.g. email_address, etc.) for workflow triggering
+      const compRes = await pool.query("SELECT * FROM core_registry_companies WHERE id_uuid = $1 AND tenant_id = $2", [input.id_uuid, ctx.tenantId]);
+      
       await pool.query(`
         UPDATE core_registry_companies 
         SET is_verified_by_human = TRUE, updated_at_utc = CURRENT_TIMESTAMP
@@ -308,6 +391,26 @@ export const companiesRouter = router({
         eventDetails: `Verified/Approved company draft: ${input.id_uuid}`,
         actorIdentity: ctx.session?.user?.email || 'unknown'
       });
+
+      if (compRes.rows.length > 0) {
+        const row = compRes.rows[0];
+        let labels = [];
+        if (typeof row.labels_json === "string") {
+          try {
+            labels = JSON.parse(row.labels_json);
+          } catch (_) {}
+        } else if (Array.isArray(row.labels_json)) {
+          labels = row.labels_json;
+        }
+
+        const companyPayload = {
+          ...row,
+          labels
+        };
+        // Emit company.created event to start automatic workflows
+        workflowEventBus.emitEvent(ctx.tenantId, 'company.created', companyPayload);
+      }
+
       return { success: true };
     })
 });
