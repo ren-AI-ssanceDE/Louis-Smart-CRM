@@ -57,16 +57,51 @@ function isPresent(asset) {
 async function download(asset) {
   mkdirSync(dirname(asset.dest), { recursive: true });
   console.log(`[setup-assets] Downloading ${asset.label} -> ${asset.dest}`);
-  const res = await fetch(asset.url, { redirect: "follow" });
-  if (!res.ok || !res.body) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} for ${asset.url}`);
+
+  const maxRetries = 3;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      if (attempt > 1) {
+        const delay = attempt * 2000;
+        console.log(`[setup-assets] Retrying in ${delay / 1000}s... (Attempt ${attempt}/${maxRetries})`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout per attempt
+
+      const res = await fetch(asset.url, { 
+        redirect: "follow",
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(asset.dest));
+
+      const size = statSync(asset.dest).size;
+      if (size < asset.minBytes) {
+        throw new Error(`Downloaded size ${size} < expected min ${asset.minBytes}`);
+      }
+
+      console.log(`[setup-assets] OK ${asset.label} (${size.toLocaleString()} bytes)`);
+      return; // Success!
+    } catch (err) {
+      console.warn(`[setup-assets] Attempt ${attempt} failed: ${err.message || err}`);
+      if (existsSync(asset.dest)) {
+        try { unlinkSync(asset.dest); } catch {}
+      }
+      if (attempt >= maxRetries) {
+        throw err; // Rethrow on last attempt
+      }
+    }
   }
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(asset.dest));
-  const size = statSync(asset.dest).size;
-  if (size < asset.minBytes) {
-    throw new Error(`${asset.label} downloaded but size ${size} < expected min ${asset.minBytes}`);
-  }
-  console.log(`[setup-assets] OK ${asset.label} (${size.toLocaleString()} bytes)`);
 }
 
 let failed = 0;
