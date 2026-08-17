@@ -15,11 +15,18 @@ const CLOSED_BLOCK_PATTERNS: RegExp[] = [
   /<CALL_RESULTS>[\s\S]*?<\/CALL_RESULTS>/gi,
   /<CALL>[\s\S]*?<\/CALL>/gi,
   /<parallelToolCalls>[\s\S]*?<\/parallelToolCalls>/gi,
+  // 2026-08-18 (Stefan-Live-Befund): DeepSeek-V4 leakt das XML-Tool-Call-Format
+  // <tool_calls><invoke name="..."><parameter ...>...</parameter></invoke></tool_calls>
+  // als finalen Text — teils kleingeschrieben, mit Attributen oder ohne name-Attribute.
+  // Vorher Lücke: nur exaktes <TOOL_CALLS> ohne Attribute + kein <invoke>/<parameter> → roher Block in der Bubble.
+  /<tool_calls\b[^>]*>[\s\S]*?<\/tool_calls>/gi,
+  /<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi,
+  /<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi,
 ];
 
 // Öffnende Marker, die nach dem Block-Stripping noch übrig sein können
 // (unbalanciert/abgeschnitten) → alles ab dem Marker entfernen.
-const LEFTOVER_MARKER = /<(?:REACT_LOOP_STATE|TOOL_CALLS|CALL_RESULTS|parallelToolCalls|CALL)\b[^>]*>/i;
+const LEFTOVER_MARKER = /<(?:REACT_LOOP_STATE|TOOL_CALLS|CALL_RESULTS|parallelToolCalls|CALL|tool_calls|invoke|parameter)\b[^>]*>/i;
 
 /**
  * Entfernt rohe Tool-Call-XML-Blöcke aus einem LLM-Antworttext.
