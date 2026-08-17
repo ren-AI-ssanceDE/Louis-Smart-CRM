@@ -35,4 +35,4 @@ Release der Produktionsreife: vollständige Test- und Validierungsabdeckung (Uni
 
 ## [1.0.0] — 2026-08-04 (Basis)
 
-Import aus Google AI Studio („Run and deploy your AI Studio app"): CRM-Grundgerüst (Firmen, Kontakte, Angebote, Rechnungen), Chat mit Google-GenAI, ZUGFeRD-Erzeugung, Docker-Stack. Danach kontinuierliche Funktions- und Qualitätserweiterungen, die in 2.0.0 münden.
+Erste veröffentlichte Version: CRM-Grundgerüst (Firmen, Kontakte, Angebote, Rechnungen), KI-Chat, ZUGFeRD-E-Rechnungserzeugung, Docker-Stack. Danach kontinuierliche Funktions- und Qualitätserweiterungen, die in 2.0.0 münden.
