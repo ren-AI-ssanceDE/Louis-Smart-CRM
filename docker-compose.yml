@@ -1,0 +1,116 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: louis-crm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: louis_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - louis-crm_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d louis_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: louis-crm-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      
+      # Database Configuration matching PostgreSQL container setup
+      - PGHOST=db
+      - PGPORT=5432
+      - PGUSER=user
+      - PGPASSWORD=password
+      - PGDATABASE=louis_crm
+      
+      # Authentication and App Context Settings
+      # 021-F: AUTH_SECRET wird NICHT hier gesetzt — die App liest das Secret aus
+      # der DB (sys_app_security, wird beim ersten Start generiert). Ein .env-
+      # AUTH_SECRET (>= 32 Zeichen) ist nur optionaler Infrastruktur-Override.
+      - APP_URL=${APP_URL:-http://localhost:3000}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
+      
+      # Gemini Large Language Model Integration Key
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+      # Agent-Job-Scripte (S7/S11): persistent + versioniert im Repo-Ordner louis-scripts/
+      - LOUIS_AI_SCRIPTS_DIR=/app/louis-scripts
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Native persistent volumes for GoBD compliance and multi-tenant isolation
+      - ./companies_data_vault:/app/companies_data_vault
+      - ./contacts_data_vault:/app/contacts_data_vault
+      - ./knowledge_data_vault:/app/knowledge_data_vault
+      # Agent-Job-Scripte: persistent + versioniert (überlebt Rebuilds)
+      - ./louis-scripts:/app/louis-scripts
+
+  telegram-bot-gate:
+    build:
+      context: ./services/telegram-bot-gate
+      dockerfile: Dockerfile
+    container_name: louis-telegram-bot-gate
+    restart: unless-stopped
+    environment:
+      - CRM_CONFIG_API=http://app:3000/api/telegram/config
+      - MCP_SERVER_URL=http://app:3000/api/mcp/sse
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      app:
+        condition: service_started
+
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: louis-whisper-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=tiny
+      - CPU_THREADS=4
+    volumes:
+      - whisper_models:/home/ubuntu/.cache/huggingface/hub
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: louis-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - OLLAMA_CONTEXT_LENGTH=16384
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_KV_CACHE_TYPE=q8_0
+      - OLLAMA_FLASH_ATTENTION=true
+    volumes:
+      - ./ollama/models:/root/.ollama/models
+      - ./ollama:/ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  louis-crm_postgres_data:
+    external: true
+  whisper_models:

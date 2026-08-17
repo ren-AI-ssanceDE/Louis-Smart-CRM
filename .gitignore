@@ -1,0 +1,39 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Local fallback databases
+.local_fallback_db.json*
+
+# End-to-end test outputs
+e2e-out/
+playwright-report/
+test-results/
+
+# Vendored build-time assets — provisioned by `npm run setup-assets`
+src/assets/fonts/*.ttf
+mustang-cli.jar
+
+# Local invoice artifacts (PDF/A-3b output, generated XML, validation logs)
+companies_data_vault/
+contacts_data_vault/
+knowledge_data_vault/
+knowledge_vault/
+
+# Uploaded user files (voice temp, chat attachments with extracted text sidecars)
+uploads/
+
+# Ollama local model store (50 GB+ GGUF/Blobs — läuft als Compose-Service, Modell-Store nie im Repo)
+ollama/
+ollama/models/
+ollama/gguf/
+
+# Infrastruktur-Backups von 2026-08-16 (Ollama-Setup)
+docker-compose.yml.bak-20260816
+containers-before.txt
+ollama-inspect-before.json

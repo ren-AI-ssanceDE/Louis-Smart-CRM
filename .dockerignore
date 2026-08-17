@@ -1,0 +1,44 @@
+# VCS / IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Build outputs (regenerated in container)
+node_modules
+dist
+build
+coverage
+
+# Locally vendored assets — re-fetched inside the builder stage
+mustang-cli.jar
+# Fonts bleiben im Build-Kontext (lokale Rebuilds ohne GitHub-Download);
+# setup-assets skippt vorhandene und lädt fehlende nach.
+# src/assets/fonts/*.ttf
+
+# Local persistent data (GoBD-relevant invoice artifacts) — mounted as volumes
+companies_data_vault
+contacts_data_vault
+knowledge_data_vault
+uploads
+
+# Ollama local model store (50 GB+ GGUF/Blobs — nur als Volume, nie im Build-Kontext)
+ollama
+ollama/models
+ollama/gguf
+*.bak-20260816
+containers-before.txt
+ollama-inspect-before.json
+
+# Logs and OS noise
+*.log
+.DS_Store
+
+# Local env files — image consumes env vars from docker-compose / runtime
+.env
+.env.local
+.env.*.local
+
+# Editor backups
+*.swp
+*~

@@ -1,0 +1,13 @@
+# Normalize line endings for text files
+* text=auto
+
+# Shell scripts MUST stay LF — CRLF breaks them in Linux containers
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+
+# Keep lockfiles/binary artifacts as-is
+*.jar binary
+*.ttf binary
+*.png binary
+*.jpg binary
+*.pdf binary
