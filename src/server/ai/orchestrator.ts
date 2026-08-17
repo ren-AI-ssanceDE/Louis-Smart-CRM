@@ -95,6 +95,14 @@ export interface ReActDecision {
     toolQuery: string;
   }[] | null;
   finalDraftText: string | null;
+  /**
+   * Befund-2-Fix (2026-08-17): true, wenn die Rohantwort eine KAPUTTE JSON-Struktur
+   * war (Klammern vorhanden, aber unparsbar) oder leer — die Antwort ist dann KEINE
+   * echte Nutzerantwort, sondern ein Parse-Artefakt → ReAct-Loop startet eine
+   * Korrektur-Runde (bounded) statt das Artefakt als finale Antwort auszuliefern.
+   * Reine Prosa-Antworten (ohne JSON-Klammern) setzen das Flag NICHT.
+   */
+  parseFailed?: boolean;
   proposedChanges: {
     entity_type: 'companies' | 'contacts' | 'invoices' | 'emails' | 'offers' | 'kanban_board' | 'kanban_column' | 'kanban_card' | 'vault_skill';
     action: 'CREATE' | 'UPDATE' | 'DELETE' | 'SEND' | 'MOVE';
@@ -807,11 +815,16 @@ export function safeParseReActDecision(res: { text: string; tool_calls?: ToolCal
     // Fix (QA-Befund: interner Hinweis leakte in Nutzerantworten über den thought-Fallback):
     // finalDraftText = Rohantwort (bestmögliche Antwort) oder ehrliche deutsche Fehlermeldung.
     const rawText = (res.text || "").trim();
+    // Befund-2-Fix (2026-08-17): Klammern vorhanden (JSON-Versuch) aber unparsbar,
+    // oder komplett leer → KEINE echte Nutzerantwort → parseFailed für Korrektur-Runde.
+    // Reine Prosa (keine Klammern, nicht leer) bleibt eine legitime Text-Antwort.
+    const looksLikeBrokenJson = (startIdx !== -1 && endIdx > startIdx) || rawText.length === 0;
     return {
       thought: "Rohantwort war kein gültiges JSON-Format — Textantwort übernommen.",
       isComplete: true,
       callToolName: null,
       callToolQuery: null,
+      parseFailed: looksLikeBrokenJson || undefined,
       finalDraftText: rawText.length > 0
         ? res.text
         : "Die Antwort konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.",

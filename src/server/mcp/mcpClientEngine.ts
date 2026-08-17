@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, cleanDbRow, cleanLigatureHacksFromValue } from "../db.js";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
 import { getMcpOAuthToken } from "./oauthHandler.js";
+import { normalizeAuthToken } from "./authTokenNormalize.js";
 import {
   McpExternalServer,
   McpDiscoveredTool,
@@ -445,12 +446,15 @@ function mcpFetch(url: string, init?: RequestInit): Promise<Response> {
 
 function getAuthHeaders(server: McpExternalServer): Record<string, string> {
   const headers: Record<string, string> = { ...server.headers };
-  if (server.auth_type === "bearer" && server.auth_token_encrypted) {
-    headers["Authorization"] = `Bearer ${server.auth_token_encrypted}`;
-  } else if (server.auth_type === "api_key" && server.auth_token_encrypted) {
-    headers["X-API-Key"] = server.auth_token_encrypted;
-  } else if (server.auth_type === "basic" && server.auth_token_encrypted) {
-    headers["Authorization"] = `Basic ${Buffer.from(server.auth_token_encrypted).toString("base64")}`;
+  // Befund 2026-08-17: "Bearer "-Präfix defensiv entfernen — Nutzer kopieren oft den
+  // Plugin-Anzeige-Text ("Bearer <hex>") statt des Hex-Keys → sonst "Bearer Bearer …" → 401.
+  const token = normalizeAuthToken(server.auth_token_encrypted) || "";
+  if (server.auth_type === "bearer" && token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else if (server.auth_type === "api_key" && token) {
+    headers["X-API-Key"] = token;
+  } else if (server.auth_type === "basic" && token) {
+    headers["Authorization"] = `Basic ${Buffer.from(token).toString("base64")}`;
   }
   return headers;
 }

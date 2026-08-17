@@ -55,6 +55,7 @@ import {
 import { safeParseReActDecision, truncateResult, classifyIntentFastPath } from "./orchestrator.js";
 import { WorkflowLearnSuggestionSchema, SubTaskSpecSchema, VerifySubtaskArgsSchema, AskUserQuestionArgsSchema } from "../../lib/schemas.js";
 import { ModelUsageMetadata, ConversationMessage, GovernanceAction, SubTaskResult, TenantAiConfig } from "../../types.js";
+import { vaultToolKind, vaultWriteBaseName, VAULT_WRITE_ACTION_MAP } from "./vaultToolClassification.js";
 import { ToolCall } from "../../types/inference.js";
 import { McpClientEngine } from "../mcp/mcpClientEngine.js";
 import { evaluateGovernanceRules } from "./governance.js";
@@ -92,6 +93,10 @@ const WRITE_ACTION_MAP: Record<string, { entity: string; action: GovernanceActio
   update_skill: { entity: "vault_skill", action: "UPDATE" },
   delete_skill: { entity: "vault_skill", action: "DELETE" }
 };
+
+// Befund-3-Fix (2026-08-17): Vault-Tool-Klassifikation (logisch + normalisiert) lebt im
+// eigenen Modul vaultToolClassification.ts — suffix-basiert, robust gegen Server-Umbenennungen.
+// Verwendung: parallele Lese-Erlaubnis (runReActLoop), Governance-Auflösung (executeSingleTool).
 
 // S9: CORE-Tools mit Schreib-/Interaktions-Semantik — Sub-Agents dürfen diese NIE nutzen
 // (update_memory schreibt dauerhaft; ask_user_question + verify_subtask kommen aus S11)
@@ -492,7 +497,7 @@ export class AgentRuntime {
       // B3 (Auftrag 011): Draft-Flow-Vorschläge (proposedChanges ohne emails)
       // überspringen die LLM-Kritik — die menschliche Freigabe im Chat IST die
       // Kontrolle; die Kritikschleife kostet sonst 1-2 Min Latenz pro Antwort.
-      // B5 (Projektleitung 2026-08-16): Kritikschleife läuft NUR noch, wenn eine
+      // B5 (Stefan 2026-08-16): Kritikschleife läuft NUR noch, wenn eine
       // CRM-Änderung vorgeschlagen wurde (proposedChanges gesetzt) — reine
       // isComplex-Aufgaben (z. B. Vault-/Memory-Schreibvorgänge ohne Draft)
       // überspringen den Critic (spart ~15s + ~2k Output-Token pro Antwort).
@@ -755,7 +760,7 @@ export class AgentRuntime {
 
     ${shouldInjectEmailDirectives(context.promptDirectivesMode, context.userMessage) ? `## Directives for E-Mail & Payment Reminders (Zahlungserinnerungen):
     1. NEVER USE PLACEHOLDERS: Do NOT include placeholders like '[Datum einfügen]', '[Datum]', '[Betrag]' or '[Name]'. Calculate real dates based on today's date (siehe 'Current Date' in der dynamischen Zone) or use relative timeframes like 'binnen 7 Tagen' or 'in den nächsten Tagen'.
-    2. RECIPIENT MATCHING: Do NOT reject or question email addresses based on contact names. Email addresses can be personal handles (e.g. qa2@musterfirma.test), company addresses, or representatives.
+    2. RECIPIENT MATCHING: Do NOT reject or question email addresses based on contact names. Email addresses can be personal handles (e.g. s_opitz@gmx.de), company addresses, or representatives.
     3. FREIGABE-LOGIK (CHAT vs. DASHBOARD):
        - Sind alle Daten (Empfänger-E-Mail, Betreff, Inhalt) vollzählig und korrekt: Formuliere die E-Mail ausschließlich als 'proposedChanges' ('entity_type': 'emails', 'action': 'SEND') für die Freigabe direkt im Chat.
        - Fehlen Daten oder sind sie unvollständig: Das Werkzeug legt den Entwurf im Dashboard unter 'E-Mail-Entwürfe' an. Erstelle in diesem Fall KEIN 'proposedChanges' im Chat, sondern weise den Nutzer im Chat darauf hin, dass der Entwurf im Dashboard zur Ergänzung/Freigabe liegt.
@@ -855,6 +860,8 @@ export class AgentRuntime {
     // lebt AUSSERHALB der Schleife (zählt über Iterationen hinweg, max 2 Korrektur-Runden).
     const TOOL_CALL_RETRY_MAX = 2;
     let toolCallRetryCount = 0;
+    // Befund-2-Fix (2026-08-17): Korrektur-Runden bei kaputtem JSON (parseFailed) — bounded.
+    let jsonRetryCount = 0;
 
     while (!context.isComplete && loopCount < maxLoops) {
       loopCount++;
@@ -1009,6 +1016,29 @@ export class AgentRuntime {
           context.thoughtLog.push(`Thought: ${decision.thought}`);
         }
 
+        // Befund-2-Fix (2026-08-17): kaputtes JSON (parseFailed) → Korrektur-Runde statt
+        // Garbage/Artefakt als finale Antwort. Bounded über jsonRetryCount; nach Erschöpfung
+        // wird die Antwort aus den vorliegenden Tool-Ergebnissen gebaut (Loop-Ende-Fallback).
+        if (decision.parseFailed) {
+          if (jsonRetryCount < TOOL_CALL_RETRY_MAX) {
+            jsonRetryCount++;
+            context.thoughtLog.push(
+              `[JSON-Retry ${jsonRetryCount}/${TOOL_CALL_RETRY_MAX}] Rohantwort war kein gültiges JSON — Korrektur-Runde wird gestartet.`
+            );
+            context.retryDirective =
+              (context.language === 'de'
+                ? `\n🚨 KORREKTUR-AUFFORDERUNG (${jsonRetryCount}/${TOOL_CALL_RETRY_MAX}) 🚨\nDeine letzte Antwort war KEIN gültiges JSON-Format. Antworte ausschließlich im vorgegebenen JSON-Entscheidungsformat oder als XML-Tool-Call (<invoke name="...">). Keine Markdown-Blöcke, kein Prosa-Text, kein vorzeitiges Beenden.`
+                : `\n🚨 CORRECTION (${jsonRetryCount}/${TOOL_CALL_RETRY_MAX}) 🚨\nYour last response was NOT valid JSON. Respond ONLY in the required JSON decision format or as XML tool calls (<invoke name="...">). No markdown blocks, no prose, no premature finalization.`);
+            continue;
+          }
+          context.thoughtLog.push(
+            `[JSON-Retry] ${TOOL_CALL_RETRY_MAX} Korrektur-Runden ohne valides JSON — Antwort wird aus den vorliegenden Tool-Ergebnissen gebaut (kein Garbage-Text).`
+          );
+          context.isComplete = true;
+          context.finalDraftText = null;
+          break;
+        }
+
         if (decision.proposedChanges) {
           const pc = decision.proposedChanges;
           if (pc.entity_type === 'emails' && pc.proposed_state) {
@@ -1073,7 +1103,12 @@ export class AgentRuntime {
           // S4: Parallele Ausführung unabhängiger READ-Tools (Promise.allSettled).
           // Whitelist-Filter: WRITE-Tools sind strukturell ausgeschlossen (parallele Writes = Race-Gefahr).
           const freshCalls = decision.parallelToolCalls.filter(pc => {
-            if (!this.READ_TOOL_WHITELIST.has(pc.toolName)) return false;
+            // Befund-3-Fix (2026-08-17): Vault-Write-Tools NIEMALS parallel (Race-Gefahr);
+            // Vault-Lese-Tools (logisch ODER normalisiert) sind parallel erlaubt —
+            // sie fehlten in der Whitelist und blockierten ganze Batches (Duplicate-Block-Abbruch).
+            const vkind = vaultToolKind(pc.toolName);
+            if (vkind === 'write') return false;
+            if (vkind === null && !this.READ_TOOL_WHITELIST.has(pc.toolName)) return false;
             const q = typeof pc.toolQuery === "string" ? pc.toolQuery : JSON.stringify(pc.toolQuery);
             return !context.toolResults.some(r => r.toolName === pc.toolName && r.query === q);
           });
@@ -1089,12 +1124,19 @@ export class AgentRuntime {
           });
 
           if (dedupedCalls.length === 0) {
-            context.thoughtLog.push(`[Duplicate Block] Alle parallelToolCalls wurden bereits ausgeführt. Aborting ReAct loop to prevent redundant LLM loops.`);
-            context.isComplete = true;
-            if (!context.finalDraftText) {
-              context.finalDraftText = sanitizeFinalText(decision.finalDraftText || decision.thought || (context.language === 'de' ? "Ergebnisse bereits vorliegend." : "Results already retrieved."), context.language);
-            }
-            break;
+            // Befund-3-Fix (2026-08-17): Statt Loop-Abbruch mit durchgesickertem Thought
+            // das Modell gezielt weiterleiten — retryDirective wirkt exakt eine Iteration
+            // (Reset nach Prompt-Bau). Der Loop bleibt durch maxLoops begrenzt; der
+            // Loop-Ende-Fallback baut bei Bedarf eine echte Antwort aus den Ergebnissen.
+            const blocked = decision.parallelToolCalls.map((pc) => pc.toolName).join(", ");
+            context.thoughtLog.push(
+              `[Parallel Block] ${decision.parallelToolCalls.length} parallelToolCalls gefiltert (Duplikate oder nicht parallel erlaubt: ${blocked}). Hinweis ans Modell gesendet — kein Thought-Leak.`
+            );
+            context.retryDirective =
+              (context.language === 'de'
+                ? `\n🚨 HINWEIS: Deine parallelen Tool-Aufrufe (${blocked}) wurden NICHT ausgeführt — Duplikate bereits vorliegender Ergebnisse oder nicht parallel erlaubt.\n- Führe fehlende Aufrufe EINZELN (seriell über callToolName) aus ODER\n- Beantworte die Anfrage mit den bereits vorliegenden Ergebnissen (isComplete=true).\nAntworte NIE mit einer Ankündigung wie "Ich werde listen/suchen/prüfen".`
+                : `\n🚨 NOTE: Your parallel tool calls (${blocked}) were NOT executed — they duplicate already-available results or are not allowed in parallel.\n- Run missing calls ONE BY ONE (serially via callToolName) OR\n- Answer using the results you already have (isComplete=true).\nNever reply with an announcement like "I will list/search/check".`);
+            continue;
           }
 
           context.thoughtLog.push(`[Parallel] Ausführen von ${dedupedCalls.length} unabhängigen Lese-Tools (allSettled).`);
@@ -1147,12 +1189,14 @@ export class AgentRuntime {
           );
 
           if (isDuplicateCall) {
-            context.thoughtLog.push(`[Duplicate Block] Tool "${toolName}" with query "${toolQuery}" was already executed. Aborting ReAct loop to prevent redundant LLM loops.`);
-            context.isComplete = true;
-            if (!context.finalDraftText) {
-              context.finalDraftText = sanitizeFinalText(decision.finalDraftText || decision.thought || (context.language === 'de' ? "Ergebnisse bereits vorliegend." : "Results already retrieved."), context.language);
-            }
-            break;
+            // Befund-3-Fix (2026-08-17): Statt Abbruch mit durchgesickertem Thought
+            // das Modell weiterleiten (vorliegende Ergebnisse nutzen ODER andere Argumente).
+            context.thoughtLog.push(`[Duplicate Block] Tool "${toolName}" mit Query "${toolQuery}" bereits ausgeführt — Hinweis ans Modell statt Loop-Abbruch (kein Thought-Leak).`);
+            context.retryDirective =
+              (context.language === 'de'
+                ? `\n🚨 HINWEIS: Der Aufruf "${toolName}" mit dieser Query wurde bereits ausgeführt. Nutze die vorliegenden Ergebnisse, rufe das Tool mit ANDEREN Argumenten auf, oder beende mit isComplete=true.`
+                : `\n🚨 NOTE: The call "${toolName}" with this query was already executed. Use the available results, call the tool with DIFFERENT arguments, or finalize with isComplete=true.`);
+            continue;
           }
 
           const single = await this.executeSingleTool(context, ai, toolName, toolQuery);
@@ -1819,7 +1863,16 @@ ${toolTrace}`;
     context.thoughtLog.push(`Executing tool "${toolName}" with query: "${toolQuery}"`);
 
     // S8: Governance-Check vor jedem Write-Tool-Call (BLOCK / REQUIRE_APPROVAL / ASK / ALLOW)
-    const govMapping = WRITE_ACTION_MAP[toolName];
+    // Befund-3b (2026-08-17): normalisierte MCP-Namen (mcp_<server>_vault_write) auflösen —
+    // sonst greift die Governance bei Vault-Writes über den MCP-Pfad nicht.
+    let govMapping = WRITE_ACTION_MAP[toolName];
+    if (!govMapping) {
+      const vkind = vaultToolKind(toolName);
+      if (vkind === 'write') {
+        const base = vaultWriteBaseName(toolName);
+        govMapping = (base && VAULT_WRITE_ACTION_MAP[base]) || { entity: "vault_file", action: "CREATE" };
+      }
+    }
     if (govMapping) {
       const gov = await evaluateGovernanceRules(context.tenantId, govMapping.entity, govMapping.action);
       if (gov.effect === "BLOCK") {

@@ -16,6 +16,7 @@ import { McpClientEngine } from "../mcp/mcpClientEngine.js";
 import { McpExternalServer, McpDiscoveredTool } from "../../types.js";
 import { MCP_PRESETS_CATALOG, interpolatePresetConfig } from "../mcp/presets.js";
 import { buildOAuthAuthUrl } from "../mcp/oauthHandler.js";
+import { normalizeAuthToken } from "../mcp/authTokenNormalize.js";
 
 function normalizeServerRow(row: unknown): McpExternalServer {
   if (!row || typeof row !== "object") throw new Error("Server row not found");
@@ -196,7 +197,8 @@ export const mcpClientRouter = router({
         env_vars: input.env_vars || {},
         headers: input.headers || {},
         auth_type: input.auth_type || "none",
-        auth_token_encrypted: input.auth_token_encrypted || null,
+        // Befund 2026-08-17: "Bearer " / "Basic "-Präfix beim Persistieren entfernen
+        auth_token_encrypted: normalizeAuthToken(input.auth_token_encrypted) || null,
         is_active: input.is_active ?? true,
         health_status: "unknown",
         last_ping_at: null,
@@ -275,6 +277,10 @@ export const mcpClientRouter = router({
           if (["command_args", "env_vars", "headers"].includes(key)) {
             updateFields.push(`${key} = $${paramIdx}`);
             values.push(JSON.stringify(val));
+          } else if (key === "auth_token_encrypted") {
+            // Befund 2026-08-17: "Bearer " / "Basic "-Präfix auch beim Update entfernen
+            updateFields.push(`${key} = $${paramIdx}`);
+            values.push(typeof val === "string" ? normalizeAuthToken(val) : val);
           } else {
             updateFields.push(`${key} = $${paramIdx}`);
             values.push(val);
@@ -524,7 +530,8 @@ export const mcpClientRouter = router({
         env_vars: envVarsWithPreset,
         headers: {},
         auth_type: preset.authType === "oauth2" ? "oauth2" : (preset.authType === "api_key" || preset.authType === "bearer" || preset.authType === "basic") ? preset.authType : "none",
-        auth_token_encrypted: authToken,
+        // Befund 2026-08-17: "Bearer " / "Basic "-Präfix auch beim Preset-Install entfernen
+        auth_token_encrypted: normalizeAuthToken(authToken),
         is_active: true,
         health_status: "unknown",
         last_ping_at: null,
