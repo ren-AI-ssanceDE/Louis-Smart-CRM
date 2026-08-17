@@ -34,7 +34,7 @@ Im Lieferumfang ist ein fertiger MCP-Server enthalten, der Ihren **Obsidian-Noti
 3. Verbinden, Tools werden automatisch erkannt und erscheinen bei Louis.
 4. Fertig — Louis kann die neuen Werkzeuge nutzen (mit Freigabe).
 
-> 💡 **Tipp für Docker-Betrieb (BUG-11, Auftrag 015):** Wenn Louis im Docker-Container läuft und der externe MCP-Server **auf dem Host-Rechner** (z. B. `localhost:9333`), dann `localhost` im Louis-Container **nicht** den Host — der Container erreicht den Host nur über `http://host.docker.internal:PORT`. Adressen, die mit `localhost:` beginnen, werden sonst nicht gefunden (Tool-Erkennung findet 0 Tools).
+> 💡 **Tipp für Docker-Betrieb:** Wenn Louis im Docker-Container läuft und der externe MCP-Server **auf dem Host-Rechner** (z. B. `localhost:9333`), dann `localhost` im Louis-Container **nicht** den Host — der Container erreicht den Host nur über `http://host.docker.internal:PORT`. Adressen, die mit `localhost:` beginnen, werden sonst nicht gefunden (Tool-Erkennung findet 0 Tools).
 
 ---
 
@@ -101,7 +101,7 @@ Die Client-Engine (`src/server/mcp/mcpClientEngine.ts`) verbindet Louis AI mit e
 * **Lese-Tools** (read-only): sofort ausführbar.
 * **Schreib-/kritische Tools** (send_email, create_ticket, delete_file …): Dispatch stoppt → Freigabe-Anfrage im Chat („Louis möchte folgendes Jira-Ticket erstellen … Zulassen / Ablehnen“).
 
-## 4. Obsidian-Anbindung: Local REST API MCP-Plugin (S10 Tier-1)
+## 4. Obsidian-Anbindung: Local REST API MCP-Plugin
 
 Seit 2026-08-16 ist das **Local REST API Plugin** (coddingtonbear) die Obsidian-Wissensanbindung — das Plugin ist **selbst ein MCP-Server** (Streamable-HTTP). Es arbeitet auf dem **aktuell in Obsidian geöffneten Vault** (beim CRM: der eigene CRM-Vault mit `Willkommen.md` + `_louis/`). Kein Dateisystem-Zugriff, keine Pfad-Konfiguration im Code.
 

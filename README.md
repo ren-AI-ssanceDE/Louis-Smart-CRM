@@ -93,7 +93,7 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 | Wissensanbindung | Obsidian-MCP (Local REST API Plugin) | extern/Obsidian |
 | Zusatzdienste | Whisper (:8000), Telegram-Gate, Ollama | compose |
 
-**Wichtige Projektregeln (Auszug, vollständig in `AGENTS.md`):**
+**Wichtige Projektregeln (Auszug):**
 - **Kein ORM** — nur parametrisiertes SQL (`pg`)
 - **zod als Single Source of Truth** — jeder tRPC-Endpunkt mit Input-/Output-Schema
 - **Hybrid-Store-Pflicht** — DB-Pfad + Fallback-Store (JSON) für Tests/Preview
@@ -128,5 +128,5 @@ Deploy-Praxis: nach Änderungen `docker compose up -d --build app`, dann Verifik
 ### Release & Versionierung
 
 - Version in `package.json` (aktuell **2.0.0**); Änderungshistorie: `CHANGELOG.md`
-- Bekannte akzeptierte Restrisiken für V2: Tenant-List-Vektor (`OR tenant_id = '1'`-Muster, Auftrag 018 offen), lokaler-LLM-Subtask-Pfad unter paralleler Last (Auftrag 024-Nachfolge)
+- Bekannte akzeptierte Restrisiken: siehe `CHANGELOG.md` (Abschnitt „Bekannte Restrisiken“)
 - Rollback: Docker-Image `louis-smart-crm-app:latest` neu bauen aus git-Tag; DB-Backup einspielen (siehe oben)

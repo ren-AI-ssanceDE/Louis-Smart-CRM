@@ -83,7 +83,7 @@ Für Entwickler gelten strenge Qualitätsregeln (keine unsicheren Typen, keine v
 
 | Gate | Werkzeug | Umfang |
 |---|---|---|
-| Projektregeln | Automatisierte Regeln (`npm run check:rules`, pre-commit) | `any`-Verbot, i18n-Pflicht, Schutz kritischer Dateien, additive Migrationen |
+| Projektregeln | Automatisierte Regeln (`npm run check:rules`, pre-commit) | `any`-Verbot, i18n-Pflicht, Schutz kritischer Systemdateien, additive Migrationen |
 | Lint/Typen | `tsc --noEmit` (`npm run lint`) | Volle Typprüfung |
 | Unit/Integration | **Vitest** (interne Suite) | Schemas, Router, DAG-Mapper, AI-Tools, Draft-Flow, Sanitizer, Cron-Matcher |
 | E2E | **Playwright** (interne Suite) | Live gegen den Stack — Admin, Workflows, AI-Tools, Chat-Upload, DAG-Editor, Token-Usage |

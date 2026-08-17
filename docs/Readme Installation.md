@@ -125,7 +125,7 @@ docker compose up --build -d
 
 ```bash
 npm run hooks:install   # einmalig: pre-commit-Hook installieren
-npm run check:rules     # any-Verbot, i18n-Pflicht, heilige Dateien, additive Migrationen
+npm run check:rules     # any-Verbot, i18n-Pflicht, Schutz kritischer Systemdateien, additive Migrationen
 npm run lint            # tsc --noEmit
 npm run lint          # tsc --noEmit (Typprüfung)
 npm run test:e2e        # Playwright (E2E-Server :3000/:3100)

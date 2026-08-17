@@ -113,7 +113,7 @@ Details: [Readme Installation](Readme%20Installation.md).
 
 | Gate | Befehl |
 |---|---|
-| Projektregeln (any-Verbot, i18n, heilige Dateien) | `npm run check:rules` (pre-commit-Hook) |
+| Projektregeln (any-Verbot, i18n, Schutz kritischer Systemdateien) | `npm run check:rules` (pre-commit-Hook) |
 | Lint / Typen | `npm run lint` |
 | Qualitätssicherung | Interne Test-Suiten (Unit, E2E, ZUGFeRD) — nicht Teil des öffentlichen Repos |
 | E2E (Playwright, 20+ Specs) | `npm run test:e2e` |
