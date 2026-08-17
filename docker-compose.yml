@@ -102,15 +102,10 @@ services:
     volumes:
       - ./ollama/models:/root/.ollama/models
       - ./ollama:/ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # Hinweis: Auf Rechnern mit NVIDIA-GPU kann die Beschleunigung aktiviert
+    # werden (siehe README → „GPU-Beschleunigung (optional)“). Ohne GPU läuft
+    # Ollama auf CPU — die KI-Hauptfunktionen nutzen den Cloud-Provider.
 
 volumes:
   louis-crm_postgres_data:
-    external: true
   whisper_models:
