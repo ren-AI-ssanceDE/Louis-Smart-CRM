@@ -60,7 +60,7 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 | `sys_louis_ai_sessions` / `sys_louis_ai_chat_history` | Agenten-Sessions & Gesprächshistorien |
 | `sys_louis_ai_knowledge_metadata` / `sys_louis_ai_knowledge_chunks` | RAG-Wissensbasis (Chunks + Embeddings) |
 | `sys_louis_ai_custom_workflows` | Workflows (inkl. `dag_structure`, `skill_version`, `version_history`) |
-| `sys_louis_ai_agent_jobs` | Agent-Jobs (S7, script/monitor) |
+| `sys_louis_ai_agent_jobs` | Agent-Jobs (script/monitor) |
 | `sys_louis_ai_user_memory` | Langzeitgedächtnis des Assistenten |
 | `sys_louis_mail_drafts` | E-Mail-Entwürfe (`PENDING/APPROVED/REJECTED/SENT/FAILED`) |
 | `sys_comms_email_templates` / `sys_comms_invoice_text_templates` / `sys_comms_invoice_item_templates` / `sys_comms_signatures` | Vorlagen & Signaturen |
@@ -77,7 +77,7 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 * **Nur additive Migrationen**: `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — idempotent.
 * **Keine Destruktion**: Kein unaufgefordertes `DROP TABLE`/`TRUNCATE`/hartes `DELETE` für Kernentitäten.
 * **Auto-Migration von Altdaten**: z. B. lineare Workflows ohne `dag_structure` werden beim App-Start automatisch in DAGs konvertiert (nicht gelöscht); Legacy-Statusfelder werden normalisiert.
-* **S7-Migration**: TIMER-Last-Run-Marker werden idempotent migriert.
+* **Migration**: TIMER-Last-Run-Marker werden idempotent migriert.
 
 ## 4. Daten-Governance & Events
 

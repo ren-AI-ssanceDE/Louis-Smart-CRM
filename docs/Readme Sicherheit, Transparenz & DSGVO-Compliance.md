@@ -81,7 +81,7 @@ Das Log wird im Admin-Bereich visualisiert (`src/components/admin/AuditLogTable.
 
 ## 5. Zero-Trust & Mandanten-Isolation
 
-* **Mandantenfähigkeit**: Alle Daten sind über `tenant_id` isoliert; Queries filtern `WHERE ... AND (tenant_id = $2 OR tenant_id = '1')`.
+* **Mandantenfähigkeit**: Alle Daten sind strikt über `tenant_id` isoliert (Tenant-Filter auf jeder Abfrage).
 * **Telegram-Gateway**: Zero-Trust-Allowlist (nur freigeschaltete Chat-IDs).
 * **Vault-Governance** (`vaultStore.ts` / obsidian-mcp@2): Lesen blockiert `Privat/`; Schreiben blockiert `Privat/` und `RO/`, erlaubt nur `_louis/`, `.md`-Pflicht, Path-Traversal-Schutz (`..`, absolute Pfade, NUL).
 

@@ -89,7 +89,7 @@ Der Hintergrund-Scheduler (`workflowEngine.ts`) prüft alle **10 Sekunden** fäl
 | `cron` | **5-Felder-Cron-Expression** (Minute Stunde Tag Monat Wochentag) — z. B. `0 8 * * 1` = montags 08:00 |
 
 * **Delayed Queue**: Schritte mit `delay_seconds` → Zustand `PENDING_DELAY` → Reaktivierung bei `execute_at_utc`.
-* **S7-Migration**: TIMER-Last-Run-Marker werden automatisch von Legacy-Speicherorten migriert (idempotent).
+* **Migration**: TIMER-Last-Run-Marker werden automatisch von Legacy-Speicherorten migriert (idempotent).
 
 ## 4. Verwaltung (Admin)
 

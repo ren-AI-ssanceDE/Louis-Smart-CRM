@@ -103,7 +103,7 @@ Verhaltens- und Laufzeitparameter (KI-Provider, MCPs, Embeddings, Voice, STT, We
 ### D. Additive Migrationen & Abwärtskompatibilität
 Nur `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Neue Versionen dürfen alte DBs/Vorlagen nie zerstören — Altdaten werden beim Update automatisch konvertiert (z. B. lineare Workflows → DAG), nie gelöscht.
 
-### E. Heilige Dateien (Read-Only)
+### E. Kritische Systemdateien (Read-Only)
 `src/lib/zugferd.ts`, `src/server/pdfHelper.ts`, `scripts/PDFA_def.ps`, `Dockerfile`, `docker-entrypoint.sh` — zertifizierte E-Rechnungs-Komponenten, nicht verändern.
 
 ### F. Dual-Store-Pflicht

@@ -125,4 +125,4 @@ Seit August 2026 ist der **DAG-Graph der einzige Workflow-Pfad** (lineare Sequen
 
 ## 5. Agent-Jobs (zeitgesteuerte Automatisierung)
 
-Zusätzlich zur Workflow-Engine unterstützt das System **Agent-Jobs** (S7): cron-artige Jobs, die Scripte ausführen oder Monitor-Läufe anstoßen (siehe [Readme Agent-Jobs](Readme%20Agent-Jobs.md)).
+Zusätzlich zur Workflow-Engine unterstützt das System **Agent-Jobs**: cron-artige Jobs, die Scripte ausführen oder Monitor-Läufe anstoßen (siehe [Readme Agent-Jobs](Readme%20Agent-Jobs.md)).

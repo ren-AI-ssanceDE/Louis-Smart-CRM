@@ -81,7 +81,7 @@ Im System gibt es einen unsichtbaren „Schwarzen Brett“-Dienst: Sobald etwas 
 
 * **Zod als Vertrag**: Jede Query/Mutation definiert `.input(Schema)` und `.output(Schema)` — Änderungen am Backend-Typ brechen sofort die Frontend-Kompilierung.
 * **Kein API-Key-Leakage**: Das Frontend fragt niemals externe APIs (Gemini, SMTP, MCP-Server) direkt an — der gesamte Traffic läuft über tRPC im Backend.
-* **Mandantenfähigkeit**: Jede Abfrage filtert über `ctx.tenantId` (`WHERE ... AND (tenant_id = $2 OR tenant_id = '1')`).
+* **Mandantenfähigkeit**: Jede Abfrage filtert strikt über die Mandanten-ID (`ctx.tenantId`).
 * **REST-Ergänzungen** (in `server.ts`): `/api/mcp` (SSE + JSON-RPC), `/api/upload`, `/api/voice/transcribe`, `/api/chat`, `/api/invoices/:id/download-pdf|-xml`, `/api/notes/download/:id`, `/api/telegram/config`, `/api/health`, `/api/auth/*`.
 
 ## 3. Louis AI: ReAct-Loop & QA-Critic

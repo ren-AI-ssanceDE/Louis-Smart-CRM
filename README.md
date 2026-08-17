@@ -98,7 +98,6 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 - **zod als Single Source of Truth** — jeder tRPC-Endpunkt mit Input-/Output-Schema
 - **Hybrid-Store-Pflicht** — DB-Pfad + Fallback-Store (JSON) für Tests/Preview
 - **i18n-Pflicht** — alle UI-Texte über `t()` mit `de.json` + `en.json`
-- **🚫 Heilige Dateien** — `src/lib/zugferd.ts` und `docker-entrypoint.sh` dürfen **nicht** verändert werden (mechanischer Guard im pre-commit-Hook, Regel 0)
 
 ### Lokale Entwicklung
 
@@ -128,5 +127,4 @@ Deploy-Praxis: nach Änderungen `docker compose up -d --build app`, dann Verifik
 ### Release & Versionierung
 
 - Version in `package.json` (aktuell **2.0.0**); Änderungshistorie: `CHANGELOG.md`
-- Bekannte akzeptierte Restrisiken: siehe `CHANGELOG.md` (Abschnitt „Bekannte Restrisiken“)
 - Rollback: Docker-Image `louis-smart-crm-app:latest` neu bauen aus git-Tag; DB-Backup einspielen (siehe oben)

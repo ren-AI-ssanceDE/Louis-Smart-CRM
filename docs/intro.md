@@ -50,7 +50,7 @@ Louis Smart CRM ist eine enterprise-fähige, KI-native CRM- und E-Invoicing-Plat
 * **Abwärtskompatibilität**: additive, idempotente Migrationen; Altdaten werden konvertiert, nie gelöscht
 * **i18n-Pflicht**: keine hartkodierten UI-Texte (DE/EN)
 * **Keine hardcodierten Einstellungen**: Verhaltensparameter in DB-Config + Admin-Panel (NULL = Default)
-* **Heilige Dateien**: `zugferd.ts`, `pdfHelper.ts`, `PDFA_def.ps`, `Dockerfile`, `docker-entrypoint.sh` — read-only (Zertifizierung)
+* **Kritische Systemdateien** (E-Rechnungs-Engine, Docker-Start) sind produktiv abgesichert (Read-Only)
 
 ## Projektstruktur (Kurzüberblick)
 
