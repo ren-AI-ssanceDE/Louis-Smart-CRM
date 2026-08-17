@@ -15,8 +15,7 @@ e2e-out/
 playwright-report/
 test-results/
 
-# Vendored build-time assets — provisioned by `npm run setup-assets`
-src/assets/fonts/*.ttf
+# Vendored build-time assets (Lato-Fonts, im Repo getrackt für reproduzierbare Builds)
 mustang-cli.jar
 
 # Local invoice artifacts (PDF/A-3b output, generated XML, validation logs)
