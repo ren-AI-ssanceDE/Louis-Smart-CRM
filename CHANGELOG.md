@@ -4,8 +4,6 @@ Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog]
 
 ## [2.1.2] — 2026-08-21 (in Vorbereitung)
 
-> **Hinweis:** Nächste Version nach Tag `2.1.1` — noch nicht veröffentlicht. Alle Fixes gehören in diese Version.
-
 ### 🎯 Fokus: Zuverlässigkeit der KI-Pfade (Vault, Kalender, Tokens, Live-Status)
 
 #### 🐛 Vault-Suche: doppelt-verschachtelte Query behoben
