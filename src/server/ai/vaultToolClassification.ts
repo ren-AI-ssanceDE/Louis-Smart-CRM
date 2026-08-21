@@ -1,10 +1,10 @@
 // ============================================================================
-// Befund-3-Fix (2026-08-17) — Vault-Tool-Klassifikation
+// Fix (2026-08-17) — Vault-Tool-Klassifikation
 // ----------------------------------------------------------------------------
 // Problem: Die READ_TOOL_WHITELIST im ReAct-Loop kannte keine Vault-Tools →
 // parallele vault_list-Aufrufe wurden gefiltert → "[Duplicate Block]"-Abbruch mit
 // durchgesickertem Thought als Endtext (unvollständige AI-Antworten).
-// Zusätzlich (Befund 3b): WRITE_ACTION_MAP matcht nur logische Namen — normalisierte
+// Zusätzlich: WRITE_ACTION_MAP matcht nur logische Namen — normalisierte
 // MCP-Namen (mcp_<server>_vault_write) umgingen den Governance-Check.
 //
 // Lösung: suffix-basierte Klassifikation (logisch UND normalisiert), robust gegen
@@ -22,7 +22,10 @@ export const VAULT_READ_TOOL_SUFFIXES = [
   "search_query",
   "tag_list",
   "command_list",
-  "active_file_get_path"
+  "active_file_get_path",
+  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*) — Read/Search
+  "knowledge_read",
+  "knowledge_search"
 ];
 
 export const VAULT_WRITE_TOOL_SUFFIXES = [
@@ -31,7 +34,11 @@ export const VAULT_WRITE_TOOL_SUFFIXES = [
   "vault_patch",
   "vault_delete",
   "vault_move",
-  "vault_copy"
+  "vault_copy",
+  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*) — Write/Update/Delete
+  "knowledge_write",
+  "knowledge_update",
+  "knowledge_delete"
 ];
 
 /** Klassifiziert einen Vault-Tool-Namen (logisch oder normalisiert) als read/write — sonst null. */
@@ -48,12 +55,16 @@ export function vaultWriteBaseName(name: string): string | undefined {
   return VAULT_WRITE_TOOL_SUFFIXES.find((x) => s === x || s.endsWith(`_${x}`));
 }
 
-/** Governance-Mapping für die RAW-MCP-Vault-Write-Tools (Befund 3b). */
+/** Governance-Mapping für die RAW-MCP-Vault-Write-Tools. */
 export const VAULT_WRITE_ACTION_MAP: Record<string, { entity: string; action: GovernanceAction }> = {
   vault_write: { entity: "vault_file", action: "CREATE" },
   vault_append: { entity: "vault_file", action: "CREATE" },
   vault_patch: { entity: "vault_file", action: "UPDATE" },
   vault_delete: { entity: "vault_file", action: "DELETE" },
   vault_move: { entity: "vault_file", action: "MOVE" },
-  vault_copy: { entity: "vault_file", action: "CREATE" }
+  vault_copy: { entity: "vault_file", action: "CREATE" },
+  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*)
+  knowledge_write: { entity: "vault_file", action: "CREATE" },
+  knowledge_update: { entity: "vault_file", action: "UPDATE" },
+  knowledge_delete: { entity: "vault_file", action: "DELETE" }
 };

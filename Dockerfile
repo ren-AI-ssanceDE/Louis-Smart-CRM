@@ -67,7 +67,9 @@ COPY --from=builder --chown=app:app /app/vite.config.ts ./vite.config.ts
 
 # Persistent data dirs — overridden by volume mounts in docker-compose.
 # Created with explicit ownership; no recursive chown over node_modules.
-RUN install -d -o app -g app /app/companies_data_vault /app/contacts_data_vault /app/knowledge_data_vault /app/uploads
+# /app/.npm = npm-Cache der App (HOME=/app, User 'app') — als Volume npm_cache gemountet;
+# die app:app-Rechte hier sorgen dafür, dass das frisch angelegte Volume beschreibbar ist.
+RUN install -d -o app -g app /app/companies_data_vault /app/contacts_data_vault /app/knowledge_data_vault /app/uploads /app/.npm
 
 ENV NODE_ENV=production
 ENV PORT=3000

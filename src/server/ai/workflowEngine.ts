@@ -5,10 +5,12 @@ import { execFile } from "child_process";
 import { workflowEventBus } from "./workflowEventBus.js";
 import { workflowExecutor } from "./workflowExecutor.js";
 import { getLearnedWorkflows } from "./tools.js";
-import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent } from "../db.js";
+import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent, pruneAuditLogs, pruneSessions } from "../db.js";
 import { CustomWorkflow, WorkflowInstance, Invoice, InvoiceOverduePayload, AgentJob } from "../../types.js";
 import { runLouisAiFlow } from "./orchestrator.js";
 import { executeSendTelegramMessage } from "./tools/messaging.js";
+// Auftrag 026 P1-1 (#29): Curator-Tick im Scheduler-Heartbeat
+import { maybeRunCuratorTick } from "./skillCurator.js";
 
 /**
  * Scans and restarts workflow instances that have been running for more than 10 minutes (orphaned during system crash/reboot)
@@ -203,6 +205,86 @@ async function checkOverdueInvoices() {
 }
 
 /**
+ * Auftrag 037 P2: Audit-Log-Retention-Prune — liest audit_retention_days aus der
+ * Admin-Config (NULL = kein Auto-Prune, Regel 12) und prunt in Batches.
+ * Fehlertolerant: nie werfen (Scheduler läuft weiter).
+ */
+async function pruneAuditLogsIfConfigured(): Promise<void> {
+  try {
+    // Config pro Tenant laden (getTenantAiConfig ist in orchestrator.ts; hier
+    // direkt über die DB, um Zirkular-Importe zu vermeiden — nur die eine Spalte).
+    let tenants: string[] = [];
+    if (isUsingFallback || !pool) {
+      tenants = ["1"];
+    } else {
+      const res = await pool.query(
+        "SELECT DISTINCT tenant_id FROM sys_integrations_louis_ai_config WHERE audit_retention_days IS NOT NULL"
+      );
+      tenants = res.rows.map((r: { tenant_id: string }) => String(r.tenant_id));
+    }
+    for (const tenantId of tenants) {
+      let retentionDays: number | null = null;
+      if (isUsingFallback || !pool) {
+        const cfg = (fallbackStore.louisAiConfig || []).find((c) => c.tenant_id === tenantId);
+        retentionDays = cfg?.audit_retention_days ?? null;
+      } else {
+        const res = await pool.query(
+          "SELECT audit_retention_days FROM sys_integrations_louis_ai_config WHERE tenant_id = $1",
+          [tenantId]
+        );
+        retentionDays = res.rows.length > 0 ? (res.rows[0].audit_retention_days ?? null) : null;
+      }
+      if (!retentionDays || retentionDays <= 0) continue;
+      const result = await pruneAuditLogs(tenantId, retentionDays);
+      if (result.pruned > 0) {
+        console.log(`[WorkflowScheduler] Audit-Log-Prune: ${result.pruned} Einträge (Tenant ${tenantId}, ${result.batches} Batches)`);
+      }
+    }
+  } catch (err) {
+    console.error("[WorkflowScheduler] pruneAuditLogsIfConfigured fehlgeschlagen:", err);
+  }
+}
+
+/**
+ * Auftrag 038 P2: Session-Retention-Prune — liest session_retention_days aus der
+ * Admin-Config (NULL = kein Auto-Prune, Regel 12) und prunt inaktive Sessions
+ * in Batches (Kinder werden verwaist). Fehlertolerant: nie werfen.
+ */
+async function pruneSessionsIfConfigured(): Promise<void> {
+  try {
+    let tenants: string[] = [];
+    if (isUsingFallback || !pool) {
+      tenants = ["1"];
+    } else {
+      const res = await pool.query(
+        "SELECT DISTINCT tenant_id FROM sys_integrations_louis_ai_config WHERE session_retention_days IS NOT NULL"
+      );
+      tenants = res.rows.map((r: { tenant_id: string }) => String(r.tenant_id));
+    }
+    for (const tenantId of tenants) {
+      let retentionDays: number | null = null;
+      if (isUsingFallback || !pool) {
+        const cfg = (fallbackStore.louisAiConfig || []).find((c) => c.tenant_id === tenantId);
+        retentionDays = cfg?.session_retention_days ?? null;
+      } else {
+        const res = await pool.query(
+          "SELECT session_retention_days FROM sys_integrations_louis_ai_config WHERE tenant_id = $1",
+          [tenantId]
+        );
+        retentionDays = res.rows.length > 0 ? (res.rows[0].session_retention_days ?? null) : null;
+      }
+      if (!retentionDays || retentionDays <= 0) continue;
+      const result = await pruneSessions(tenantId, retentionDays);
+      if (result.pruned > 0) {
+        console.log(`[WorkflowScheduler] Session-Prune: ${result.pruned} Sessions (Tenant ${tenantId}, ${result.batches} Batches, ${result.orphaned} verwaist)`);
+      }
+    }
+  } catch (err) {
+    console.error("[WorkflowScheduler] pruneSessionsIfConfigured fehlgeschlagen:", err);
+  }
+}
+
+/**
  * Executes a background check for due delayed and periodic workflows.
  */
 async function tickWorkflowScheduler() {
@@ -214,6 +296,20 @@ async function tickWorkflowScheduler() {
       await checkOverdueInvoices();
     } catch (odErr: unknown) {
       console.error("[WorkflowScheduler] Fehler bei der Überprüfung überfälliger Rechnungen:", odErr);
+    }
+
+    // Auftrag 037 P2: Audit-Log-Retention-Prune (opt-in über audit_retention_days, NULL = kein Prune)
+    try {
+      await pruneAuditLogsIfConfigured();
+    } catch (prErr: unknown) {
+      console.error("[WorkflowScheduler] Fehler im Audit-Log-Prune:", prErr);
+    }
+
+    // Auftrag 038 P2: Session-Retention-Prune (opt-in über session_retention_days, NULL = kein Prune)
+    try {
+      await pruneSessionsIfConfigured();
+    } catch (psErr: unknown) {
+      console.error("[WorkflowScheduler] Fehler im Session-Prune:", psErr);
     }
 
     // 0. Recover crashed or rebooted dangling RUNNING workflows
@@ -885,14 +981,18 @@ async function deliverJobOutput(job: AgentJob, tenantId: string, text: string, s
         tenant_id: tenantId,
         session_title: job.job_name,
         conversation_history_json: history,
+        // Auftrag 025 Phase 2 (#12): Session-Spalten befüllen (Summary + Lineage) — DDL existierte,
+        // INSERT ließ sie leer (Katalog- 2026-08-18).
+        short_term_summary_text: "",
+        parent_session_id: null,
         created_at_utc: new Date().toISOString(),
         updated_at_utc: new Date().toISOString()
       });
       saveFallbackStore();
     } else {
       await pool.query(
-        `INSERT INTO sys_louis_ai_sessions (id_uuid, tenant_id, session_title, conversation_history_json, created_at_utc, updated_at_utc)
-         VALUES ($1, $2, $3, $4::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        `INSERT INTO sys_louis_ai_sessions (id_uuid, tenant_id, session_title, conversation_history_json, short_term_summary_text, parent_session_id, created_at_utc, updated_at_utc)
+         VALUES ($1, $2, $3, $4::jsonb, '', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [uuidv4(), tenantId, job.job_name, JSON.stringify(history)]
       );
     }
@@ -1465,6 +1565,10 @@ export function initWorkflowEngine() {
   setInterval(() => {
     tickWorkflowScheduler().catch(err => {
       console.error("[WorkflowEngine] Error inside ticker loop execution:", err);
+    });
+    // Auftrag 026 P1-1 (#29): Curator-Tick im selben Heartbeat (Fälligkeit + Config intern geprüft)
+    void maybeRunCuratorTick("1").catch((err) => {
+      console.warn("[SkillCurator] Heartbeat-Tick fehlgeschlagen (ignoriert):", err instanceof Error ? err.message : String(err));
     });
   }, 10000);
 }

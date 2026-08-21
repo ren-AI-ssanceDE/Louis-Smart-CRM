@@ -316,8 +316,59 @@ export interface LouisAiConfig {
   prompt_directives_mode?: 'always' | 'intent';
   // Auftrag 007: Tool-Call-Modus ('auto' | 'json' | 'native')
   react_tool_call_mode?: 'auto' | 'json' | 'native';
+  // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ, true = Text-Fallback erlaubt)
+  text_fallback_enabled?: boolean | null;
   // Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
   memory_budget_tokens?: number | null;
+  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+  prompt_parallel_tool_guidance?: boolean | null;
+  prompt_tool_guidance_trim?: boolean | null;
+  memory_frozen_snapshot?: boolean | null;
+  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+  compression_enabled?: boolean | null;
+  compression_threshold_percent?: number | null;
+  compression_tail_token_budget?: number | null;
+  compression_aux_model?: string | null;
+  compression_persist_summary?: boolean | null;
+  compression_model_context_map?: string | null;
+  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+  memory_prefetch_enabled?: boolean | null;
+  memory_prefetch_timeout_s?: number | null;
+  memory_recall_status_enabled?: boolean | null;
+  memory_auto_scan_enabled?: boolean | null;
+  memory_consolidation_budget?: number | null;
+  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+  tool_call_retry_max?: number | null;
+  empty_retry_budget?: number | null;
+  empty_retry_cost_threshold_usd?: number | null;
+  tool_guardrail_exact_block?: number | null;
+  tool_guardrail_no_progress_block?: number | null;
+  loop_deadline_s?: number | null;
+  thinking_scrub_enabled?: boolean | null;
+  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+  recall_fts_enabled?: boolean | null;
+  recall_search_limit?: number | null;
+  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+  skill_curator_enabled?: boolean | null;
+  skill_inject_max_tokens?: number | null;
+  skill_prune_inactive_after_days?: number | null;
+  skill_inject_top_k?: number | null;
+  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+  curator_interval_hours?: number | null;
+  curator_archive_after_days?: number | null;
+  // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+  subtask_max_depth?: number | null;
+  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  audit_retention_days?: number | null;
+  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  session_retention_days?: number | null;
+  // C.4 (Plan 2026-08-19): MCP-Genehmigungs-Timeout (s) + stdio-Session-Limit (Regel 12)
+  mcp_approval_timeout_s?: number | null;
+  mcp_stdio_max_sessions?: number | null;
+  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+  mcp_refresh_interval_s?: number | null;
+  subtask_timeout_s?: number | null;
+  subtask_max_parallel?: number | null;
   created_at_utc?: string;
   updated_at_utc?: string;
 }
@@ -893,6 +944,20 @@ export interface McpExecutionResultPruned {
   data: unknown;
 }
 
+// C.7 (Plan 2026-08-19): Chatprofile — benannte Tool-Sets pro Chat
+export interface ChatProfileRecord {
+  id_uuid: string;
+  tenant_id: string;
+  profile_name: string; // FIX nach Erstellung
+  description?: string | null;
+  tools_json?: string[] | null; // NULL = alle Admin-freigegebenen (Main)
+  is_system: boolean;
+  is_default: boolean;
+  created_by_user_id?: string | null; // NULL = team-weit, gesetzt = persönlich
+  created_at?: string | Date;
+  updated_at?: string | Date;
+}
+
 export type {
   McpTransportType,
   McpAuthType,
@@ -903,6 +968,8 @@ export type {
   McpToolMapping,
   McpToolExecutionInput,
   McpToolExecutionResult,
+  // C.4 (Plan 2026-08-19): Genehmigungs-Queue (Trust-Gate)
+  McpApprovalRequestRecord,
   McpDomainQueryInput,
   McpToolAliasConfig,
   McpSanitizeOptions

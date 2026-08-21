@@ -469,7 +469,7 @@ export async function buildInvoicePDFBuffer(
   const countryCode = myCompany?.country_code || "DE";
   const vatId = myCompany?.tax_vat_id || "DE999999999";
   const taxNumber = myCompany?.tax_number || "";
-  const senderEmail = myCompany?.email_address || "billing@musterfirma.test";
+  const senderEmail = myCompany?.email_address || "billing@louis-systems.de";
   
   const iban = myCompany?.iban || "DE89 1005 0000 0123 4567 89";
   const bic = myCompany?.bic_swift || "WELADED1100";

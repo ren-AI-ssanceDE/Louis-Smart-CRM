@@ -6,14 +6,35 @@ import { Agent as UndiciAgent } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, cleanDbRow, cleanLigatureHacksFromValue } from "../db.js";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
+// Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung (doppelt gewrappte inputSchema unwrappen)
+import { unwrapWrappedSchema } from "../ai/toolSchemas.js";
 import { getMcpOAuthToken } from "./oauthHandler.js";
 import { normalizeAuthToken } from "./authTokenNormalize.js";
+// C.4 (Plan 2026-08-19): echte Secret-Verschlüsselung (: auth_token_encrypted war Klartext)
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secretCrypto.js";
+// C.7 (Plan 2026-08-19): Chatprofile — Session-Profil + effektive Toolmenge
+import { getSessionProfile, getChatProfileById, profileToolNames } from "./chatProfiles.js";
+// Phase B (Plan 2026-08-19): SDK-Transport-Schicht
+import {
+  openSession,
+  sessionListTools,
+  sessionCallTool,
+  sessionPing,
+  sessionClose,
+  sanitizeErrorText,
+  isMethodNotFoundError,
+  McpSessionHandle,
+  ServerWithConfig
+} from "./sdkTransport.js";
+// Phase C.1 (Plan 2026-08-19): stdio-Lebenszyklus
+import { PoolEntry, shouldRecycle, enforceStdioLimit, cleanupOAuthTempFiles } from "./serverLifecycle.js";
 import {
   McpExternalServer,
   McpDiscoveredTool,
   McpToolMapping,
   McpToolExecutionInput,
   McpToolExecutionResult,
+  McpApprovalRequestRecord,
   McpHealthStatus,
   McpSanitizeOptions,
   McpExecutionResultPruned
@@ -32,6 +53,27 @@ export function normalizeToolArguments(
   const rawEvent = (normalized.event && typeof normalized.event === "object")
     ? (normalized.event as Record<string, unknown>)
     : null;
+
+  // Auftrag 046 Schritt 3 (C2+C5, Go 2026-08-20): Schema-Respekt statt Raten.
+  // Das inputSchema ist die einzige verlässliche Typ-Quelle — ist es leer (keine
+  // properties, z. B. mcp-google-calendar), werden Argumente TYP-ERHALTEND
+  // durchgereicht (String bleibt String, Objekt bleibt Objekt). Vorher baute die
+  // Engine bei leerem Schema mutmaßlich {dateTime,timeZone}-Objekte (C2) und
+  // zerlegte JsonLogic-Query-Objekte in Strings (C5) — beides brach die Server.
+  const schemaProps = (inputSchema && typeof inputSchema === "object" && inputSchema.properties && typeof inputSchema.properties === "object")
+    ? (inputSchema.properties as Record<string, Record<string, unknown>>)
+    : null;
+  const schemaPropType = (key: string): string | undefined => {
+    const p = schemaProps?.[key];
+    return (p && typeof p === "object" && typeof p.type === "string") ? p.type : undefined;
+  };
+  const eventSchema = (schemaProps?.event && typeof schemaProps.event === "object" && schemaProps.event.properties && typeof schemaProps.event.properties === "object")
+    ? (schemaProps.event.properties as Record<string, Record<string, unknown>>)
+    : null;
+  const eventPropType = (key: string): string | undefined => {
+    const p = eventSchema?.[key];
+    return (p && typeof p === "object" && typeof p.type === "string") ? p.type : undefined;
+  };
 
   // 1. Calendar ID mapping
   let calId: unknown = undefined;
@@ -131,7 +173,14 @@ export function normalizeToolArguments(
   if (startRaw !== undefined) {
     if (typeof startRaw === "string") {
       let val = startRaw.trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      // C2-Fix (046 Schritt 3): Format-Expansion (YYYY-MM-DD → ISO mit T00:00:00Z)
+      // NUR bei explizitem date-time-Schema. Bei unbekanntem/leerem Schema bleibt das
+      // Format erhaltend — mcp-google-calendar erwartet für Ganztages-Events reines
+      // YYYY-MM-DD (start: {date: ...}); die Expansion erzeugte 400 Bad Request.
+      const wantsDatetime =
+        (schemaPropType("start") === "string" && schemaProps?.start && (schemaProps.start as Record<string, unknown>).format === "date-time") ||
+        (eventPropType("start") === "string" && eventSchema?.start && (eventSchema.start as Record<string, unknown>).format === "date-time");
+      if (wantsDatetime && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
         val = `${val}T00:00:00Z`;
       }
       isoStart = val;
@@ -152,7 +201,11 @@ export function normalizeToolArguments(
   if (endRaw !== undefined) {
     if (typeof endRaw === "string") {
       let val = endRaw.trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      // C2-Fix (046 Schritt 3): wie start — Format-Expansion nur bei date-time-Schema
+      const wantsDatetime =
+        (schemaPropType("end") === "string" && schemaProps?.end && (schemaProps.end as Record<string, unknown>).format === "date-time") ||
+        (eventPropType("end") === "string" && eventSchema?.end && (eventSchema.end as Record<string, unknown>).format === "date-time");
+      if (wantsDatetime && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
         val = `${val}T23:59:59Z`;
       }
       isoEnd = val;
@@ -173,7 +226,11 @@ export function normalizeToolArguments(
     normalized["startsAt"] = isoStart;
     normalized["startTime"] = isoStart;
     normalized["start_time"] = isoStart;
-    normalized["start"] = startObj || isoStart;
+    // C2-Fix (046 Schritt 3): start bleibt String, wenn das Schema String erwartet
+    // ODER das Schema nichts sagt (typ-erhaltend). Objekt nur bei explizitem
+    // Objekt-Schema (dateTime/timeZone) — z. B. Google-API-Stil.
+    const wantsStartObj = schemaPropType("start") === "object" || eventPropType("start") === "object";
+    normalized["start"] = wantsStartObj ? (startObj || isoStart) : isoStart;
   }
 
   if (isoEnd) {
@@ -182,7 +239,8 @@ export function normalizeToolArguments(
     normalized["endsAt"] = isoEnd;
     normalized["endTime"] = isoEnd;
     normalized["end_time"] = isoEnd;
-    normalized["end"] = endObj || isoEnd;
+    const wantsEndObj = schemaPropType("end") === "object" || eventPropType("end") === "object";
+    normalized["end"] = wantsEndObj ? (endObj || isoEnd) : isoEnd;
   }
 
   // 6. Attendees normalization
@@ -220,29 +278,34 @@ export function normalizeToolArguments(
   }
 
   // 7. Query parameter normalization
+  // C5-Fix (046 Schritt 3): JsonLogic-Objekte (Obsidian search_query) bleiben Objekte,
+  // wenn das Schema object erwartet ODER nichts sagt (typ-erhaltend). Nur bei
+  // explizitem String-Schema wird ein Objekt-Query zu String zerlegt.
   if ("query" in normalized) {
+    const querySchemaType = schemaPropType("query");
     if (typeof normalized.query === "object" && normalized.query !== null) {
-      const qObj = normalized.query as Record<string, unknown>;
-      normalized.query = String(qObj.q || qObj.text || qObj.search || qObj.query || JSON.stringify(qObj));
+      if (querySchemaType === "string") {
+        const qObj = normalized.query as Record<string, unknown>;
+        normalized.query = String(qObj.q || qObj.text || qObj.search || qObj.query || JSON.stringify(qObj));
+      }
+      // sonst (object-Schema oder Schema ohne Typ-Angabe): Objekt durchreichen
     }
-  } else if ("q" in normalized && typeof normalized.q === "string") {
+    // String-query bleibt String — nichts zu tun
+  } else if ("q" in normalized && typeof normalized.q === "string" && schemaPropType("query") !== "object") {
     normalized.query = normalized.q;
-  } else if ("search" in normalized && typeof normalized.search === "string") {
+  } else if ("search" in normalized && typeof normalized.search === "string" && schemaPropType("query") !== "object") {
     normalized.query = normalized.search;
   }
 
   // 8. Event object synchronization (for MCP tools expecting nested 'event' parameter)
-  const schemaProps = (inputSchema && typeof inputSchema === "object" && inputSchema.properties && typeof inputSchema.properties === "object")
-    ? (inputSchema.properties as Record<string, Record<string, unknown>>)
-    : null;
 
   if (summaryVal || isoStart || schemaProps?.event) {
     const eventSummary = summaryVal || "Termin";
-    const eventObjSchema = (schemaProps?.event && typeof schemaProps.event === "object" && schemaProps.event.properties && typeof schemaProps.event.properties === "object")
-      ? (schemaProps.event.properties as Record<string, Record<string, unknown>>)
-      : null;
-    const eventStart = eventObjSchema?.start?.type === "string" ? isoStart : (startObj || isoStart);
-    const eventEnd = eventObjSchema?.end?.type === "string" ? isoEnd : (endObj || isoEnd);
+    // C2-Fix (046 Schritt 3): event.start/event.end typ-erhaltend — String bei
+    // String-Schema (mcp-google-calendar) oder unbekanntem Schema, Objekt nur
+    // bei explizitem Objekt-Schema (Google-API-Stil).
+    const eventStart = eventPropType("start") === "object" ? (startObj || isoStart) : isoStart;
+    const eventEnd = eventPropType("end") === "object" ? (endObj || isoEnd) : isoEnd;
     const eventAttendees = normalized.attendees || [];
 
     normalized.event = {
@@ -360,6 +423,329 @@ const mcpSessionCache = new Map<string, { sessionId: string; expiresAt: number }
 
 const MCP_SESSION_TTL_MS = 5 * 60 * 1000; // 5 Minuten (Server-Timeout üblich > 5 min)
 
+// Phase B/C (Plan 2026-08-19): SDK-Session-Pool — persistente Handles pro Server-Eintrag.
+// C.1: stdio-Lifecycle (idle/age-Recycle, Ressourcen-Limit 5, Temp-Cleanup) via serverLifecycle.ts.
+const sdkSessionPool = new Map<string, PoolEntry<McpSessionHandle>>();
+const SDK_POOL_TTL_MS = 5 * 60 * 1000;
+
+async function closePoolEntry(entry: PoolEntry<McpSessionHandle>, server: McpExternalServer): Promise<void> {
+  stopKeepalive(server.id_uuid);
+  await sessionClose(entry.handle).catch(() => undefined);
+  cleanupOAuthTempFiles(server as ServerWithConfig);
+}
+
+// C.2: Keepalive-Manager — Liveness-Pings halten HTTP/SSE-Sessions über die Server-TTL am Leben.
+// Keepalive-Probe: ping → -32601 → list_tools; echte Fehler → Reconnect.
+const keepaliveTimers = new Map<string, ReturnType<typeof setInterval>>();
+const KEEPALIVE_DEFAULT_S = 180;
+// Explizite Werte < 5 s sind erlaubt (Tests/Server mit kurzer Session-TTL); Default 180 s.
+
+function startKeepalive(server: McpExternalServer, handle: McpSessionHandle): void {
+  const transport = server.transport_type;
+  if (transport !== "http" && transport !== "sse" && transport !== "streamable_http") return; // stdio lebt durch den Prozess
+  const configured = (server as ServerWithConfig).keepalive_interval_s;
+  const intervalS = configured !== undefined && configured !== null ? Math.max(configured, 1) : KEEPALIVE_DEFAULT_S;
+  const intervalMs = intervalS * 1000;
+  if (keepaliveTimers.has(server.id_uuid)) return;
+  const timer = setInterval(() => {
+    void (async () => {
+      const entry = sdkSessionPool.get(server.id_uuid);
+      if (!entry) {
+        clearInterval(timer);
+        keepaliveTimers.delete(server.id_uuid);
+        return;
+      }
+      const ping = await sessionPing(entry.handle);
+      if (ping.ok) return;
+      if (isMethodNotFoundError(new Error(ping.error || ""))) {
+        // ping nicht implementiert → list_tools als Liveness-Probe (nur wenn die Session lebt)
+        try {
+          await sessionListTools(entry.handle);
+        } catch {
+          /* tote Session → unten invalidieren */
+          await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+        }
+        return;
+      }
+      // Echter Liveness-Fehler (Timeout, Session expired, Transport zu) → Reconnect beim nächsten Call
+      console.log(`[MCP Keepalive] Session für Server ${server.id_uuid} verloren (${sanitizeErrorText(ping.error || "unbekannt")}) — invalidiert`);
+      await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+    })();
+  }, intervalMs);
+  keepaliveTimers.set(server.id_uuid, timer);
+}
+
+function stopKeepalive(serverId: string): void {
+  const timer = keepaliveTimers.get(serverId);
+  if (timer) {
+    clearInterval(timer);
+    keepaliveTimers.delete(serverId);
+  }
+}
+
+// --- C.6: Tool-Filtering (include/exclude) ------------------------------------
+// include gewinnt bei beidem; exakte Namen zuerst, fnmatch-Globs nur bei Metazeichen.
+function escapeRegexPart(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function matchesNameFilter(toolName: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => {
+    const p = String(pattern || "").trim();
+    if (!p) return false;
+    if (!/[?*[]/.test(p)) return toolName === p; // exakter Name
+    // fnmatch-artiger Glob: * und ? (case-sensitive)
+    const re = new RegExp(
+      "^" + p.split("*").map((part) => escapeRegexPart(part).replace(/\?/g, ".")).join(".*") + "$"
+    );
+    return re.test(toolName);
+  });
+}
+
+/** Filtert einen Tool-Namen gemäß Server-Regeln: true = Tool ist deaktiviert (gefiltert). */
+export function isToolFilteredByName(server: ServerWithConfig, toolName: string): boolean {
+  const include = server.tools_include_json;
+  const exclude = server.tools_exclude_json;
+  if (Array.isArray(include) && include.length > 0) {
+    // include gewinnt: nur gelistete Tools bleiben aktiv
+    return !matchesNameFilter(toolName, include);
+  }
+  if (Array.isArray(exclude) && exclude.length > 0) {
+    return matchesNameFilter(toolName, exclude);
+  }
+  return false;
+}
+
+/** Wendet die Filter-Regeln auf alle entdeckten Tools eines Servers an (Regel-Änderung + Discovery-Nachlauf). */
+export async function applyToolFilters(serverId: string, tenantId: string): Promise<void> {
+  const server = await McpClientEngine.getServerById(serverId, tenantId);
+  if (!server) return;
+  const include = (server as ServerWithConfig).tools_include_json;
+  const exclude = (server as ServerWithConfig).tools_exclude_json;
+  if (!Array.isArray(include) && !Array.isArray(exclude)) return;
+
+  if (isUsingFallback) {
+    for (const t of fallbackStore.mcp_discovered_tools || []) {
+      if (t.server_id_uuid !== serverId) continue;
+      const disabled = isToolFilteredByName(server as ServerWithConfig, t.original_tool_name);
+      t.is_enabled_for_louis = !disabled;
+      t.is_enabled_for_ui = !disabled;
+    }
+    saveFallbackStore();
+    return;
+  }
+  // DB: nur Tools des Servers aktualisieren (Regeln sind Systemebene → überschreiben Toggles)
+  const rows = await pool.query(
+    `SELECT id_uuid, original_tool_name FROM sys_mcp_discovered_tools WHERE server_id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')`,
+    [serverId, tenantId]
+  );
+  for (const row of rows.rows) {
+    const disabled = isToolFilteredByName(server as ServerWithConfig, row.original_tool_name);
+    await pool.query(
+      `UPDATE sys_mcp_discovered_tools SET is_enabled_for_louis = $1, is_enabled_for_ui = $2 WHERE id_uuid = $3`,
+      [!disabled, !disabled, row.id_uuid]
+    );
+  }
+}
+
+// C.5 (Plan 2026-08-19): Parallel-Tool-Calls — Opt-in pro Server (supports_parallel_tool_calls,
+// Default false = sequenziell wie bisher). stdio bleibt IMMER gelockt (ein Prozess, sequenzielle Requests).
+const serverCallLocks = new Map<string, Promise<unknown>>();
+
+async function withServerLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = serverCallLocks.get(key) ?? Promise.resolve();
+  const next = prev.catch(() => undefined).then(fn);
+  serverCallLocks.set(key, next.catch(() => undefined));
+  return next;
+}
+
+// --- C.4: Genehmigungs-Queue (Trust-Gate) -------------------------------------
+// untrusted-Server: Write-Tools brauchen eine Admin-Freigabe (Human-Gate-Muster).
+// Entscheider = NUR Admin (Entscheid 2026-08-19); wartender Call pollt (2-s-Intervall)
+// bis zur Entscheidung oder dem Timeout (mcp_approval_timeout_s, Default 120 s).
+
+async function getMcpAdminConfig(tenantId: string): Promise<{ approvalTimeoutS: number; stdioMaxSessions: number }> {
+  if (isUsingFallback) return { approvalTimeoutS: 120, stdioMaxSessions: 5 };
+  try {
+    const res = await pool.query(
+      `SELECT mcp_approval_timeout_s, mcp_stdio_max_sessions FROM sys_integrations_louis_ai_config
+       WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY CASE WHEN tenant_id = $1 THEN 0 ELSE 1 END LIMIT 1`,
+      [tenantId]
+    );
+    const row = res.rows[0] || {};
+    return {
+      approvalTimeoutS: row.mcp_approval_timeout_s ?? 120,
+      stdioMaxSessions: row.mcp_stdio_max_sessions ?? 5
+    };
+  } catch {
+    return { approvalTimeoutS: 120, stdioMaxSessions: 5 };
+  }
+}
+
+export async function listMcpApprovalRequests(tenantId: string): Promise<McpApprovalRequestRecord[]> {
+  if (isUsingFallback) {
+    const list = fallbackStore.mcpApprovalRequests || [];
+    return [...list].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) as McpApprovalRequestRecord[];
+  }
+  const res = await pool.query(
+    `SELECT * FROM sys_mcp_approval_requests WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY created_at_utc DESC LIMIT 200`,
+    [tenantId]
+  );
+  return res.rows.map((r) => cleanDbRow(r) as McpApprovalRequestRecord);
+}
+
+async function getApprovalStatus(idUuid: string, tenantId: string): Promise<string> {
+  if (isUsingFallback) {
+    const rec = (fallbackStore.mcpApprovalRequests || []).find((r) => r.id_uuid === idUuid);
+    return rec?.status ?? "pending";
+  }
+  const res = await pool.query(
+    `SELECT status FROM sys_mcp_approval_requests WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1') LIMIT 1`,
+    [idUuid, tenantId]
+  );
+  return res.rows[0]?.status ?? "pending";
+}
+
+async function insertApprovalRequest(record: McpApprovalRequestRecord): Promise<void> {
+  if (isUsingFallback) {
+    if (!fallbackStore.mcpApprovalRequests) fallbackStore.mcpApprovalRequests = [];
+    fallbackStore.mcpApprovalRequests.push(record);
+    saveFallbackStore();
+    return;
+  }
+  await pool.query(
+    `INSERT INTO sys_mcp_approval_requests (
+      id_uuid, tenant_id, server_id_uuid, server_name, tool_id_uuid, normalized_tool_name,
+      original_tool_name, tool_arguments_json, requested_by, status, created_at_utc
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', CURRENT_TIMESTAMP)`,
+    [
+      record.id_uuid,
+      record.tenant_id,
+      record.server_id_uuid,
+      record.server_name,
+      record.tool_id_uuid,
+      record.normalized_tool_name,
+      record.original_tool_name,
+      JSON.stringify(record.tool_arguments_json ?? {}),
+      record.requested_by
+    ]
+  );
+}
+
+async function requestToolApproval(
+  server: McpExternalServer,
+  tool: McpDiscoveredTool,
+  args: unknown,
+  tenantId: string
+): Promise<{ status: "approved" | "rejected" | "expired"; error?: string }> {
+  const idUuid = uuidv4();
+  const { approvalTimeoutS } = await getMcpAdminConfig(tenantId);
+  const record: McpApprovalRequestRecord = {
+    id_uuid: idUuid,
+    tenant_id: tenantId,
+    server_id_uuid: server.id_uuid,
+    server_name: server.server_name,
+    tool_id_uuid: tool.id_uuid,
+    normalized_tool_name: tool.normalized_tool_name,
+    original_tool_name: tool.original_tool_name,
+    tool_arguments_json: args ?? {},
+    requested_by: "louis_ai",
+    status: "pending",
+    created_at: new Date().toISOString()
+  };
+  await insertApprovalRequest(record);
+
+  // Polling (2-s-Intervall) bis Entscheidung oder Timeout
+  const deadline = Date.now() + approvalTimeoutS * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const status = await getApprovalStatus(idUuid, tenantId);
+    if (status === "approved") return { status: "approved" };
+    if (status === "rejected") {
+      return { status: "rejected", error: `MCP-Tool-Ausführung abgelehnt (Server "${server.server_name}", Tool "${tool.original_tool_name}")` };
+    }
+  }
+  return { status: "expired", error: `Genehmigung ausstehend (Timeout ${approvalTimeoutS}s) — Tool "${tool.original_tool_name}" auf Server "${server.server_name}" nicht ausgeführt` };
+}
+
+/** Admin-Entscheidung (NUR Admin — Router erzwingt adminProcedure). */
+export async function decideMcpApprovalRequest(
+  idUuid: string,
+  decision: "approve" | "reject",
+  tenantId: string,
+  decidedBy: string,
+  comment?: string
+): Promise<McpApprovalRequestRecord | null> {
+  const status = decision === "approve" ? "approved" : "rejected";
+  if (isUsingFallback) {
+    const list = fallbackStore.mcpApprovalRequests || [];
+    const idx = list.findIndex((r) => r.id_uuid === idUuid && (r.tenant_id === tenantId || r.tenant_id === "1"));
+    if (idx < 0) return null;
+    if (list[idx].status !== "pending") return list[idx] as McpApprovalRequestRecord;
+    list[idx] = {
+      ...list[idx],
+      status,
+      decided_by: decidedBy,
+      decided_at: new Date().toISOString(),
+      decision_comment: comment || null
+    };
+    saveFallbackStore();
+    return list[idx] as McpApprovalRequestRecord;
+  }
+  const res = await pool.query(
+    `UPDATE sys_mcp_approval_requests SET status = $1, decided_by = $2, decided_at = CURRENT_TIMESTAMP, decision_comment = $3
+     WHERE id_uuid = $4 AND (tenant_id = $5 OR tenant_id = '1') AND status = 'pending' RETURNING *`,
+    [status, decidedBy, comment || null, idUuid, tenantId]
+  );
+  return res.rows.length > 0 ? (cleanDbRow(res.rows[0]) as McpApprovalRequestRecord) : null;
+}
+
+async function getOrOpenSdkSession(server: McpExternalServer): Promise<McpSessionHandle> {
+  const poolKey = server.id_uuid;
+  const now = Date.now();
+  const cached = sdkSessionPool.get(poolKey);
+  if (cached) {
+    const { recycle, reason } = shouldRecycle(cached, server as ServerWithConfig, now);
+    if (recycle) {
+      console.log(`[MCP Lifecycle] Session für "${server.server_name}" recycled (${reason})`);
+      await closePoolEntry(cached, server);
+      sdkSessionPool.delete(poolKey);
+    } else {
+      cached.lastUsedAt = now;
+      return cached.handle;
+    }
+  }
+  // Ressourcen-Limit: älteste idle stdio-Session schließen (C.1/C.4, Admin-Config mcp_stdio_max_sessions, Default 5)
+  if (server.transport_type === "stdio") {
+    const { stdioMaxSessions } = await getMcpAdminConfig(server.tenant_id || "1");
+    for (const key of enforceStdioLimit(sdkSessionPool, stdioMaxSessions, now)) {
+      const entry = sdkSessionPool.get(key);
+      if (entry) {
+        await closePoolEntry(entry, { id_uuid: key } as McpExternalServer);
+        sdkSessionPool.delete(key);
+      }
+    }
+  }
+  const { envVars, headers } = await McpClientEngine.getEnrichedServerEnvAndHeaders(server, server.tenant_id);
+  const handle = await openSession({ server: server as ServerWithConfig, headers, envVars });
+  sdkSessionPool.set(poolKey, {
+    handle,
+    lastUsedAt: now,
+    openedAt: now,
+    isStdio: server.transport_type === "stdio"
+  });
+  startKeepalive(server, handle);
+  return handle;
+}
+
+async function invalidateSdkSession(serverId: string): Promise<void> {
+  const cached = sdkSessionPool.get(serverId);
+  if (cached) {
+    await closePoolEntry(cached, { id_uuid: serverId } as McpExternalServer);
+    sdkSessionPool.delete(serverId);
+  }
+}
+
 /**
  * Stellt sicher, dass eine MCP-Streamable-HTTP-Session existiert (initialize-Handshake).
  * Gibt die Mcp-Session-Id zurück (oder undefined, wenn der Server keine Session verlangt).
@@ -401,22 +787,36 @@ async function ensureMcpSession(endpoint: string, headers: Record<string, string
  * "application/json, text/event-stream" im SSE-Format (event: message\ndata: {...}).
  * Dieser Helper extrahiert das data-Feld und parst JSON — robust für beide Formate.
  */
-async function parseMcpResponseBody(res: Response): Promise<unknown> {
+export async function parseMcpResponseBody(res: Response, serverId?: string): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
   const trimmed = text.trim();
   if (trimmed.startsWith("event:") || trimmed.includes("\ndata:")) {
-    // SSE-Format: letzte data:-Zeile enthält das JSON (ggf. mehrzeilig)
-    const dataLines: string[] = [];
+    // SSE-Format: JEDES data:-Event einzeln parsen (nicht zu einem JSON joinen!)
+    // #45 (026 P1-2): Server-Notification-Events werden behandelt (list_changed → Cache-Refresh),
+    // das letzte Event mit Antwort (result/error) ist die Response.
+    const jsonBlocks: string[] = [];
     let inData = false;
     for (const line of trimmed.split("\n")) {
-      if (line.startsWith("data:")) { dataLines.push(line.slice(5).trim()); inData = true; }
+      if (line.startsWith("data:")) { jsonBlocks.push(line.slice(5).trim()); inData = true; }
       else if (line.startsWith("event:") || line.startsWith("id:") || line.startsWith("retry:")) { inData = false; }
-      else if (inData && line.trim() !== "") { dataLines[dataLines.length - 1] += line.trim(); }
+      else if (inData && line.trim() !== "") { jsonBlocks[jsonBlocks.length - 1] += line.trim(); }
     }
-    const data = dataLines.join("\n");
-    if (!data) return null;
-    try { return JSON.parse(data); } catch { return { raw: data }; }
+    if (jsonBlocks.length === 0) return null;
+    let lastAnswer: unknown = null;
+    for (const block of jsonBlocks) {
+      try {
+        const parsed = JSON.parse(block);
+        if (isServerNotification(parsed)) {
+          if (serverId) void handleServerNotification(serverId, String(parsed.method));
+          continue;
+        }
+        lastAnswer = parsed;
+      } catch {
+        // einzelnes Event nicht parsebar — ignorieren, weitersuchen
+      }
+    }
+    return lastAnswer ?? { raw: jsonBlocks.join("\n") };
   }
   try { return JSON.parse(trimmed); } catch { return { raw: trimmed }; }
 }
@@ -444,12 +844,41 @@ function mcpFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, { ...init, headers } as RequestInit) as Promise<Response>;
 }
 
+// Auftrag 025 Phase 7 (#55): MCP-Timeout pro Aufruf — hängende MCP-Server dürfen den
+// Agent-Loop nie blockieren (Muster mcp.py:186). AbortController statt globalem Hängen.
+function mcpFetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return mcpFetch(url, { ...init, signal: controller.signal })
+    .finally(() => clearTimeout(timeoutId))
+    .catch((err) => {
+      const aborted = controller.signal.aborted;
+      throw new Error(`MCP-Request ${aborted ? `Timeout nach ${timeoutMs}ms` : "fehlgeschlagen"}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
 function getAuthHeaders(server: McpExternalServer): Record<string, string> {
   const headers: Record<string, string> = { ...server.headers };
-  // Befund 2026-08-17: "Bearer "-Präfix defensiv entfernen — Nutzer kopieren oft den
+  //  2026-08-17: "Bearer "-Präfix defensiv entfernen — Nutzer kopieren oft den
   // Plugin-Anzeige-Text ("Bearer <hex>") statt des Hex-Keys → sonst "Bearer Bearer …" → 401.
-  const token = normalizeAuthToken(server.auth_token_encrypted) || "";
-  if (server.auth_type === "bearer" && token) {
+  // C.3: auth_token_encrypted kann verschlüsselt sein (lv1:) — vor Nutzung entschlüsseln.
+  const token = normalizeAuthToken(decryptSecret(server.auth_token_encrypted));
+
+  // D.1 (Plan 2026-08-19): custom = Header-Map (JSON-String, verschlüsselt speicherbar) —
+  // vorher still ignoriert (Lücke im transport_type/auth_type-Enum).
+  const customHeadersRaw = (server as ServerWithConfig).custom_headers;
+  if (customHeadersRaw) {
+    try {
+      const parsed = JSON.parse(decryptSecret(customHeadersRaw)) as Record<string, unknown>;
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === "string") headers[k] = v;
+      }
+    } catch {
+      console.warn(`[MCP Client] custom_headers für Server "${server.server_name}" ist kein gültiges JSON — ignoriert`);
+    }
+  }
+
+  if ((server.auth_type === "bearer" || server.auth_type === "bearer_token") && token) {
     headers["Authorization"] = `Bearer ${token}`;
   } else if (server.auth_type === "api_key" && token) {
     headers["X-API-Key"] = token;
@@ -459,8 +888,40 @@ function getAuthHeaders(server: McpExternalServer): Record<string, string> {
   return headers;
 }
 
+// Auftrag 025 Phase 7 (#43): Discovery-In-Progress-Lock (Server-Refresh) — parallele
+// Discovery-Aufrufe für denselben Server werden übersprungen statt doppelt ausgeführt.
+const discoveryInProgress: Set<string> = new Set();
+// TTL-Cache für listToolsForLouis (Pro-Tenant, Muster mcp.py discovery_cached)
+const mcpToolsCache: Map<string, { tools: McpDiscoveredTool[]; fetchedAt: number }> = new Map();
+
+// Auftrag 026 P1-2 (#45): mcp-2.0-ServerNotification-Union robust verarbeiten.
+// Eine Server-Notification hat KEIN id/result/error, aber method — sie ist keine
+// Antwort auf unseren Request und darf nie als Fehler gewertet werden.
+export function isServerNotification(msg: unknown): msg is { method: string; params?: unknown } {
+  if (!msg || typeof msg !== "object") return false;
+  const m = msg as Record<string, unknown>;
+  return typeof m.method === "string" && !("id" in m) && !("result" in m) && !("error" in m);
+}
+
+/**
+ * #45: Notification behandeln — bei tools/list_changed den TTL-Cache invalidieren und
+ * einen async Refresh anstoßen (der Discovery-Lock verhindert Doppel-Refresh).
+ * Nie werfend (Best-Effort, Hintergrund).
+ */
+async function handleServerNotification(serverId: string, method: string): Promise<void> {
+  if (method === "notifications/tools/list_changed" || method === "tools/list_changed") {
+    mcpToolsCache.delete(serverId);
+    console.log(`[MCP #45] tools/list_changed von Server ${serverId} — TTL-Cache invalidiert, async Refresh.`);
+    void McpClientEngine.discoverTools(serverId, "1").catch((err) =>
+      console.warn(`[MCP #45] Refresh nach list_changed fehlgeschlagen (ignoriert):`, err instanceof Error ? err.message : String(err))
+    );
+  }
+  // Weitere Notification-Typen (z. B. progress, cancelled) sind für Louis als Client unkritisch
+  // und werden bewusst ignoriert (kein Crash, keine Fehlbehandlung).
+}
+
 export class McpClientEngine {
-  private static async getEnrichedServerEnvAndHeaders(server: McpExternalServer, tenantId: string = "1") {
+  static async getEnrichedServerEnvAndHeaders(server: McpExternalServer, tenantId: string = "1") {
     const oauthToken = await getMcpOAuthToken(tenantId, server.id_uuid);
     const envVars: Record<string, string> = { ...(server.env_vars || {}) };
     const headers: Record<string, string> = getAuthHeaders(server);
@@ -495,7 +956,10 @@ export class McpClientEngine {
       }
 
       try {
-        const mcpDir = path.join(os.tmpdir(), `mcp_server_${server.id_uuid}`);
+        // UID-spezifischer Temp-Pfad ( 2026-08-19): Docker-Exec-Diagnosen (root) und die
+        // App (User 'app', UID 999) kollidieren sonst auf demselben Ordner → EACCES für die App.
+        const uidPart = typeof process.getuid === "function" ? String(process.getuid()) : "app";
+        const mcpDir = path.join(os.tmpdir(), `louis-mcp-${uidPart}`, `mcp_server_${server.id_uuid}`);
         if (!fs.existsSync(mcpDir)) {
           fs.mkdirSync(mcpDir, { recursive: true });
         }
@@ -526,13 +990,29 @@ export class McpClientEngine {
         const tokenFilePath = path.join(mcpDir, "token.json");
         const gcalTokenFilePath = path.join(mcpDir, "mcp-google-calendar-token.json");
 
+        // Defensive Bereinigung ( 2026-08-19): Fremde Dateien (z. B. von root-Prozessen
+        // erstellt) blockieren das Überschreiben mit EACCES. Vor jedem Write: Datei entfernen
+        // (force — existiert nicht → kein Fehler), dann frisch schreiben → Rechte folgen dem
+        // aktuellen User. Der Ordner selbst wird nach dem mkdir auf den aktuellen User geprüft.
+        try {
+          fs.mkdirSync(mcpDir, { recursive: true, mode: 0o700 });
+        } catch {
+          // EACCES auf fremden Ordner → rekursiv entfernen (wenn möglich) + neu anlegen
+          fs.rmSync(mcpDir, { recursive: true, force: true });
+          fs.mkdirSync(mcpDir, { recursive: true, mode: 0o700 });
+        }
+        const writeFresh = (p: string, data: string): void => {
+          fs.rmSync(p, { force: true });
+          fs.writeFileSync(p, data, { encoding: "utf8", mode: 0o600 });
+        };
+
         // Write OAuth client keys files
-        fs.writeFileSync(clientSecretsPath, JSON.stringify(clientSecretsData, null, 2), "utf8");
-        fs.writeFileSync(credentialsKeysPath, JSON.stringify(clientSecretsData, null, 2), "utf8");
+        writeFresh(clientSecretsPath, JSON.stringify(clientSecretsData, null, 2));
+        writeFresh(credentialsKeysPath, JSON.stringify(clientSecretsData, null, 2));
 
         // Write token files
-        fs.writeFileSync(tokenFilePath, JSON.stringify(tokenData, null, 2), "utf8");
-        fs.writeFileSync(gcalTokenFilePath, JSON.stringify(tokenData, null, 2), "utf8");
+        writeFresh(tokenFilePath, JSON.stringify(tokenData, null, 2));
+        writeFresh(gcalTokenFilePath, JSON.stringify(tokenData, null, 2));
 
         // Also write in process.cwd() as fallbacks
         try {
@@ -556,6 +1036,22 @@ export class McpClientEngine {
         envVars["GMAIL_CREDENTIALS_PATH"] = tokenFilePath;
         envVars["GDRIVE_CREDENTIALS_PATH"] = tokenFilePath;
 
+        // mcp-gmail ( 2026-08-19): unterstützt KEINEN Env-Pfad für die OAuth-Keys —
+        // es sucht ~/.gmail-mcp/gcp-oauth.keys.json (HOME-abhängig). HOME der App ist /app
+        // (root:root, 0755) → mkdir ~/.gmail-mcp scheitert mit EACCES. Fix: HOME auf den
+        // UID-Temp-Ordner setzen + die Keys dort im .gmail-mcp-Unterordner ablegen.
+        // npm_config_cache explizit auf /app/.npm (Volume) — bleibt unabhängig von HOME persistent.
+        envVars["HOME"] = mcpDir;
+        envVars["npm_config_cache"] = "/app/.npm";
+        try {
+          const gmailMcpDir = path.join(mcpDir, ".gmail-mcp");
+          fs.mkdirSync(gmailMcpDir, { recursive: true, mode: 0o700 });
+          writeFresh(path.join(gmailMcpDir, "gcp-oauth.keys.json"), JSON.stringify(clientSecretsData, null, 2));
+          writeFresh(path.join(gmailMcpDir, "token.json"), JSON.stringify(tokenData, null, 2));
+        } catch (err) {
+          console.warn(`[MCP Engine] Could not write gmail-mcp keys:`, err);
+        }
+
       } catch (err) {
         console.warn(`[MCP Engine] Could not write temporary OAuth credentials files:`, err);
       }
@@ -577,61 +1073,32 @@ export class McpClientEngine {
     let errorMessage: string | undefined = undefined;
 
     try {
-      const { envVars, headers } = await this.getEnrichedServerEnvAndHeaders(server, server.tenant_id);
-
-      if (server.transport_type === "http" || server.transport_type === "sse") {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        // Try JSON-RPC initialize/ping call first
-        const payload = {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "ping",
-          params: {}
-        };
-
-        const response = await mcpFetch(server.endpoint_or_command, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...headers
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        }).catch(async () => {
-          // Fallback to GET ping
-          return await mcpFetch(server.endpoint_or_command, {
-            method: "GET",
-            headers,
-            signal: controller.signal
-          });
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok || response.status === 200) {
-          healthy = true;
-        } else {
-          errorMessage = `HTTP status ${response.status}: ${response.statusText}`;
+      // Phase B: SDK-Session öffnen (initialize-Handshake inklusive) → ehrliches Health.
+      // Fallback auf list_tools, wenn der Server ping nicht implementiert (-32601).
+      const handle = await getOrOpenSdkSession(server);
+      const ping = await sessionPing(handle);
+      if (ping.ok) {
+        healthy = true;
+      } else if (
+        isMethodNotFoundError(new Error(ping.error || "")) ||
+        /timeout|timed out/i.test(ping.error || "")
+      ) {
+        // Server ohne ping-Handler (ältere Pakete, z. B. Google-MCP) beantworten ping nie
+        // (Timeout) oder melden -32601 — Liveness dann über tools/list ( 2026-08-19).
+        try {
+          const tools = await sessionListTools(handle);
+          healthy = tools.length > 0;
+          if (!healthy) errorMessage = "Server hat keine Tools (weder ping noch tools/list)";
+        } catch (err) {
+          errorMessage = `list_tools-Fallback fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`;
         }
-      } else if (server.transport_type === "stdio") {
-        // Execute stdio command with ping request
-        const res = await this.executeStdioJsonRpc(
-          server.endpoint_or_command,
-          server.command_args || [],
-          envVars,
-          { jsonrpc: "2.0", id: 1, method: "ping", params: {} },
-          5000
-        );
-        healthy = !res.error;
-        if (res.error) {
-          errorMessage = res.error;
-        }
+      } else {
+        errorMessage = sanitizeErrorText(ping.error || "ping fehlgeschlagen");
       }
     } catch (err) {
-      errorMessage = err instanceof Error ? err.message : String(err);
+      errorMessage = sanitizeErrorText(err instanceof Error ? err.message : String(err));
       healthy = false;
+      await invalidateSdkSession(server.id_uuid).catch(() => undefined);
     }
 
     const latencyMs = Date.now() - startTime;
@@ -729,14 +1196,22 @@ export class McpClientEngine {
           for (let i = lines.length - 1; i >= 0; i--) {
             try {
               const parsed = JSON.parse(lines[i]);
-              if (parsed && typeof parsed === "object" && ("result" in parsed || "error" in parsed)) {
-                if (parsed.error) {
-                  const errMsg = typeof parsed.error === "object" ? parsed.error.message || JSON.stringify(parsed.error) : String(parsed.error);
-                  resolve({ error: errMsg });
-                } else {
-                  resolve({ result: parsed.result });
+              if (parsed && typeof parsed === "object") {
+                // #45 (026 P1-2): Server-Notification (kein id/result/error) ist KEINE Antwort —
+                // überspringen und weiter nach der echten Response suchen (kein Crash).
+                if (isServerNotification(parsed)) {
+                  console.log(`[MCP #45] stdio-Notification übersprungen: ${String(parsed.method)}`);
+                  continue;
                 }
-                return;
+                if ("result" in parsed || "error" in parsed) {
+                  if (parsed.error) {
+                    const errMsg = typeof parsed.error === "object" ? parsed.error.message || JSON.stringify(parsed.error) : String(parsed.error);
+                    resolve({ error: errMsg });
+                  } else {
+                    resolve({ result: parsed.result });
+                  }
+                  return;
+                }
               }
             } catch {
               // try previous line
@@ -785,69 +1260,58 @@ export class McpClientEngine {
    * Discover available tools from an external MCP server
    */
   static async discoverTools(serverId: string, tenantId: string = "1"): Promise<McpDiscoveredTool[]> {
+    // Auftrag 025 Phase 7 (#43): Discovery-In-Progress-Lock — parallele Discovery-Aufrufe
+    // für denselben Server werden übersprungen statt doppelt ausgeführt (MCP-Refresh-Lock).
+    const lockKey = `${tenantId}:${serverId}`;
+    if (discoveryInProgress.has(lockKey)) {
+      return [];
+    }
+    discoveryInProgress.add(lockKey);
+    try {
+      return await this.discoverToolsInner(serverId, tenantId);
+    } finally {
+      discoveryInProgress.delete(lockKey);
+    }
+  }
+
+  private static async discoverToolsInner(serverId: string, tenantId: string = "1"): Promise<McpDiscoveredTool[]> {
     const server = await this.getServerById(serverId, tenantId);
     if (!server) {
       throw new Error(`MCP external server ${serverId} not found`);
     }
 
     const now = new Date().toISOString();
-    let rawTools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> = [];
-
-    const { envVars, headers } = await this.getEnrichedServerEnvAndHeaders(server, tenantId);
+    let rawTools: Array<{ name: string; description?: string; inputSchema?: unknown; annotations?: { readOnlyHint?: boolean } }> = [];
 
     const oauthToken = await getMcpOAuthToken(tenantId, server.id_uuid);
     if (server.auth_type === "oauth2" && !oauthToken) {
       throw new Error(`OAuth 2.0 Autorisierung erforderlich: Bitte klicken Sie bei "${server.server_name}" auf "OAuth Autorisieren", um Zugriff auf den Service zu gewähren.`);
     }
-
-    if (server.transport_type === "http" || server.transport_type === "sse") {
-      const payload = {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/list",
-        params: {}
-      };
-
-      // Streamable-HTTP: initialize-Handshake + Session-Id (sonst 400 "Server not initialized")
-      const sessionId = await ensureMcpSession(server.endpoint_or_command, headers, server.id_uuid).catch(() => undefined);
-
-      const response = await mcpFetch(server.endpoint_or_command, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
-          ...headers
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to list tools from MCP server ${server.server_name}: HTTP ${response.status} ${response.statusText}`);
+    // D.2 (Plan 2026-08-19): abgelaufener Token → ehrliche Meldung statt kryptischer 401.
+    // NUR blocken, wenn KEIN refresh_token existiert — die externen OAuth-Prozesse (Google)
+    // refreshen selbst via refresh_token (Env); ohne Refresh-Möglichkeit ist Re-Autorisierung nötig.
+    if (server.auth_type === "oauth2" && oauthToken) {
+      const expiresAt = oauthToken.expires_at ? new Date(oauthToken.expires_at).getTime() : null;
+      const hasRefresh = !!oauthToken.refresh_token;
+      if (!hasRefresh && expiresAt && expiresAt < Date.now() - 5 * 60 * 1000) {
+        throw new Error(`OAuth-Token für "${server.server_name}" ist abgelaufen und hat keinen Refresh-Token — bitte "OAuth Autorisieren" erneut ausführen.`);
       }
+    }
 
-      const json = (await parseMcpResponseBody(response)) as { result?: { tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }; error?: { message?: string } };
-      if (json?.error) {
-        throw new Error(`MCP Server Error (${server.server_name}): ${json.error.message || JSON.stringify(json.error)}`);
-      }
-      rawTools = json?.result?.tools || [];
-    } else if (server.transport_type === "stdio") {
-      const res = await this.executeStdioJsonRpc(
-        server.endpoint_or_command,
-        server.command_args || [],
-        envVars,
-        { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-        30000
-      );
-
-      if (res.error) {
-        if (res.error.includes("Credentials not found") || res.error.includes("run with 'auth' argument")) {
-          throw new Error(`OAuth 2.0 Autorisierung erforderlich: Für "${server.server_name}" wurden keine OAuth-Anmeldedaten gefunden. Bitte klicken Sie auf "OAuth Autorisieren".`);
-        }
-        throw new Error(`Failed to discover tools via stdio (${server.server_name}): ${res.error}`);
-      }
-
-      const resultObj = res.result as { tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> } | undefined;
-      rawTools = resultObj?.tools || [];
+    // Phase B: SDK-Session (initialize/stateless-Negotiation) → tools/list.
+    // Unbekannter Transport wirft (Fehler statt Stille).
+    let handle: McpSessionHandle;
+    try {
+      handle = await getOrOpenSdkSession(server);
+    } catch (err) {
+      await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+      throw new Error(sanitizeErrorText(`Failed to open MCP session (${server.server_name}): ${err instanceof Error ? err.message : String(err)}`));
+    }
+    try {
+      rawTools = await sessionListTools(handle);
+    } catch (err) {
+      await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+      throw new Error(sanitizeErrorText(`Failed to list tools from MCP server ${server.server_name}: ${err instanceof Error ? err.message : String(err)}`));
     }
 
     const discoveredTools: McpDiscoveredTool[] = [];
@@ -858,6 +1322,19 @@ export class McpClientEngine {
       const normalizedName = `mcp_${serverCleanName}_${normalizeName(origName)}`;
       const toolId = uuidv4();
 
+      // Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung — doppelt gewrappte
+      // inputSchema unwrappen, bevor sie an den Agent-Katalog gehen (wie #8).
+      const normalizedSchema = unwrapWrappedSchema(tool.inputSchema || {});
+
+      // C.4: readOnlyHint des Servers erfassen (nur exakt true = read-only;
+      // fehlender Hint = write-capable — fail-closed-Semantik für Trust-Gate).
+      const readonlyHint = tool.annotations?.readOnlyHint === true;
+
+      // C.6: Filter-Regeln (include/exclude) belegen die Toggles bei Discovery vor
+      // (Systemebene — manuell überschreibbar in der Tool-Mappings-UI).
+      const serverWithCfg = server as ServerWithConfig;
+      const toolDisabled = isToolFilteredByName(serverWithCfg, origName);
+
       const discoveredTool: McpDiscoveredTool = {
         id_uuid: toolId,
         tenant_id: tenantId,
@@ -865,11 +1342,12 @@ export class McpClientEngine {
         original_tool_name: origName,
         normalized_tool_name: normalizedName,
         description: tool.description || null,
-        input_schema: tool.inputSchema || {},
-        is_enabled_for_louis: true,
-        is_enabled_for_ui: true,
+        input_schema: normalizedSchema,
+        is_enabled_for_louis: !toolDisabled,
+        is_enabled_for_ui: !toolDisabled,
         category: "custom",
-        last_discovered_at: now
+        last_discovered_at: now,
+        readonly_hint: readonlyHint
       };
 
       discoveredTools.push(discoveredTool);
@@ -926,9 +1404,38 @@ export class McpClientEngine {
       };
     }
 
+    // C.6: Fail-closed — deaktivierte Tools (Filter-Regeln/Toggle) sind auch per direktem
+    // executeTool nicht ausführbar (sonst umgehbar über bekannten normalisierten Namen).
+    if (tool.is_enabled_for_louis === false && tool.is_enabled_for_ui === false) {
+      return {
+        success: false,
+        result: null,
+        error: `MCP Tool '${tool.original_tool_name}' ist deaktiviert (Filter-Regeln des Servers '${server.server_name}')`,
+        execution_time_ms: Date.now() - startTime,
+        server_name: server.server_name
+      };
+    }
+
     let success = false;
     let result: unknown = null;
     let error: string | null = null;
+
+    // C.4: Trust-Gate — untrusted-Server + Write-Tool (kein readOnlyHint) → Genehmigungs-Queue.
+    // Semantik: readOnlyHint nur exakt true = read-only; fehlender Hint = write-capable (fail-closed).
+    const trust = (server as ServerWithConfig).trust ?? "full";
+    const isWrite = tool.readonly_hint !== true;
+    if (trust === "untrusted" && isWrite) {
+      const approval = await requestToolApproval(server, tool, input.arguments || {}, tenantId);
+      if (approval.status !== "approved") {
+        return {
+          success: false,
+          result: null,
+          error: approval.error || "MCP-Tool-Ausführung nicht genehmigt",
+          execution_time_ms: Date.now() - startTime,
+          server_name: server.server_name
+        };
+      }
+    }
 
     try {
       const { envVars, headers } = await this.getEnrichedServerEnvAndHeaders(server, tenantId);
@@ -943,57 +1450,50 @@ export class McpClientEngine {
         inputSchema
       );
 
-      const rpcPayload = {
-        jsonrpc: "2.0",
-        id: Date.now(),
-        method: "tools/call",
-        params: {
-          name: tool.original_tool_name,
-          arguments: normalizedArgs
+      // Phase B: SDK-Session → tools/call. isError-Result wird als Fehler behandelt (B3-Fix).
+      // Reconnect-on-failure: tote Session (z. B. stdio-Prozess beendet) → invalidieren + 1 Retry.
+      // C.5: Parallel nur bei Opt-in (supports_parallel_tool_calls) UND HTTP/SSE; sonst Server-Lock (sequenziell).
+      const allowParallel =
+        (server as ServerWithConfig).supports_parallel_tool_calls === true &&
+        server.transport_type !== "stdio";
+
+      const callBlock = async (): Promise<void> => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const handle = await getOrOpenSdkSession(server);
+            const res = await sessionCallTool(handle, tool.original_tool_name, normalizedArgs);
+          if (res.error) {
+            // Retry NUR bei toter Session/Verbindung — Timeout ist ein echter Fehler (kein Retry, sonst doppelte Latenz)
+            if (!res.timedOut && /not connected|closed|beendet|exit|session not found|not initialized|invalid session|404/i.test(res.error)) {
+              await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+              if (attempt === 0) continue; // 1 Retry mit frischer Session
+            }
+            error = sanitizeErrorText(res.error);
+            break;
+          } else if (res.isError) {
+            // MCP-Fehlerantworten NIE als Erfolg behandeln (B3): Text aus content[0] ziehen
+            const content = res.content as Array<{ type?: string; text?: string }> | undefined;
+            error = sanitizeErrorText(content?.[0]?.text || "MCP-Tool meldete einen Fehler (isError)");
+            break;
+          } else {
+            success = true;
+            // Fassaden-Vertrag (Bestand): result = volles MCP-Result-Objekt { content } — NICHT nur das Array
+            result = { content: res.content };
+            break;
+          }
+        } catch (err) {
+          await invalidateSdkSession(server.id_uuid).catch(() => undefined);
+          if (attempt === 0) continue;
+          error = sanitizeErrorText(err instanceof Error ? err.message : String(err));
+          break;
         }
+      }
       };
 
-      if (server.transport_type === "http" || server.transport_type === "sse") {
-        // Streamable-HTTP: initialize-Handshake + Session-Id (sonst 400 "Server not initialized")
-        const sessionId = await ensureMcpSession(server.endpoint_or_command, headers, server.id_uuid).catch(() => undefined);
-        const response = await mcpFetch(server.endpoint_or_command, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
-            ...headers
-          },
-          body: JSON.stringify(rpcPayload)
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        }
-
-        const json = (await parseMcpResponseBody(response)) as { result?: unknown; error?: { message?: string } };
-        if (json?.error) {
-          error = json.error.message || JSON.stringify(json.error);
-        } else if (json) {
-          success = true;
-          result = json.result;
-        } else {
-          error = "Leere Antwort vom MCP-Server";
-        }
-      } else if (server.transport_type === "stdio") {
-        const res = await this.executeStdioJsonRpc(
-          server.endpoint_or_command,
-          server.command_args || [],
-          envVars,
-          rpcPayload,
-          20000
-        );
-
-        if (res.error) {
-          error = res.error;
-        } else {
-          success = true;
-          result = res.result;
-        }
+      if (allowParallel) {
+        await callBlock();
+      } else {
+        await withServerLock(server.id_uuid, callBlock);
       }
 
       if (success && result !== null && result !== undefined) {
@@ -1002,7 +1502,7 @@ export class McpClientEngine {
       }
     } catch (err) {
       success = false;
-      error = err instanceof Error ? err.message : String(err);
+      error = sanitizeErrorText(err instanceof Error ? err.message : String(err));
     }
 
     const executionTimeMs = Date.now() - startTime;
@@ -1068,7 +1568,8 @@ export class McpClientEngine {
   // Internal Database & Fallback Store Access Helpers
   // ---------------------------------------------------------------------------
 
-  private static async getServerById(serverId: string, tenantId: string): Promise<McpExternalServer | null> {
+  // C.6: public gemacht für applyToolFilters (Filter-Regeln nach Server-Update anwenden)
+  static async getServerById(serverId: string, tenantId: string = "1"): Promise<McpExternalServer | null> {
     if (isUsingFallback) {
       const server = fallbackStore.mcp_external_servers?.find(
         (s) => s.id_uuid === serverId && (s.tenant_id === tenantId || (s.tenant_id === '1' && tenantId === '1'))
@@ -1100,31 +1601,72 @@ export class McpClientEngine {
     return cleanLigatureHacksFromValue(cleanDbRow(res.rows[0])) as McpDiscoveredTool;
   }
 
-  static async listToolsForLouis(tenantId: string = "1"): Promise<McpDiscoveredTool[]> {
+  /**
+   * Auftrag 025 Phase 7 (#43): MCP-Tools mit TTL-Cache (Refresh-Intervall, NULL = 300 s) —
+   * der DB-Read läuft nicht bei jedem Agent-Request, sondern höchstens alle
+   * refreshIntervalS Sekunden pro Tenant (Muster mcp.py discovery_cached).
+   */
+  static async listToolsForLouis(tenantId: string = "1", refreshIntervalS?: number | null, sessionId?: string): Promise<McpDiscoveredTool[]> {
+    const ttlMs = (refreshIntervalS ?? 300) * 1000;
+    const now = Date.now();
+    const cached = mcpToolsCache.get(tenantId);
+
+    // C.7-Fix ( 2026-08-19): Der Cache speichert die Admin-freigegebene BASISMENGE —
+    // der Chatprofil-Filter (sessionId) läuft bei JEDEM Aufruf, auch bei Cache-Hits. Vorher
+    // machte der Hit ein early return → Filter wirkte nur beim ersten Aufruf pro TTL-Fenster.
+    let tools: McpDiscoveredTool[];
+    if (cached && now - cached.fetchedAt < ttlMs) {
+      tools = cached.tools;
+    } else {
     if (isUsingFallback) {
-      return (fallbackStore.mcp_discovered_tools || [])
+      tools = (fallbackStore.mcp_discovered_tools || [])
         .filter((t) => t.is_enabled_for_louis && (t.tenant_id === tenantId || (t.tenant_id === '1' && tenantId === '1')))
         .map((t) => ({
           ...t,
           input_schema: typeof t.input_schema === 'string' ? JSON.parse(t.input_schema) : (t.input_schema || {})
         })) as McpDiscoveredTool[];
+    } else {
+      const res = await pool.query(
+        `SELECT * FROM sys_mcp_discovered_tools WHERE is_enabled_for_louis = true AND (tenant_id = $1 OR (tenant_id = '1' AND $1 = '1'))`,
+        [tenantId]
+      );
+      tools = res.rows.map((row) => {
+        const cleaned = cleanLigatureHacksFromValue(cleanDbRow(row)) as Record<string, unknown>;
+        if (typeof cleaned.input_schema === 'string') {
+          try {
+            cleaned.input_schema = JSON.parse(cleaned.input_schema);
+          } catch {
+            cleaned.input_schema = {};
+          }
+        }
+        return cleaned as unknown as McpDiscoveredTool;
+      });
     }
 
-    const res = await pool.query(
-      `SELECT * FROM sys_mcp_discovered_tools WHERE is_enabled_for_louis = true AND (tenant_id = $1 OR (tenant_id = '1' AND $1 = '1'))`,
-      [tenantId]
-    );
-    return res.rows.map((row) => {
-      const cleaned = cleanLigatureHacksFromValue(cleanDbRow(row)) as Record<string, unknown>;
-      if (typeof cleaned.input_schema === 'string') {
-        try {
-          cleaned.input_schema = JSON.parse(cleaned.input_schema);
-        } catch {
-          cleaned.input_schema = {};
+    mcpToolsCache.set(tenantId, { tools, fetchedAt: now });
+    }
+
+    // C.7 (Plan 2026-08-19): Chatprofil-Filter — effektive Toolmenge =
+    // Admin-Freigabe ∩ (Session-Override | Chatprofil-Tools | Main = alle)
+    if (sessionId) {
+      const sessionProfile = await getSessionProfile(tenantId, sessionId).catch(() => null);
+      if (sessionProfile) {
+        let allowedNames: string[] | null = null;
+        if (Array.isArray(sessionProfile.overrideTools)) {
+          // Override vorhanden (auch leer = User hat alle abgewählt) → gewinnt über Profil
+          allowedNames = sessionProfile.overrideTools;
+        } else if (sessionProfile.profileId) {
+          const profile = await getChatProfileById(tenantId, sessionProfile.profileId).catch(() => null);
+          allowedNames = profileToolNames(profile); // tools_json (auch []) oder null (Main ohne Auswahl = alle)
+        }
+        if (allowedNames !== null) {
+          const allowed = new Set(allowedNames);
+          tools = tools.filter((t) => allowed.has(t.normalized_tool_name));
         }
       }
-      return cleaned as unknown as McpDiscoveredTool;
-    });
+    }
+
+    return tools;
   }
 
   static async getToolByNormalizedName(normalizedName: string, tenantId: string): Promise<McpDiscoveredTool | null> {
@@ -1132,18 +1674,30 @@ export class McpClientEngine {
     const cleanTarget = rawTarget.replace(/^mcp_/, "");
 
     if (isUsingFallback) {
-      const tool = fallbackStore.mcp_discovered_tools?.find((t) => {
-        if (t.tenant_id !== tenantId && t.tenant_id !== "1") return false;
-        const norm = (t.normalized_tool_name || "").toLowerCase();
-        const orig = (t.original_tool_name || "").toLowerCase();
-        const normClean = norm.replace(/^mcp_/, "");
+      const list = (fallbackStore.mcp_discovered_tools || []).filter(
+        (t) => t.tenant_id === tenantId || t.tenant_id === "1"
+      );
+      // Phase B (2026-08-19,  E6): EXAKTE Auflösung zuerst — der lose Suffix-Fallback
+      // (endsWith) matchte bei mehreren Servern mit gleichen Tool-Namen das ERSTE (falsche) Tool.
+      const normOf = (t: McpDiscoveredTool) => (t.normalized_tool_name || "").toLowerCase();
+      const origOf = (t: McpDiscoveredTool) => (t.original_tool_name || "").toLowerCase();
+      const normCleanOf = (t: McpDiscoveredTool) => normOf(t).replace(/^mcp_/, "");
 
+      const exact = list.find((t) => {
+        const norm = normOf(t);
+        const orig = origOf(t);
         return (
           norm === rawTarget ||
           norm === `mcp_${rawTarget}` ||
-          normClean === cleanTarget ||
+          normCleanOf(t) === cleanTarget ||
           orig === rawTarget ||
-          orig === cleanTarget ||
+          orig === cleanTarget
+        );
+      });
+      const tool = exact ?? list.find((t) => {
+        const normClean = normCleanOf(t);
+        const orig = origOf(t);
+        return (
           normClean.endsWith(`_${cleanTarget}`) ||
           cleanTarget.endsWith(`_${orig}`) ||
           orig.endsWith(`_${cleanTarget}`)
@@ -1156,7 +1710,8 @@ export class McpClientEngine {
       } as McpDiscoveredTool;
     }
 
-    const res = await pool.query(
+    // DB-Zweig: exakte Treffer zuerst (LIMIT 1), Suffix nur wenn exakt nichts gefunden
+    const exactRes = await pool.query(
       `SELECT * FROM sys_mcp_discovered_tools 
        WHERE (
          LOWER(normalized_tool_name) = $1 
@@ -1164,15 +1719,27 @@ export class McpClientEngine {
          OR LOWER(REGEXP_REPLACE(normalized_tool_name, '^mcp_', '')) = $2
          OR LOWER(original_tool_name) = $1
          OR LOWER(original_tool_name) = $2
-         OR LOWER(REGEXP_REPLACE(normalized_tool_name, '^mcp_[^_]+_', '')) = $2
-         OR LOWER(normalized_tool_name) LIKE '%' || $2
        )
        AND (tenant_id = $3 OR (tenant_id = '1' AND $3 = '1')) 
        LIMIT 1`,
       [rawTarget, cleanTarget, tenantId]
     );
-    if (res.rows.length === 0) return null;
-    const cleaned = cleanLigatureHacksFromValue(cleanDbRow(res.rows[0])) as Record<string, unknown>;
+    let row = exactRes.rows[0];
+    if (!row) {
+      const looseRes = await pool.query(
+        `SELECT * FROM sys_mcp_discovered_tools 
+         WHERE (
+           LOWER(REGEXP_REPLACE(normalized_tool_name, '^mcp_[^_]+_', '')) = $2
+           OR LOWER(normalized_tool_name) LIKE '%' || $2
+         )
+         AND (tenant_id = $3 OR (tenant_id = '1' AND $3 = '1')) 
+         LIMIT 1`,
+        [rawTarget, cleanTarget, tenantId]
+      );
+      row = looseRes.rows[0];
+    }
+    if (!row) return null;
+    const cleaned = cleanLigatureHacksFromValue(cleanDbRow(row)) as Record<string, unknown>;
     if (typeof cleaned.input_schema === 'string') {
       try {
         cleaned.input_schema = JSON.parse(cleaned.input_schema);

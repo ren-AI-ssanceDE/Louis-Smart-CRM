@@ -30,6 +30,8 @@ export interface AgentPipelineContext {
   systemPrefix?: string;
   temporalAnchor?: string;
   allowedDomains?: ToolDomain[];
+  // C.7 (Plan 2026-08-19): aktive Chat-Session → Chatprofil-Filter für MCP-Tools
+  sessionId?: string;
   skillSuggestion?: {
     workflow_name: string;
     workflow_description: string;
@@ -61,6 +63,59 @@ export interface AgentPipelineContext {
   promptDirectivesMode?: 'always' | 'intent';
   // Auftrag 007: Tool-Call-Modus ('auto' | 'json' | 'native')
   toolCallMode?: 'auto' | 'json' | 'native';
+  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
+  promptParallelToolGuidance?: boolean;
+  promptToolGuidanceTrim?: boolean;
+  memoryFrozenSnapshot?: boolean;
+  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+  compressionEnabled?: boolean;
+  compressionThresholdPercent?: number | null;
+  compressionTailTokenBudget?: number | null;
+  compressionAuxModel?: string | null;
+  compressionPersistSummary?: boolean;
+  compressionModelContextMap?: string | null;
+  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+  memoryPrefetchEnabled?: boolean;
+  memoryPrefetchTimeoutS?: number | null;
+  memoryRecallStatusEnabled?: boolean;
+  memoryAutoScanEnabled?: boolean;
+  memoryConsolidationBudget?: number | null;
+  // #20: Anzahl der per Prefetch injizierten relevanten Memory-Einträge (Chat-Feedback)
+  memoryRecallCount?: number;
+  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+  toolCallRetryMax?: number | null;
+  emptyRetryBudget?: number | null;
+  emptyRetryCostThresholdUsd?: number | null;
+  toolGuardrailExactBlock?: number | null;
+  toolGuardrailNoProgressBlock?: number | null;
+  loopDeadlineS?: number | null;
+  thinkingScrubEnabled?: boolean;
+  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+  recallFtsEnabled?: boolean;
+  recallSearchLimit?: number | null;
+  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+  skillCuratorEnabled?: boolean;
+  skillInjectMaxTokens?: number | null;
+  skillPruneInactiveAfterDays?: number | null;
+  skillInjectTopK?: number | null;
+  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+  curatorIntervalHours?: number | null;
+  curatorArchiveAfterDays?: number | null;
+  // Auftrag 026 P1-3 (Parität): Spawn-Depth (#55) + Steering (#53)
+  subtaskMaxDepth?: number | null;
+  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  auditRetentionDays?: number | null;
+  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  sessionRetentionDays?: number | null;
+  subtaskDepth?: number;
+  /** #53: Steering-Handle für Sub-Agenten (abbrechen + Steer-Nachrichten). */
+  steering?: { signal: AbortSignal; queue: string[]; injected: string[] };
+  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+  mcpRefreshIntervalS?: number | null;
+  subtaskTimeoutS?: number | null;
+  subtaskMaxParallel?: number | null;
+  // 2026-08-18: Text-Fallback-Kanal AUS (true = strikt: nur native Tool-Calls, kein XML/JSON-Textweg)
+  textFallbackEnabled?: boolean;
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
@@ -97,6 +152,8 @@ export interface AgentExecutionResult {
   outputTokens: number;
   cachedTokens: number;
   executionTimeMs: number;
+  // Auftrag 025 Phase 3 (#20): Anzahl der per Prefetch injizierten relevanten Memory-Einträge
+  memoryRecallCount?: number;
   skillSuggestion?: {
     workflow_name: string;
     workflow_description: string;

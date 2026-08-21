@@ -49,17 +49,17 @@ export const LicensesTab = () => {
                 <p className="font-bold text-white text-sm">
                   {t('admin:licenses.licensor')}
                 </p>
-                <p className="text-slate-400 text-xs font-mono">Musterfirma GmbH®</p>
+                <p className="text-slate-400 text-xs font-mono">ren-AI-ssance®</p>
               </div>
             </div>
             <a 
-              href="https://www.musterfirma.de" 
+              href="https://www.ren-ai-ssance.de" 
               target="_blank" 
               rel="noopener noreferrer" 
-              title={t('admin:licenses.licensor_tooltip', { defaultValue: 'Musterfirma GmbH Website' })}
+              title={t('admin:licenses.licensor_tooltip', { defaultValue: 'ren-AI-ssance Website' })}
               className="inline-flex items-center gap-2 px-4 py-2 bg-accent-blue/10 hover:bg-accent-blue/20 text-accent-blue border border-accent-blue/20 rounded-lg text-xs font-bold font-display uppercase tracking-wider transition-all duration-300"
             >
-              www.musterfirma.de
+              www.ren-ai-ssance.de
               <ExternalLink size={12} />
             </a>
           </div>

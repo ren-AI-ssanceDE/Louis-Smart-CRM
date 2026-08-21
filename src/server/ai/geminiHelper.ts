@@ -190,6 +190,71 @@ function convertGoogleSchemaToJsonSchema(googleSchema: Record<string, unknown> |
 }
 
 /**
+ * 2026-08-18 ( „Gemini-Quatsch“): Konvertiert ein JSON-Schema (OpenAI-Format,
+ * Kleinbuchstaben-Typen) in ein Gemini-Schema (GROSSBUCHSTABEN-Typen). Wird NUR vom
+ * Gemini-Zweig in generateContentUniversal genutzt — die anderen Provider laufen über
+ * nativeTools und bleiben unberührt.
+ */
+export function convertJsonSchemaToGeminiSchema(schema: Record<string, unknown> | undefined | null): Record<string, unknown> | undefined {
+  if (!schema || typeof schema !== 'object') return undefined;
+  const typeMap: Record<string, string> = {
+    object: 'OBJECT', string: 'STRING', number: 'NUMBER', integer: 'INTEGER',
+    boolean: 'BOOLEAN', array: 'ARRAY', 'null': 'NULL'
+  };
+  const out: Record<string, unknown> = {};
+  const rawType = schema.type;
+  const typeStr = Array.isArray(rawType) ? rawType[0] : rawType;
+  if (typeof typeStr === 'string' && typeMap[typeStr.toLowerCase()]) {
+    out.type = typeMap[typeStr.toLowerCase()];
+  }
+  if (schema.description !== undefined) out.description = schema.description;
+  if (schema.enum !== undefined) out.enum = schema.enum;
+  if (schema.required !== undefined) out.required = schema.required;
+  if (schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
+    const props: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(schema.properties as Record<string, unknown>)) {
+      props[k] = convertJsonSchemaToGeminiSchema(v as Record<string, unknown>) ?? v;
+    }
+    out.properties = props;
+  }
+  if (schema.items && typeof schema.items === 'object') {
+    out.items = convertJsonSchemaToGeminiSchema(schema.items as Record<string, unknown>) ?? schema.items;
+  }
+  return out;
+}
+
+/**
+ * 2026-08-18 ( „Gemini-Quatsch“): Konvertiert OpenAI-Format-Tools
+ * ([{type:"function", function:{name, description, parameters}}] — buildNativeTools)
+ * in Gemini-functionDeclarations. Bereits konvertierte functionDeclarations werden
+ * unverändert übernommen (Idempotenz). Wird NUR im Gemini-Zweig von generateContentUniversal
+ * verwendet — die anderen Provider laufen über nativeTools und bleiben unberührt.
+ */
+export function convertOpenAIToolsToGemini(tools: unknown[]): Array<{ functionDeclarations: Array<{ name: string; description?: string; parameters?: Record<string, unknown> }> }> {
+  const decls: Array<{ name: string; description?: string; parameters?: Record<string, unknown> }> = [];
+  for (const t of tools) {
+    const tg = t as Record<string, unknown>;
+    // Bereits Gemini-Format (functionDeclarations) — direkt übernehmen
+    if (tg && Array.isArray(tg.functionDeclarations)) {
+      for (const d of tg.functionDeclarations as Array<Record<string, unknown>>) {
+        decls.push({ name: String(d.name ?? ''), description: d.description as string | undefined, parameters: d.parameters as Record<string, unknown> | undefined });
+      }
+      continue;
+    }
+    // OpenAI-Format → Gemini-functionDeclarations
+    if (tg && tg.type === 'function' && tg.function && typeof tg.function === 'object') {
+      const fn = tg.function as Record<string, unknown>;
+      decls.push({
+        name: String(fn.name ?? ''),
+        description: fn.description as string | undefined,
+        parameters: convertJsonSchemaToGeminiSchema(fn.parameters as Record<string, unknown> | undefined)
+      });
+    }
+  }
+  return decls.length > 0 ? [{ functionDeclarations: decls }] : [];
+}
+
+/**
  * REST fetch to local or remote Ollama API
  */
 async function callOllama(
@@ -595,7 +660,8 @@ export async function generateContentUniversal({
   systemInstruction,
   responseSchema,
   jsonFormat = false,
-  tools
+  tools,
+  timeoutMs
 }: {
   provider_type: 'gemini' | 'ollama' | 'openai' | 'anthropic';
   model_name: string;
@@ -607,6 +673,8 @@ export async function generateContentUniversal({
   responseSchema?: unknown;
   jsonFormat?: boolean;
   tools?: unknown[];
+  // Auftrag 025 Phase 4 (#37/#38): harte Deadline im Provider-Call-Pfad (Bounded-Response)
+  timeoutMs?: number;
 }): Promise<{ text: string; reasoning_content?: string; tool_calls?: UniversalToolCall[]; usageMetadata?: ModelUsageMetadata; usage?: ModelUsageMetadata }> {
   
   // Clean potential browser-autofill garbage in credentials
@@ -622,6 +690,18 @@ export async function generateContentUniversal({
 
   // Fallback for non-Gemini tools injection to systemInstruction
   let adjustedSystemInstruction = systemInstruction || '';
+
+  // Auftrag 025 Phase 4 (#37/#38): Bounded-Response — Provider-Calls terminieren garantiert
+  // (harte Deadline statt Hängen; Fehlerantworten werden als Fehler geworfen, nie blind gelesen).
+  const callWithDeadline = async <T>(p: Promise<T>): Promise<T> => {
+    if (!timeoutMs || timeoutMs <= 0) return p;
+    return Promise.race([
+      p,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Provider-Call (${provider_type}) nach ${timeoutMs}ms abgebrochen (Deadline, #38)`)), timeoutMs)
+      )
+    ]);
+  };
   
   let nativeTools: Array<{ type: string; function: { name: unknown; description: unknown; parameters: unknown } }> | undefined = undefined;
   
@@ -661,6 +741,36 @@ export async function generateContentUniversal({
             }
           });
         }
+      } else if (tg && tg.type === 'function' && tg.function && typeof tg.function === 'object') {
+        // 2026-08-18 WURZEL-FIX (XML-Leak-Klasse): OpenAI-Format-Tools
+        // ([{type:"function", function:{name, description, parameters}}] — buildNativeTools)
+        // wurden bisher stillschweigend VERWORFEN (nur Gemini-functionDeclarations-Gruppen
+        // wurden konvertiert) → payload.tools fehlte → DeepSeek emulierte Tool-Calls als Text
+        // (alle 7 Leak-Formate). Jetzt werden sie direkt durchgereicht.
+        const fn = tg.function as Record<string, unknown>;
+        let params = fn.parameters as Record<string, unknown> | undefined;
+        if (params && typeof params === 'object') {
+          if (params.type === "OBJECT" || params.type === "STRING" || typeof params.type === "number") {
+            params = convertGoogleSchemaToJsonSchema(params) ?? undefined;
+          } else {
+            const { $schema, ...clean } = params;
+            params = clean;
+          }
+        }
+        if (!params || typeof params !== 'object') {
+          params = { type: "object", properties: {} };
+        }
+        if (!params.type) {
+          params.type = "object";
+        }
+        nativeTools.push({
+          type: "function",
+          function: {
+            name: fn.name,
+            description: fn.description,
+            parameters: params
+          }
+        });
       }
     }
   }
@@ -713,20 +823,25 @@ export async function generateContentUniversal({
         genConfig.responseSchema = responseSchema as GenerateContentConfig['responseSchema'];
       }
     }
-    if (tools) {
-      genConfig.tools = tools as GenerateContentConfig['tools'];
-    }
+  // 2026-08-18 ( „Gemini-Quatsch“): buildNativeTools liefert OpenAI-Format
+  // ([{type:"function", function:{...}}]) — Gemini erwartet aber [{functionDeclarations:[...]}]
+  // mit GROSSBUCHSTABEN-Typen. Vorher wurde das OpenAI-Format unverändert an genConfig.tools
+  // durchgereicht → Gemini-Tool-Calling kaputt. NUR im Gemini-Zweig konvertieren (isoliert —
+  // die anderen Provider laufen über nativeTools und bleiben unberührt).
+  if (tools) {
+    genConfig.tools = convertOpenAIToolsToGemini(tools as unknown[]) as GenerateContentConfig['tools'];
+  }
 
     let modelToUse = model_name;
     if (!modelToUse) {
       modelToUse = 'gemini-3.6-flash';
     }
 
-    const res = await generateContentSafe(ai, {
+    const res = await callWithDeadline(generateContentSafe(ai, {
       model: modelToUse,
       contents: contents,
       config: genConfig
-    });
+    }));
 
     const promptTokens = res.usageMetadata?.promptTokenCount || 0;
     const completionTokens = res.usageMetadata?.candidatesTokenCount || 0;
@@ -769,7 +884,7 @@ export async function generateContentUniversal({
     const m = model_name || 'llama3';
     const messages = convertContentsToMessages(contents);
 
-    return await callOllama(
+    return await callWithDeadline(callOllama(
       u,
       m,
       adjustedSystemInstruction,
@@ -779,7 +894,7 @@ export async function generateContentUniversal({
       responseSchema,
       nativeTools,
       cleanedApiKey
-    );
+    ));
   }
 
   // Support OpenAI
@@ -795,7 +910,7 @@ export async function generateContentUniversal({
     const m = model_name || 'gpt-4o-mini';
     const messages = convertContentsToMessages(contents);
 
-    return await callOpenAI(
+    return await callWithDeadline(callOpenAI(
       u,
       m,
       apiKey,
@@ -805,7 +920,7 @@ export async function generateContentUniversal({
       jsonFormat || !!responseSchema,
       responseSchema,
       nativeTools
-    );
+    ));
   }
 
   // Support Anthropic
@@ -821,7 +936,7 @@ export async function generateContentUniversal({
     const m = model_name || 'claude-3-5-sonnet-latest';
     const messages = convertContentsToMessages(contents);
 
-    return await callAnthropic(
+    return await callWithDeadline(callAnthropic(
       u,
       m,
       apiKey,
@@ -829,7 +944,7 @@ export async function generateContentUniversal({
       messages,
       temperature,
       nativeTools
-    );
+    ));
   }
 
   throw new Error(`Unbekannter KI Provider: ${provider_type}`);

@@ -1983,7 +1983,7 @@ export async function executeCreateDraftContact(
  * Allows LOUIS AI to directly insert an offer draft into the database or fallback store.
  */
 /**
- * Notiz-Entwurf (QA-Befund #1, 2026-08-14): Zero-Direct-Write — erzeugt nur den
+ * Notiz-Entwurf ( #1, 2026-08-14): Zero-Direct-Write — erzeugt nur den
  * proposedChanges-Entwurf; die Freigabe (approveProposal) schreibt in sys_louis_ai_notes.
  */
 export async function executeCreateNoteDraft(
@@ -2499,7 +2499,7 @@ export async function executeUpdateDraftInvoice(
       const setClause = Object.keys(updates).map((col, i) => `${col} = $${i + 1}`).join(", ");
       const values = [...Object.values(updates), invoiceId, tenantId];
       const res = await pool.query(
-        `UPDATE core_registry_invoices SET ${setClause}, updated_at_utc = CURRENT_TIMESTAMP
+        `UPDATE fiscal_billing_invoices SET ${setClause}, updated_at_utc = CURRENT_TIMESTAMP
          WHERE id_uuid = $${values.length - 1} AND (tenant_id = $${values.length} OR tenant_id = '1')`,
         values
       );
@@ -2905,7 +2905,8 @@ export async function executeGetKanbanBoardDetails(
 export async function executeCreateKanbanBoard(
   tenantId: string,
   argsStr: string,
-  actor: string = "system"
+  actor: string = "system",
+  bypassApproval: boolean = false
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
@@ -2936,6 +2937,30 @@ export async function executeCreateKanbanBoard(
         : [];
 
     const boardId = uuidv4();
+
+    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write (Muster executeCreateDraftOffer Z. 1174)
+    if (!bypassApproval) {
+      return createToolSuccess({
+        message: `Kanban-Board-Entwurf erstellt (Freigabe erforderlich). Titel: ${title}, Datenbank-ID: ${boardId}.`,
+        board_id: boardId,
+        board_id_uuid: boardId,
+        title,
+        description: description as string | null,
+        color,
+        columns: columnTitles,
+        sample_cards: sampleCards,
+        draft: true,
+        approval_required: true,
+        kanban_board: {
+          id_uuid: boardId,
+          title,
+          description: description as string | null,
+          color,
+          columns: columnTitles,
+          sample_cards: sampleCards
+        }
+      });
+    }
 
     if (isUsingFallback) {
       if (!fallbackStore.kanbanBoards) fallbackStore.kanbanBoards = [];
@@ -3039,7 +3064,8 @@ export async function executeCreateKanbanBoard(
 export async function executeCreateKanbanCard(
   tenantId: string,
   argsStr: string,
-  actor: string = "system"
+  actor: string = "system",
+  bypassApproval: boolean = false
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
@@ -3137,6 +3163,18 @@ export async function executeCreateKanbanCard(
         updated_at_utc: now
       };
 
+      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+      if (!bypassApproval) {
+        return createToolSuccess({
+          message: `Kanban-Karten-Entwurf erstellt (Freigabe erforderlich). Titel: ${input.title}, Datenbank-ID: ${cardId}.`,
+          card_id: cardId,
+          title: input.title,
+          draft: true,
+          approval_required: true,
+          kanban_card: newCard
+        });
+      }
+
       if (!fallbackStore.kanbanCards) fallbackStore.kanbanCards = [];
       fallbackStore.kanbanCards.push(newCard);
       saveFallbackStore();
@@ -3208,6 +3246,31 @@ export async function executeCreateKanbanCard(
     const newPos = parseInt(posRes.rows[0]?.count || '0', 10);
     const cardId = uuidv4();
 
+    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+    if (!bypassApproval) {
+      return createToolSuccess({
+        message: `Kanban-Karten-Entwurf erstellt (Freigabe erforderlich). Titel: ${input.title}, Datenbank-ID: ${cardId}.`,
+        card_id: cardId,
+        title: input.title,
+        draft: true,
+        approval_required: true,
+        kanban_card: {
+          id_uuid: cardId,
+          tenant_id: tenantId,
+          board_id: targetBoardId,
+          column_id: targetColumnId,
+          title: input.title,
+          description: input.description || null,
+          priority: input.priority || 'medium',
+          position: newPos,
+          due_date: input.due_date || null,
+          company_id_uuid: companyIdUuid,
+          contact_id_uuid: contactIdUuid,
+          labels: input.labels || []
+        }
+      });
+    }
+
     await pool.query(
       `INSERT INTO kanban_cards (
         id_uuid, tenant_id, board_id, column_id, title, description, 
@@ -3257,7 +3320,8 @@ export async function executeCreateKanbanCard(
 export async function executeMoveKanbanCard(
   tenantId: string,
   argsStr: string,
-  actor: string = "system"
+  actor: string = "system",
+  bypassApproval: boolean = false
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
@@ -3297,6 +3361,24 @@ export async function executeMoveKanbanCard(
       card.column_id = targetColumnId;
       card.position = input.new_position;
       card.updated_at_utc = new Date().toISOString();
+
+      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+      if (!bypassApproval) {
+        return createToolSuccess({
+          message: `Kanban-Karten-Verschiebung als Entwurf erstellt (Freigabe erforderlich). Karte: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
+          card_id: card.id_uuid,
+          title: card.title,
+          draft: true,
+          approval_required: true,
+          kanban_card: {
+            id_uuid: card.id_uuid,
+            board_id: card.board_id,
+            column_id: targetColumnId,
+            position: input.new_position ?? card.position,
+            from_column_id: fromColId
+          }
+        });
+      }
 
       saveFallbackStore();
 
@@ -3342,6 +3424,24 @@ export async function executeMoveKanbanCard(
       throw new Error('Ziel-Spalte konnte nicht ermittelt werden.');
     }
 
+    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+    if (!bypassApproval) {
+      return createToolSuccess({
+        message: `Kanban-Karten-Verschiebung als Entwurf erstellt (Freigabe erforderlich). Karte: ${card.title}, Datenbank-ID: ${cardId}.`,
+        card_id: cardId,
+        title: card.title,
+        draft: true,
+        approval_required: true,
+        kanban_card: {
+          id_uuid: cardId,
+          board_id: card.board_id,
+          column_id: targetColumnId,
+          position: input.new_position ?? card.position,
+          from_column_id: fromColId
+        }
+      });
+    }
+
     await pool.query(
       `UPDATE kanban_cards SET column_id = $1, position = $2, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $3 AND (tenant_id = $4 OR tenant_id = '1')`,
       [targetColumnId, input.new_position, cardId, tenantId]
@@ -3383,7 +3483,8 @@ export async function executeMoveKanbanCard(
 export async function executeUpdateKanbanCard(
   tenantId: string,
   argsStr: string,
-  actor: string = "system"
+  actor: string = "system",
+  bypassApproval: boolean = false
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
@@ -3412,6 +3513,18 @@ export async function executeUpdateKanbanCard(
       if (input.due_date !== undefined) card.due_date = input.due_date;
       if (input.labels !== undefined) card.labels = input.labels;
       card.updated_at_utc = new Date().toISOString();
+
+      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+      if (!bypassApproval) {
+        return createToolSuccess({
+          message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
+          card_id: card.id_uuid,
+          title: card.title,
+          draft: true,
+          approval_required: true,
+          kanban_card: { ...card }
+        });
+      }
 
       saveFallbackStore();
 
@@ -3445,6 +3558,28 @@ export async function executeUpdateKanbanCard(
     const newDueDate = input.due_date !== undefined ? input.due_date : card.due_date;
     const newLabels = input.labels ?? card.labels;
 
+    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+    if (!bypassApproval) {
+      return createToolSuccess({
+        message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${newTitle}, Datenbank-ID: ${cardId}.`,
+        card_id: cardId,
+        title: newTitle,
+        draft: true,
+        approval_required: true,
+        kanban_card: {
+          id_uuid: cardId,
+          tenant_id: tenantId,
+          board_id: card.board_id,
+          column_id: card.column_id,
+          title: newTitle,
+          description: newDesc,
+          priority: newPriority,
+          due_date: newDueDate,
+          labels: newLabels
+        }
+      });
+    }
+
     await pool.query(
       `UPDATE kanban_cards SET title = $1, description = $2, priority = $3, due_date = $4, labels = $5, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $6 AND (tenant_id = $7 OR tenant_id = '1')`,
       [newTitle, newDesc, newPriority, newDueDate, newLabels, cardId, tenantId]
@@ -3476,7 +3611,8 @@ export async function executeUpdateKanbanCard(
 export async function executeDeleteKanbanCard(
   tenantId: string,
   argsStr: string,
-  actor: string = "system"
+  actor: string = "system",
+  bypassApproval: boolean = false
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
@@ -3493,6 +3629,20 @@ export async function executeDeleteKanbanCard(
     const input = parseResult.data;
     const cardId = input.card_id || input.card_id_uuid;
     if (!cardId) throw new Error("Fehler: Keine gültige card_id angegeben.");
+
+    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+    if (!bypassApproval) {
+      return createToolSuccess({
+        message: `Kanban-Karten-Löschung als Entwurf erstellt (Freigabe erforderlich). Karten-ID: ${cardId}.`,
+        card_id: cardId,
+        draft: true,
+        approval_required: true,
+        kanban_card: {
+          id_uuid: cardId,
+          action: "DELETE"
+        }
+      });
+    }
 
     if (isUsingFallback) {
       fallbackStore.kanbanCards = (fallbackStore.kanbanCards || []).filter(c => c.id_uuid !== cardId);

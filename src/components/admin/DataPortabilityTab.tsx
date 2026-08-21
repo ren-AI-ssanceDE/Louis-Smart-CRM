@@ -470,7 +470,7 @@ export const DataPortabilityTab = () => {
       refetchEmailTemplates();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setEmailStatus({ type: 'error', message: errMsg });
     }
   };
@@ -520,7 +520,7 @@ export const DataPortabilityTab = () => {
       refetchSignatures();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setSignatureStatus({ type: 'error', message: errMsg });
     }
   };
@@ -566,7 +566,7 @@ export const DataPortabilityTab = () => {
       refetchInvoiceTextTemplates();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setInvoiceTextStatus({ type: 'error', message: errMsg });
     }
   };
@@ -623,7 +623,7 @@ export const DataPortabilityTab = () => {
       refetchInvoiceItemTemplates();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setInvoiceItemStatus({ type: 'error', message: errMsg });
     }
   };
@@ -665,7 +665,7 @@ export const DataPortabilityTab = () => {
       refetchOfferTemplates();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setOfferTemplateStatus({ type: 'error', message: errMsg });
     }
   };
@@ -971,7 +971,7 @@ export const DataPortabilityTab = () => {
       }
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setCompanyStatus({ type: 'error', message: errMsg || t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' }) });
     }
   };
@@ -1060,7 +1060,7 @@ export const DataPortabilityTab = () => {
       }
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' });
       setContactStatus({ type: 'error', message: errMsg || t('admin:data_portability.error_csv_import', { defaultValue: 'Fehler beim CSV-Import.' }) });
     }
   };
@@ -1109,7 +1109,7 @@ export const DataPortabilityTab = () => {
       refetchCompanies();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
+      const errMsg = t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
       setCompanyStatus({ type: 'error', message: errMsg });
     }
   };
@@ -1154,7 +1154,7 @@ export const DataPortabilityTab = () => {
       refetchContacts();
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = err instanceof Error ? err.message : t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
+      const errMsg = t('admin:data_portability.error_resolution', { defaultValue: 'Fehler bei der Konfliktlösung.' });
       setContactStatus({ type: 'error', message: errMsg });
     }
   };

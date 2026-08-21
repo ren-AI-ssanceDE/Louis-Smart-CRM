@@ -49,6 +49,8 @@ import {
   McpDiscoveredTool,
   McpToolMapping,
   McpOAuthTokenRecord,
+  McpApprovalRequestRecord,
+  ChatProfileRecord,
   AgentJob,
   GovernanceRule
 } from "../types.js";
@@ -313,6 +315,9 @@ export interface DatabaseStore {
     conversation_history_json: ChatMessage[];
     short_term_summary_text?: string;
     parent_session_id?: string | null; // Auftrag 012 P0-3: Lineage (optional)
+    // C.7 (Plan 2026-08-19): aktives Chatprofil + Session-Override (Tool-Panel)
+    active_chat_profile_id?: string | null;
+    active_mcp_tools_json?: string[] | null;
     created_at_utc: string; // strict stamp
     updated_at_utc: string; // strict stamp
   }[];
@@ -349,6 +354,17 @@ export interface DatabaseStore {
   mcp_discovered_tools?: McpDiscoveredTool[];
   mcp_tool_mappings?: McpToolMapping[];
   mcpOauthTokens?: McpOAuthTokenRecord[];
+  // C.4 (Plan 2026-08-19): Genehmigungs-Queue (Trust-Gate)
+  mcpApprovalRequests?: McpApprovalRequestRecord[];
+  // C.7/C.8 (Plan 2026-08-19): Chatprofile + History-Archiv
+  mcpChatProfiles?: ChatProfileRecord[];
+  sessionProfileHistories?: Array<{
+    session_id: string;
+    chat_profile_id: string;
+    conversation_history_json: unknown;
+    short_term_summary_text: string;
+    updated_at_utc?: string;
+  }>;
   aiChatLogs?: AiChatLogItem[];
   authAccessIdentities?: {
     id_uuid: string;
@@ -363,6 +379,9 @@ export interface DatabaseStore {
 
 export const fallbackStore: DatabaseStore = {
   mcpOauthTokens: [],
+  mcpApprovalRequests: [],
+  mcpChatProfiles: [],
+  sessionProfileHistories: [],
   authAccessIdentities: [],
   auditLogs: [],
   companies: [],
@@ -1684,7 +1703,7 @@ export async function initDatabase() {
       );
       CREATE INDEX IF NOT EXISTS idx_ai_questions_tenant_status ON sys_louis_ai_questions(tenant_id, status);
 
-      -- Notizen an Kontakten/Unternehmen (QA-Befund #1: fehlendes Notiz-Tool, 2026-08-14)
+      -- Notizen an Kontakten/Unternehmen (fehlendes Notiz-Tool, 2026-08-14)
       CREATE TABLE IF NOT EXISTS sys_louis_ai_notes (
         id_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id TEXT NOT NULL DEFAULT '1',
@@ -1697,21 +1716,24 @@ export async function initDatabase() {
       );
       CREATE INDEX IF NOT EXISTS idx_ai_notes_entity ON sys_louis_ai_notes(tenant_id, entity_type, entity_id_uuid);
 
-      -- Standard-Vorlagen (QA-Befund F8: Bestand war fast leer, keine 'Standard'-Vorlage)
+      -- Standard-Vorlagen (Bestand war fast leer, keine 'Standard'-Vorlage)
+      -- BUG-003 (2026-08-20): created_by_identity='seed' ist schema-ungültig
+      -- (nur human|ai_assistant|system erlaubt) → getEmailTemplates-Antwort
+      -- wird von Zod verworfen → UI zeigt keine Vorlagen. Fix: 'system'.
       INSERT INTO sys_comms_email_templates (id_uuid, tenant_id, template_name_text, email_subject_text, email_body_content, created_by_identity)
       SELECT gen_random_uuid(), '1', 'Standard', '{{subject}}',
         'Sehr geehrte Damen und Herren,\n\n{{body}}\n\nMit freundlichen Grüßen\n{{my_company_name}}\n{{my_contact_person}}',
-        'seed'
+        'system'
       WHERE NOT EXISTS (SELECT 1 FROM sys_comms_email_templates WHERE template_name_text = 'Standard' AND tenant_id = '1');
       INSERT INTO sys_comms_email_templates (id_uuid, tenant_id, template_name_text, email_subject_text, email_body_content, created_by_identity)
       SELECT gen_random_uuid(), '1', 'Zahlungserinnerung', 'Zahlungserinnerung zu Rechnung {{invoice_number}}',
         'Sehr geehrte Damen und Herren,\n\nwir möchten Sie freundlich an die offene Rechnung {{invoice_number}} über {{total_gross}} {{currency}} erinnern. Der Zahlungstermin war der {{due_date}}.\n\nSollten Sie die Zahlung bereits veranlasst haben, betrachten Sie diese E-Mail als gegenstandslos.\n\nMit freundlichen Grüßen\n{{my_company_name}}',
-        'seed'
+        'system'
       WHERE NOT EXISTS (SELECT 1 FROM sys_comms_email_templates WHERE template_name_text = 'Zahlungserinnerung' AND tenant_id = '1');
       INSERT INTO sys_comms_email_templates (id_uuid, tenant_id, template_name_text, email_subject_text, email_body_content, created_by_identity)
       SELECT gen_random_uuid(), '1', 'Angebots-E-Mail', 'Ihr Angebot {{offer_number}} vom {{offer_date}}',
         'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unser Angebot {{offer_number}} über {{total_gross}} {{currency}} mit Zahlungsziel bis zum {{due_date}}.\n\nWir freuen uns auf Ihre Rückmeldung.\n\nMit freundlichen Grüßen\n{{my_company_name}}',
-        'seed'
+        'system'
       WHERE NOT EXISTS (SELECT 1 FROM sys_comms_email_templates WHERE template_name_text = 'Angebots-E-Mail' AND tenant_id = '1');
 
       ALTER TABLE sys_louis_ai_workflow_instances ADD COLUMN IF NOT EXISTS current_node_id TEXT DEFAULT NULL;
@@ -1738,7 +1760,23 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_skill_suggestions_tenant_status ON sys_louis_ai_skill_suggestions(tenant_id, status);
 
       -- S1: Volltext-Index für Session-Recall (inkl. Summary — COALESCE wegen NULL-Spalte)
-      CREATE INDEX IF NOT EXISTS idx_sys_louis_ai_sessions_fts ON sys_louis_ai_sessions USING GIN (to_tsvector('german', session_title || ' ' || COALESCE(short_term_summary_text, '') || ' ' || conversation_history_json::text));
+      -- Auftrag 041: alter Index (JSON::text-Rauschen) wird durch v2 (history_searchable_text) ersetzt.
+      DROP INDEX IF EXISTS idx_sys_louis_ai_sessions_fts;
+
+      -- Auftrag 041 P0 (Option B): Recall ohne JSON-Rauschen — IMMUTABLE-Helper extrahiert
+      -- NUR die content-Felder aus conversation_history_json; generierte Spalte wird von PG
+      -- automatisch gepflegt (kein Schreibpfad-Change). Alte FTS bleibt bis zur Verifikation,
+      -- neuer Index (v2) ersetzt sie danach (DROP im Abschluss nach Live-Check).
+      CREATE OR REPLACE FUNCTION louis_history_content_text(h JSONB)
+      RETURNS TEXT
+      LANGUAGE sql
+      IMMUTABLE
+      AS $$
+        SELECT COALESCE(string_agg(elem->>'content', ' '), '')
+        FROM jsonb_array_elements(COALESCE(h, '[]'::jsonb)) AS elem
+      $$;
+      ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS history_searchable_text TEXT GENERATED ALWAYS AS (louis_history_content_text(conversation_history_json)) STORED;
+      CREATE INDEX IF NOT EXISTS idx_sys_louis_ai_sessions_fts_v2 ON sys_louis_ai_sessions USING GIN (to_tsvector('german', COALESCE(history_searchable_text, '')));
       ALTER TABLE sys_louis_ai_knowledge_metadata ADD COLUMN IF NOT EXISTS updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE sys_louis_ai_knowledge_metadata ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'global';
       ALTER TABLE sys_louis_ai_knowledge_metadata ADD COLUMN IF NOT EXISTS associated_company_id UUID REFERENCES core_registry_companies(id_uuid) ON DELETE CASCADE;
@@ -1753,6 +1791,62 @@ export async function initDatabase() {
       ALTER TABLE sys_louis_ai_knowledge_chunks ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT 'document';
       ALTER TABLE sys_louis_ai_knowledge_chunks ADD COLUMN IF NOT EXISTS needs_reembedding BOOLEAN DEFAULT FALSE;
       ALTER TABLE sys_louis_ai_knowledge_chunks ADD COLUMN IF NOT EXISTS tsv_chunk_text tsvector GENERATED ALWAYS AS (to_tsvector('german', chunk_text)) STORED;
+
+      -- C.4 (Plan 2026-08-19): Genehmigungs-Queue für Write-Tools auf untrusted-Servern
+      CREATE TABLE IF NOT EXISTS sys_mcp_approval_requests (
+        id_uuid UUID PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        server_id_uuid UUID NOT NULL,
+        server_name TEXT NOT NULL,
+        tool_id_uuid UUID NOT NULL,
+        normalized_tool_name TEXT NOT NULL,
+        original_tool_name TEXT NOT NULL,
+        tool_arguments_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        requested_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        decided_by TEXT,
+        decided_at TIMESTAMP WITH TIME ZONE,
+        decision_comment TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_mcp_approval_requests_pending ON sys_mcp_approval_requests (tenant_id, status, created_at_utc);
+
+      -- C.4 (Regel 12): Timeout für offene Freigabe-Anfragen (Default 120 s, NULL = 120)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS mcp_approval_timeout_s INTEGER;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS mcp_stdio_max_sessions INTEGER;
+
+      -- C.7 (Plan 2026-08-19): Chatprofile — benannte Tool-Sets pro Chat
+      CREATE TABLE IF NOT EXISTS sys_mcp_chat_profiles (
+        id_uuid UUID PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        description TEXT,
+        tools_json JSONB,
+        is_system BOOLEAN NOT NULL DEFAULT FALSE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_by_user_id TEXT,
+        created_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, profile_name)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mcp_chat_profiles_tenant ON sys_mcp_chat_profiles (tenant_id);
+      ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS active_chat_profile_id UUID;
+      ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS active_mcp_tools_json JSONB;
+
+      -- C.8 (Plan 2026-08-19): History-Archiv je (Session, Chatprofil) — aktive History bleibt in der Session-Spalte
+      CREATE TABLE IF NOT EXISTS sys_louis_ai_session_profile_histories (
+        session_id UUID NOT NULL,
+        chat_profile_id UUID NOT NULL,
+        conversation_history_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        short_term_summary_text TEXT DEFAULT '',
+        updated_at_utc TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (session_id, chat_profile_id)
+      );
+
+      -- C.7: Main-Profil-Seed (pro Tenant einmalig; Main = alle Admin-freigegebenen Tools)
+      INSERT INTO sys_mcp_chat_profiles (id_uuid, tenant_id, profile_name, description, tools_json, is_system, is_default)
+      SELECT gen_random_uuid(), '1', 'main', 'Alle freigegebenen Tools', NULL, TRUE, TRUE
+      WHERE NOT EXISTS (SELECT 1 FROM sys_mcp_chat_profiles WHERE tenant_id = '1' AND profile_name = 'main');
 
       CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_tsv_gin ON sys_louis_ai_knowledge_chunks USING gin (tsv_chunk_text);
       CREATE INDEX IF NOT EXISTS idx_chunks_tenant_scope ON sys_louis_ai_knowledge_chunks (tenant_id, scope);
@@ -1844,6 +1938,54 @@ export async function initDatabase() {
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_directives_mode TEXT DEFAULT 'always';
       -- Auftrag 007 T5: Tool-Call-Modus ('auto' = native mit JSON-Fallback, 'json' = bisheriges Verhalten, 'native' = erzwungen)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS react_tool_call_mode TEXT DEFAULT 'auto';
+      -- 2026-08-18: Text-Fallback-Kanal (false = strikt: NUR native Tool-Calls; true = XML/JSON-Text-Fallback erlaubt; NULL = Backend-Default false)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS text_fallback_enabled BOOLEAN DEFAULT NULL;
+      -- Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_parallel_tool_guidance BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_tool_guidance_trim BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_frozen_snapshot BOOLEAN DEFAULT NULL;
+      -- Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_threshold_percent INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_tail_token_budget INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_aux_model TEXT DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_persist_summary BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_model_context_map TEXT DEFAULT NULL;
+      -- Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_prefetch_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_prefetch_timeout_s INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_recall_status_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_auto_scan_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_consolidation_budget INTEGER DEFAULT NULL;
+      -- Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_call_retry_max INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS empty_retry_budget INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS empty_retry_cost_threshold_usd NUMERIC DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_guardrail_exact_block INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_guardrail_no_progress_block INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS loop_deadline_s INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS thinking_scrub_enabled BOOLEAN DEFAULT NULL;
+      -- Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS recall_fts_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS recall_search_limit INTEGER DEFAULT NULL;
+      -- Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_curator_enabled BOOLEAN DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_inject_max_tokens INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_prune_inactive_after_days INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_inject_top_k INTEGER DEFAULT NULL;
+      -- Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS curator_interval_hours INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS curator_archive_after_days INTEGER DEFAULT NULL;
+      -- Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_max_depth INTEGER DEFAULT NULL;
+      -- Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS audit_retention_days INTEGER DEFAULT NULL;
+      -- Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS session_retention_days INTEGER DEFAULT NULL;
+      -- Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS mcp_refresh_interval_s INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_timeout_s INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_max_parallel INTEGER DEFAULT NULL;
 
       -- Auftrag 006 Task 7 (B2): Token-Metriken pro Agent-Lauf (Admin-Ansicht „Token-Verbrauch")
       CREATE TABLE IF NOT EXISTS sys_louis_ai_agent_runs (
@@ -2013,6 +2155,25 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tenant_server ON mcp_oauth_tokens(tenant_id, server_id);
       CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_tools_tenant_server_orig ON sys_mcp_discovered_tools(tenant_id, server_id_uuid, original_tool_name);
       CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_oauth_tenant_server ON mcp_oauth_tokens(tenant_id, server_id);
+
+      -- C.3 (Plan 2026-08-19, PR-6 2026-08-20): MCP-Client-Konfigurationsfelder
+      -- (additiv, Defaults = bisheriges Verhalten). NACH den CREATE TABLEs —
+      -- bei frischer DB existieren die Tabellen sonst noch nicht (ALTER-vor-
+      -- CREATE-Reihenfolge ließ initDatabase crashen → Fallback; Korrektur PR-6).
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS protocol TEXT;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS keepalive_interval_s INTEGER;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS connect_timeout_s INTEGER;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS ssl_verify BOOLEAN;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS client_cert TEXT;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS client_key TEXT;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS custom_headers TEXT;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS supports_parallel_tool_calls BOOLEAN;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS trust TEXT DEFAULT 'full';
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS tools_include_json JSONB;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS tools_exclude_json JSONB;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS idle_timeout_s INTEGER;
+      ALTER TABLE sys_mcp_external_servers ADD COLUMN IF NOT EXISTS max_lifetime_s INTEGER;
+      ALTER TABLE sys_mcp_discovered_tools ADD COLUMN IF NOT EXISTS readonly_hint BOOLEAN;
     `);
     console.log("PostgreSQL schema initialized with pgvector and audit logs.");
 
@@ -2393,7 +2554,7 @@ export async function initDatabase() {
       console.error("[db] Failed to set up Priority VIEW for core_registry_my_company:", viewErr);
     }
 
-    // Auftrag 008 4B/4C (Produktentscheid Option A): DAG als einziger Workflow-Pfad.
+    // DAG als einziger Workflow-Pfad.
     // ABWÄRTSKOMPATIBILITÄT: Bestands-Workflows OHNE dag_structure werden beim
     // App-Start automatisch aus tool_chain_sequence zu DAGs konvertiert (idempotent,
     // NUR fehlende DAGs — bestehende bleiben unangetastet, nichts wird gelöscht).
@@ -2456,6 +2617,40 @@ export async function seedDatabase() {
   await runSeeding(pool, '1');
 }
 
+// ============================================================================
+// Event-Disziplin — Audit-Log NUR CRUD/Governance (Regel)
+// ----------------------------------------------------------------------------
+// Problem (2026-08-19): Telemetrie-Events (AGENT_PIPELINE_OPTIMIZED_EXECUTE,
+// MEMORY_SYNC, TELEMETRY, AGENT_JOB*, SUB_TASK, RUN_WORKFLOW*, ERROR, …)
+// blähten das Audit-Log auf (4.827 Einträge, davon ≈2.290 Telemetrie = 47 %).
+// Lösung: ALLOWLIST — nur Compliance-relevante Event-Typen werden persistiert;
+// alles andere wird verworfen (console.debug für Transparenz, kein DB-Write).
+// Neue Event-Typen müssen hier BEWUSST ergänzt werden (Allowlist-Prinzip).
+// ============================================================================
+
+/** Audit-würdige Event-Typen (CRUD + Governance) — Allowlist. */
+export const AUDIT_WORTHY_EVENT_TYPES: ReadonlySet<string> = new Set([
+  // CRUD
+  "CREATE", "UPDATE", "DELETE",
+  "CREATE_DRAFT", "UPDATE_DRAFT",
+  "CREATE_BOARD",
+  "CREATE_NOTE", "UPDATE_NOTE", "DELETE_NOTE",
+  "CREATE_USER", "UPDATE_USER", "DELETE_USER",
+  "UPLOAD_KNOWLEDGE", "DELETE_KNOWLEDGE",
+  "FINALIZE",
+  "MEMORY_UPDATE",
+  "STATUS_CORRECTION",
+  // Governance & Konfiguration
+  "GOVERNANCE_ASK", "GOVERNANCE_ASK_ANSWERED", "GOVERNANCE_ASK_DELETED",
+  "GOVERNANCE_BLOCK", "GOVERNANCE_RULE",
+  "UPDATE_CONFIG"
+]);
+
+/** Prüft, ob ein Event-Typ ins Compliance-Audit-Log gehört (Allowlist). */
+export function isAuditWorthyEvent(eventType: string): boolean {
+  return AUDIT_WORTHY_EVENT_TYPES.has(eventType);
+}
+
 export async function logAuditEvent(event: {
   tenantId: string;
   eventType: string;
@@ -2464,6 +2659,11 @@ export async function logAuditEvent(event: {
   eventDetails?: string;
   actorIdentity: string;
 }) {
+  // Auftrag 037 P0: Telemetrie-/System-Events nicht ins Compliance-Audit schreiben.
+  if (!isAuditWorthyEvent(event.eventType)) {
+    console.debug(`[Audit] Event '${event.eventType}' übersprungen (nicht audit-würdig, Auftrag 037): ${event.eventDetails || ""}`);
+    return;
+  }
   if (isUsingFallback) {
     if (!fallbackStore.auditLogs) {
       fallbackStore.auditLogs = [];
@@ -2493,6 +2693,180 @@ export async function logAuditEvent(event: {
     `, [uuidv4(), event.tenantId, event.eventType, event.entityType, event.entityId, event.eventDetails, event.actorIdentity]);
   } catch (err) {
     console.error("Failed to log audit event:", err);
+  }
+}
+
+// ============================================================================
+// Auftrag 037 P2: Audit-Log-Prune (Scheduler, opt-in über audit_retention_days)
+// ----------------------------------------------------------------------------
+// Löscht Audit-Einträge älter als retentionDays in Batches (DELETE mit LIMIT
+// ist in PG nicht direkt möglich → CTE über ctid). Idempotent (DELETE ist
+// idempotent). Nur PG-Zweig — der Fallback-Store kappt bereits bei 200 und
+// ist nicht retention-pflichtig. Rückgabe: Anzahl gelöschter Zeilen.
+// ============================================================================
+
+export interface AuditPruneResult {
+  pruned: number;
+  batches: number;
+}
+
+/**
+ * Führt die Batch-Lösch-Schleife aus (testbar — queryFn wird injiziert).
+ * Löscht Einträge älter als retentionDays in Batches; stoppt, wenn eine
+ * Charge < batchSize liefert. CTE über ctid (DELETE mit LIMIT ist in PG
+ * nicht direkt möglich). Idempotent: DELETE ist idempotent.
+ */
+export async function runAuditPruneBatches(
+  queryFn: (sql: string, params: unknown[]) => Promise<{ rowCount: number | null }>,
+  tenantId: string,
+  retentionDays: number,
+  batchSize: number = 500
+): Promise<AuditPruneResult> {
+  let pruned = 0;
+  let batches = 0;
+  for (;;) {
+    const res = await queryFn(
+      `WITH to_delete AS (
+         SELECT ctid FROM sys_audit_event_logs
+         WHERE tenant_id = $1 AND created_at_utc < NOW() - make_interval(days => $2)
+         LIMIT $3
+       )
+       DELETE FROM sys_audit_event_logs WHERE ctid IN (SELECT ctid FROM to_delete)`,
+      [tenantId, retentionDays, batchSize]
+    );
+    const deleted = res.rowCount ?? 0;
+    pruned += deleted;
+    batches += 1;
+    if (deleted < batchSize) break;
+  }
+  return { pruned, batches };
+}
+
+export async function pruneAuditLogs(
+  tenantId: string,
+  retentionDays: number,
+  batchSize: number = 500
+): Promise<AuditPruneResult> {
+  if (!retentionDays || retentionDays <= 0 || isUsingFallback || !pool) {
+    return { pruned: 0, batches: 0 };
+  }
+  try {
+    const result = await runAuditPruneBatches(
+      (sql, params) => pool!.query(sql, params),
+      tenantId,
+      retentionDays,
+      batchSize
+    );
+    if (result.pruned > 0) {
+      // Transparenz: der Prune selbst wird als DELETE-Ereignis auditierbar gemacht
+      // (läuft durch die Allowlist — DELETE ist audit-würdig).
+      await logAuditEvent({
+        tenantId,
+        eventType: "DELETE",
+        entityType: "audit_log",
+        eventDetails: `Prune-Job (Auftrag 037): ${result.pruned} Einträge älter als ${retentionDays} Tage gelöscht (${result.batches} Batches)`,
+        actorIdentity: "scheduler"
+      });
+    }
+    return result;
+  } catch (err) {
+    console.error("Failed to prune audit logs:", err);
+    return { pruned: 0, batches: 0 };
+  }
+}
+
+// ============================================================================
+// Auftrag 038 P2: Session-Prune (Scheduler, opt-in über session_retention_days)
+// ----------------------------------------------------------------------------
+// Kriterium (Plan-Review 038): Aktivität — sys_louis_ai_sessions hat KEINEN
+// Ende-Marker (kein ended_at/end_reason). Es werden Sessions gelöscht, deren
+// updated_at_utc älter als retentionDays ist (die aktive Session wird bei jeder
+// Antwort geupdated → nie älter als retention). Bewusste Abweichung vom Referenz-System
+// (der ended_at nutzt) — Aktivität ist das Louis-Äquivalent zu last_activity.
+// Kind-Sessions werden VOR dem Löschen verwaist (parent_session_id → NULL,
+// bewährtes Muster) — Konsequenz: recall verliert für verwaiste Kinder den
+// Eltern-Bezug (bewusste Entscheidung, Referenz-System identisch).
+// ============================================================================
+
+export interface SessionPruneResult {
+  pruned: number;
+  batches: number;
+  orphaned: number;
+}
+
+/**
+ * Batch-Lösch-Schleife für Sessions (testbar — queryFn wird injiziert, wrappbar).
+ * Jede Charge: (1) Kinder verwaisten (UPDATE parent→NULL), (2) Batch löschen.
+ * Stoppt, wenn eine Charge < batchSize liefert. Idempotent.
+ */
+export async function runSessionPruneBatches(
+  queryFn: (sql: string, params: unknown[]) => Promise<{ rowCount: number | null }>,
+  tenantId: string,
+  retentionDays: number,
+  batchSize: number = 500
+): Promise<SessionPruneResult> {
+  let pruned = 0;
+  let batches = 0;
+  let orphaned = 0;
+  for (;;) {
+    // 1) Kinder der zu löschenden Eltern verwaisten (Muster: parent → NULL)
+    const orphan = await queryFn(
+      `WITH to_delete AS (
+         SELECT id_uuid FROM sys_louis_ai_sessions
+         WHERE tenant_id = $1 AND updated_at_utc < NOW() - make_interval(days => $2)
+         LIMIT $3
+       )
+       UPDATE sys_louis_ai_sessions SET parent_session_id = NULL
+       WHERE parent_session_id IN (SELECT id_uuid FROM to_delete)`,
+      [tenantId, retentionDays, batchSize]
+    );
+    orphaned += orphan.rowCount ?? 0;
+    // 2) Batch löschen (CTE über ctid — DELETE mit LIMIT ist in PG nicht direkt möglich)
+    const del = await queryFn(
+      `WITH to_delete AS (
+         SELECT ctid FROM sys_louis_ai_sessions
+         WHERE tenant_id = $1 AND updated_at_utc < NOW() - make_interval(days => $2)
+         LIMIT $3
+       )
+       DELETE FROM sys_louis_ai_sessions WHERE ctid IN (SELECT ctid FROM to_delete)`,
+      [tenantId, retentionDays, batchSize]
+    );
+    const deleted = del.rowCount ?? 0;
+    pruned += deleted;
+    batches += 1;
+    if (deleted < batchSize) break;
+  }
+  return { pruned, batches, orphaned };
+}
+
+export async function pruneSessions(
+  tenantId: string,
+  retentionDays: number,
+  batchSize: number = 500
+): Promise<SessionPruneResult> {
+  if (!retentionDays || retentionDays <= 0 || isUsingFallback || !pool) {
+    return { pruned: 0, batches: 0, orphaned: 0 };
+  }
+  try {
+    const result = await runSessionPruneBatches(
+      (sql, params) => pool!.query(sql, params),
+      tenantId,
+      retentionDays,
+      batchSize
+    );
+    if (result.pruned > 0) {
+      await logAuditEvent({
+        tenantId,
+        eventType: "DELETE",
+        entityType: "session",
+        eventDetails: `Session-Prune (Auftrag 038): ${result.pruned} inaktive Sessions (aelter als ${retentionDays} Tage) geloescht, ${result.orphaned} Kinder verwaist (${result.batches} Batches)`,
+        actorIdentity: "scheduler"
+      });
+    }
+    return result;
+  } catch (err) {
+    console.error("Failed to prune sessions:", err);
+    return { pruned: 0, batches: 0, orphaned: 0 };
   }
 }
 

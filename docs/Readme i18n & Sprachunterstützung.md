@@ -36,8 +36,7 @@ Die Sprache wird automatisch erkannt (Browsereinstellung) — Sie können sie ab
 ## 2. i18n-Pflicht (Regel 10)
 
 * **Jede** benutzersichtbare Zeichenkette MUSS über i18n laufen — kein hartkodierter UI-Text.
-* **Tool**: `scripts/extract-missing-i18n.mjs` erkennt fehlende Übersetzungen.
-* **Gate**: `npm run check:rules` (pre-commit-Hook) blockiert Commits mit hartkodierten UI-Texten oder fehlenden DE/EN-Keys.
+* **Gate**: `npm run check:rules` (pre-commit-Hook) blockiert Commits mit hartkodierten UI-Texten oder fehlenden DE/EN-Keys; ein Entwickler-Werkzeug listet fehlende Übersetzungen auf (0 = sauber).
 * **Server-seitige Tool-Beschreibungen** (SYSTEM_TOOL_CATALOG) sind von der i18n-Pflicht ausgenommen, da sie nicht im UI gerendert werden.
 
 ## 3. Bereiche

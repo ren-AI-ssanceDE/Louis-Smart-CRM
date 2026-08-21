@@ -63,7 +63,7 @@ src/
 │   │                 #   mcpClient, mcpExecution, settings, mailDrafts, filesAndLogs, agentJobs, voice …)
 │   ├── ai/           # agentRuntime, critic, orchestrator, workflowEngine, workflowGraphExecutor,
 │   │                 #   workflowEventBus, tools/, ragSearch, vaultStore, governance …
-│   ├── mcp/          # mcpServer, mcpClientEngine, mcpBridge
+│   ├── mcp/          # mcpServer, mcpClientEngine, sdkTransport, serverLifecycle
 │   └── council/      # councilEngine, multiModelClient
 ├── lib/              # schemas.ts (Zod), zugferd.ts, math.ts, dagToolOptions …
 ├── i18n/locales/     # de.json, en.json

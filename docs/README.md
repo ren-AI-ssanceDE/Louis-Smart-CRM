@@ -67,7 +67,7 @@ Danach öffnen Sie im Browser **http://localhost:3000** und melden sich an. Ausf
 * **Dualer Speicher-Layer**: PostgreSQL + `pgvector` (1536-dim. Embeddings) oder lokaler JSON-Fallback (`.local_fallback_db.json`) — beide Pfade durch denselben Code bedient.
 * **Workflow-Automatisierung**: DAG-Editor (React Flow), Knoten ACTION/CONDITIONAL/WAIT/HUMAN_GATE/RAG/ASK_USER, Trigger MANUAL/CRM_EVENT/TIMER (inkl. 5-Felder-Cron), Dry-Run, Versionierung, Vorlagen.
 * **Council Engine**: Multi-Model-/Multi-Rollen-Debatten (Gemini, GPT, Claude, Llama …).
-* **MCP**: CRM als MCP-Server (SSE/JSON-RPC, API-Key-Auth) **und** MCP-Client (Tool-Discovery, OAuth, Presets, Namespace `mcp__<server>__<tool>`).
+* **MCP**: CRM als MCP-Server (SSE/JSON-RPC, API-Key-Auth) **und** MCP-Client (Tool-Discovery, OAuth, Presets, Namespace `mcp_<server>_<tool>`).
 * **Zusätzliche Module**: Angebote, Kanban, Agent-Jobs (Cron-Scripte/Watchdogs), Whisper-STT (Voice), Telegram-Gateway, DSGVO-Tooling (Audit-Log, Export, Löschkonzept), i18n DE/EN.
 
 ## Architektur im Überblick

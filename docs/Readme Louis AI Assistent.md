@@ -103,11 +103,11 @@ Louis ist nach der Installation sofort verfügbar (Google-Gemini-Schlüssel in d
 | `CORE` | `crm_data_analyst`, `text_generator`, `update_memory`, `verify_subtask`, `ask_user_question` |
 | `CRM_READ` | `list_companies`, `list_contacts`, `list_invoices`, `list_notes`, `list_mail_drafts` |
 | `CRM_WRITE` | `create_company_draft`, `create_contact_draft`, `create_invoice_draft`, `create_offer_draft`, `create_note_draft`, `update_company_draft`, `update_contact_draft`, `update_invoice_draft`, `update_offer_draft`, `update_note`, `delete_note`, `finalize_and_send_offer`, `send_smtp_email` |
-| `KNOWLEDGE` | `web_search`, `local_knowledge`, `list_vault_files`, `vault_write`, `vault_update`, `vault_delete`, `recall_sessions`, `vault_search`, `vault_read` |
+| `KNOWLEDGE` | `web_search`, `knowledge_write`, `knowledge_update`, `knowledge_delete`, `list_knowledge_files`, `knowledge_search`, `recall_sessions`, `vault_read`, `vault_search` |
 | `KANBAN` | `list_kanban_boards`, `get_kanban_board_details`, `create_kanban_board`, `create_kanban_card`, `update_kanban_card`, `move_kanban_card`, `delete_kanban_card` |
 | `TEMPLATES` | `get_templates`, `get_template_details`, `apply_template` |
 | `WORKFLOWS` | `learn_workflow`, `get_workflows`, `save_skill`, `delegate_subtask` (Sub-Agents, max. 3 parallel) |
-| **MCP (dynamisch)** | Externe Tools via `mcp__<server>__<tool>` (Namespace-Mapping) |
+| **MCP (dynamisch)** | Externe Tools via `mcp_<server>__<tool>` (Namespace-Mapping) |
 
 ## 4. QA-Critic (`critic.ts`)
 
@@ -127,12 +127,14 @@ Jeder erzeugte Beleg durchläuft vor dem Speichern den **Louis QA Critic**:
 ## 6. Erweiterte Fähigkeiten
 
 * **Langzeitgedächtnis**: `update_memory` / `getUserMemory` (Benutzerpräferenzen, Notizen).
-* **Session-Recall**: `recall_sessions` durchsucht vergangene KI-Sessions per Volltextsuche.
+* **Session-Recall**: `recall_sessions` durchsucht vergangene KI-Sessions per Volltextsuche (gewichtete `ts_rank` + Recency-Bonus über die generierte Spalte `history_searchable_text`).
 * **Skills**: `save_skill` legt Wissens-Skills im Vault an (Freigabe erforderlich).
 * **Sub-Agents**: `delegate_subtask` parallelisiert Teilaufgaben in isolierten Agenten (read-only).
 * **Rückfragen**: `ask_user_question` persistiert Rückfragen an den Benutzer (Governance).
 * **Council**: Für komplexe Entscheidungen kann Louis einen Multi-Model-Rat einberufen (siehe [Readme Council Engine](Readme%20Council%20Engine.md)).
 * **MCP**: Externe MCP-Server-Tools werden nahtlos in den Katalog gemerged (siehe [Readme MCP](Readme%20Model%20Context%20Protocol%20(MCP).md)).
+* **Chatprofile** (seit 2.1.0): Profil-Auswahl im Chat-Header (z. B. Main/Schalter) mit eigener Tool-Auswahl und eigenem Verlauf; Warm-Resume lädt beim Öffnen die letzte Session des Default-Profils. Freigaben + Tool-Konfiguration im Admin (Tab „Chatprofile“).
+* **Kontext-Kompression & Session-Rotation** (seit 2.1.0): Lange Gespräche werden automatisch zusammengefasst — die bisherige Session wird zur abgeschlossenen Eltern-Session, eine Kind-Session übernimmt die getrimmte History. Während der Kompression zeigt der Chat den Hinweis „🗜️ Louis komprimiert den Verlauf…“.
 
 ## 7. Konfiguration (Admin)
 

@@ -125,6 +125,6 @@ Mutationen emittieren Events über `workflowEventBus.emitEvent(tenantId, 'entity
 ## 7. Integrations-Architektur (MCP, Telegram, STT)
 
 * **MCP-Server**: SSE-Endpoint `GET /api/mcp/sse` + JSON-RPC `POST /api/mcp/message` (API-Key-Auth) — externe Clients nutzen CRM-Tools.
-* **MCP-Client-Engine** (`mcpClientEngine.ts`): Verbindet sich zu externen Servern (STDIO/HTTP), entdeckt Tools (`mcp__<server>__<tool>`-Namespace), unterstützt OAuth und Presets.
+* **MCP-Client-Engine** (`mcpClientEngine.ts`): Verbindet sich zu externen Servern (STDIO/HTTP), entdeckt Tools (`mcp_<server>__<tool>`-Namespace), unterstützt OAuth und Presets.
 * **Telegram-Gateway** (`services/telegram-bot-gate`): Dezentraler MCP-Client via SSE; Zero-Trust-Allowlist.
 * **STT** (`/api/voice/transcribe`): Whisper (lokal via Docker `speaches` oder OpenAI), Admin-konfigurierbar (Provider, Modell, Sprache, Device, Quantisierung).

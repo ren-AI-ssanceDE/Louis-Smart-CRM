@@ -7,7 +7,7 @@ import { CriticValidationResult, CritiqueLoopResult, AgentLanguage } from "./age
 /**
  * Übersetzt einen Zod-Validierungsfehler in eine verständliche, handlungsorientierte
  * Meldung für den Endnutzer (statt roher technischer Fehlercodes).
- * Fix 2026-08-14 (QA-Befund 1/2): "[Schema Error] Location: last_name - Message: Invalid input…"
+ * Fix 2026-08-14 ( 1/2): "[Schema Error] Location: last_name - Message: Invalid input…"
  * leakte in Chat-Antworten.
  */
 function formatZodIssueForUser(issue: { path: PropertyKey[]; code: string; message: string; expected?: string; received?: unknown }): string {
@@ -104,7 +104,7 @@ export function validateProposalMathAndSchema(
         errors.push("name und content sind für vault_skill erforderlich.");
       }
     } else if (entityType === 'note') {
-      // QA-Befund #1: Notiz-Drafts — Pflichtfelder: Notiztext + genau EIN Ziel (Kontakt ODER Firma)
+      // Notiz-Drafts — Pflichtfelder: Notiztext + genau EIN Ziel (Kontakt ODER Firma)
       if (!proposedState.note_text) {
         errors.push("note_text ist für eine Notiz erforderlich.");
       }

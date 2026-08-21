@@ -2826,7 +2826,7 @@ export const Invoices = () => {
                           <div>
                             <div className="font-bold text-slate-600 uppercase mb-1">{t('preview.support')}</div>
                             <div>
-                              <div>{myCompany?.email_address || 'billing@musterfirma.test'}</div>
+                              <div>{myCompany?.email_address || 'billing@louis-systems.de'}</div>
                               <div>{myCompany?.phone_number || '+49 30 123 456 78'}</div>
                               <div>{myCompany?.website || 'www.louis-crm.de'}</div>
                             </div>
@@ -3242,6 +3242,9 @@ export const Invoices = () => {
           } else if (aiFieldId === 'closing_text') {
             updateClosingText(newValue);
           } else if (aiFieldId === 'item_desc_single') {
+            // Auftrag 032: State UND DOM setzen (sonst überschreibt dangerouslySetInnerHTML
+            // beim Re-Render die manuelle innerHTML-Zuweisung → „Übernahme übernimmt nichts")
+            setInitialSingleHtml(newValue);
             if (singleEditorRef.current) singleEditorRef.current.innerHTML = newValue;
           }
           setAiFieldId(null);

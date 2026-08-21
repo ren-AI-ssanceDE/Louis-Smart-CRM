@@ -1,5 +1,6 @@
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, cleanDbRow } from '../db.js';
 import { McpOAuthTokenRecord } from '../../types.js';
+import { encryptSecret, decryptSecret } from './secretCrypto.js';
 
 export async function saveMcpOAuthToken(
   tenantId: string,
@@ -23,8 +24,9 @@ export async function saveMcpOAuthToken(
       tenant_id: tenantId,
       server_id: serverId,
       provider,
-      access_token: accessToken,
-      refresh_token: refreshToken || (existingIdx >= 0 ? fallbackStore.mcpOauthTokens[existingIdx].refresh_token : null),
+      // Tokens verschlüsselt speichern (echte AES-256-GCM, Klartext in DB)
+      access_token: encryptSecret(accessToken) ?? accessToken,
+      refresh_token: encryptSecret(refreshToken) || (existingIdx >= 0 ? fallbackStore.mcpOauthTokens[existingIdx].refresh_token : null),
       expires_at: expiresAt,
       scopes: scopes || null,
       created_at: existingIdx >= 0 ? fallbackStore.mcpOauthTokens[existingIdx].created_at : new Date().toISOString(),
@@ -51,7 +53,7 @@ export async function saveMcpOAuthToken(
       updated_at = NOW()
   `;
 
-  await pool.query(query, [id, tenantId, serverId, provider, accessToken, refreshToken || null, expiresAt, scopes || null]);
+  await pool.query(query, [id, tenantId, serverId, provider, encryptSecret(accessToken), encryptSecret(refreshToken) || null, expiresAt, scopes || null]);
 }
 
 export async function getMcpOAuthToken(
@@ -63,7 +65,13 @@ export async function getMcpOAuthToken(
     const record = fallbackStore.mcpOauthTokens.find(
       (t) => (t.tenant_id === tenantId || t.tenant_id === '1') && t.server_id === serverId
     );
-    return record || null;
+    if (!record) return null;
+    // C.3b: entschlüsseln (Fallback-Store kann verschlüsselte Werte enthalten)
+    return {
+      ...record,
+      access_token: decryptSecret(record.access_token ?? null),
+      refresh_token: decryptSecret(record.refresh_token ?? null) || null
+    };
   }
 
   const res = await pool.query(
@@ -72,7 +80,13 @@ export async function getMcpOAuthToken(
   );
 
   if (res.rows.length === 0) return null;
-  return cleanDbRow(res.rows[0]) as McpOAuthTokenRecord;
+  const row = cleanDbRow(res.rows[0]) as McpOAuthTokenRecord;
+  // C.3b: gespeicherte Tokens können verschlüsselt sein (lv1:) — vor Nutzung entschlüsseln
+  return {
+    ...row,
+    access_token: decryptSecret(row.access_token ?? null),
+    refresh_token: decryptSecret(row.refresh_token ?? null) || null
+  };
 }
 
 export async function deleteMcpOAuthToken(

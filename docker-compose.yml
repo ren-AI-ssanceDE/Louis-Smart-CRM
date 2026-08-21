@@ -37,7 +37,7 @@ services:
       - PGDATABASE=louis_crm
       
       # Authentication and App Context Settings
-      # 021-F: AUTH_SECRET wird NICHT hier gesetzt — die App liest das Secret aus
+      # AUTH_SECRET wird NICHT hier gesetzt — die App liest das Secret aus
       # der DB (sys_app_security, wird beim ersten Start generiert). Ein .env-
       # AUTH_SECRET (>= 32 Zeichen) ist nur optionaler Infrastruktur-Override.
       - APP_URL=${APP_URL:-http://localhost:3000}
@@ -46,6 +46,9 @@ services:
       # Gemini Large Language Model Integration Key
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
 
+      # Secret-Verschlüsselungs-Key (AES-256-GCM) — Deployment-Secret,
+      # NICHT User-konfigurierbar (Regel 12: keine hardcoded Secrets; Key gehört in die Env)
+      - LOUIS_SECRET_KEY=${LOUIS_SECRET_KEY:-}
       # Agent-Job-Scripte (S7/S11): persistent + versioniert im Repo-Ordner louis-scripts/
       - LOUIS_AI_SCRIPTS_DIR=/app/louis-scripts
     depends_on:
@@ -58,6 +61,11 @@ services:
       - ./knowledge_data_vault:/app/knowledge_data_vault
       # Agent-Job-Scripte: persistent + versioniert (überlebt Rebuilds)
       - ./louis-scripts:/app/louis-scripts
+      # npx/npm-Cache: überlebt Rebuilds — sonst lädt jeder stdio-MCP-Server (Google etc.)
+      # nach jedem Build seine Pakete neu (>5 min Kaltstart → Timeouts).
+      # HOME=/app → npm nutzt /app/.npm; app:app-Rechte kommen aus dem Dockerfile (install -d),
+      # damit das frisch angelegte Volume für den App-User beschreibbar ist.
+      - npm_cache:/app/.npm
 
   telegram-bot-gate:
     build:
@@ -85,6 +93,9 @@ services:
     volumes:
       - whisper_models:/home/ubuntu/.cache/huggingface/hub
 
+  # Ollama (GPU-Subtask-LLM) — bleibt im Stack:
+  # wurde NICHT frisch aufgesetzt (großer Modell-Download), Container neu gestartet
+  # mit vorhandenem Modell-Volume ./ollama/models.
   ollama:
     image: ollama/ollama:latest
     container_name: louis-ollama
@@ -102,10 +113,18 @@ services:
     volumes:
       - ./ollama/models:/root/.ollama/models
       - ./ollama:/ollama
-    # Hinweis: Auf Rechnern mit NVIDIA-GPU kann die Beschleunigung aktiviert
-    # werden (siehe README → „GPU-Beschleunigung (optional)“). Ohne GPU läuft
-    # Ollama auf CPU — die KI-Hauptfunktionen nutzen den Cloud-Provider.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 volumes:
   louis-crm_postgres_data:
+    external: true
   whisper_models:
+    driver: local
+  npm_cache:
+    driver: local

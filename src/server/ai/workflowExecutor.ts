@@ -702,7 +702,13 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
           step.tool === "list_mail_drafts" || step.tool === "executeListMailDrafts" ||
           step.tool === "vault_write" || step.tool === "executeVaultWrite" ||
           step.tool === "vault_update" || step.tool === "executeVaultUpdate" ||
-          step.tool === "vault_delete" || step.tool === "executeVaultDelete"
+          step.tool === "vault_delete" || step.tool === "executeVaultDelete" ||
+          // Auftrag 036 P1: neue knowledge_*-Namen (Alias neben den vault_-Namen)
+          step.tool === "knowledge_write" || step.tool === "executeKnowledgeWrite" ||
+          step.tool === "knowledge_update" || step.tool === "executeKnowledgeUpdate" ||
+          step.tool === "knowledge_delete" || step.tool === "executeKnowledgeDelete" ||
+          step.tool === "knowledge_search" || step.tool === "executeKnowledgeSearch" ||
+          step.tool === "list_knowledge_files" || step.tool === "executeListKnowledgeFiles"
         ) {
           // Auftrag 008 4A: Zusätzliche Wissens-/Vault-/Memory-Tools als Workflow-Schritte
           try {
@@ -721,7 +727,8 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
             } else if (step.tool === "vault_read" || step.tool === "executeVaultRead") {
               const rel = (step.instruction || "").trim().replace(/^path[:：]\s*/i, "");
               rawResult = JSON.stringify(await vaultStore.vaultReadText(tenantId, rel));
-            } else if (step.tool === "list_vault_files" || step.tool === "executeListVaultFiles") {
+            } else if (step.tool === "list_vault_files" || step.tool === "executeListVaultFiles"
+              || step.tool === "list_knowledge_files" || step.tool === "executeListKnowledgeFiles") {
               const r = await knowledgeMod.executeListVaultFiles(tenantId);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "recall_sessions" || step.tool === "executeRecallSessions") {
@@ -795,23 +802,26 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
               const r = await crmMod.executeDeleteNote(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "create_kanban_board" || step.tool === "executeCreateKanbanBoard") {
-              // G3 (Auftrag 009)
-              const r = await crmMod.executeCreateKanbanBoard(tenantId, step.instruction || "{}", "ai_workflow");
+              // G3 (Auftrag 009) + Auftrag 042: Workflow-Pfad schreibt direkt (bypassApproval=true)
+              const r = await crmMod.executeCreateKanbanBoard(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "list_mail_drafts" || step.tool === "executeListMailDrafts") {
               // G7 (Auftrag 009)
               const messagingMod = await import("./tools/messaging.js");
               const r = await messagingMod.executeListMailDrafts(tenantId, step.instruction || "{}");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
-            } else if (step.tool === "vault_write" || step.tool === "executeVaultWrite") {
+            } else if (step.tool === "vault_write" || step.tool === "executeVaultWrite"
+              || step.tool === "knowledge_write" || step.tool === "executeKnowledgeWrite") {
               // G8 (Auftrag 009)
               const r = await knowledgeMod.executeVaultWrite(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
-            } else if (step.tool === "vault_update" || step.tool === "executeVaultUpdate") {
+            } else if (step.tool === "vault_update" || step.tool === "executeVaultUpdate"
+              || step.tool === "knowledge_update" || step.tool === "executeKnowledgeUpdate") {
               // G8 (Auftrag 009)
               const r = await knowledgeMod.executeVaultUpdate(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
-            } else if (step.tool === "vault_delete" || step.tool === "executeVaultDelete") {
+            } else if (step.tool === "vault_delete" || step.tool === "executeVaultDelete"
+              || step.tool === "knowledge_delete" || step.tool === "executeKnowledgeDelete") {
               // G8 (Auftrag 009)
               const r = await knowledgeMod.executeVaultDelete(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);

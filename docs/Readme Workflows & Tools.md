@@ -87,7 +87,7 @@ Seit August 2026 ist der **DAG-Graph der einzige Workflow-Pfad** (lineare Sequen
 6. **`send_smtp_email`** — E-Mail-Entwurf zur Freigabe (GoBD-konform, nie direkter Versand)
 7. **`list_mail_drafts`** — E-Mail-Entwürfe auflisten (Status-Filter)
 8. **`web_search`** — 4 Suchverfahren (Gemini Grounding, Google CSE, SearXNG, DuckDuckGo-Scraper mit Backoff)
-9. **`local_knowledge` / `list_vault_files` / `vault_write` / `vault_update` / `vault_delete`** — Wissensvault (RAG, Path-Traversal-Schutz)
+9. **`knowledge_search` / `list_knowledge_files` / `vault_write` / `vault_update` / `vault_delete`** — Wissensvault (RAG, Path-Traversal-Schutz)
 10. **`vault_search` / `vault_read`** — Obsidian-Vault-Zugriff (über das Obsidian-MCP, Local REST API Plugin)
 11. **`recall_sessions`** — Volltextsuche über vergangene KI-Sessions
 12. **`update_memory`** — Langzeitgedächtnis (Präferenzen/Notizen)

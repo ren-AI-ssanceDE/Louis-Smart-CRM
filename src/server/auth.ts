@@ -205,7 +205,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
   trustHost: true,
 };
 
-// 021-F (Projektregel 2026-08-17): Auth-Secret lebt in der DB (sys_app_security),
+// 021-F (Regel 2026-08-17): Auth-Secret lebt in der DB (sys_app_security),
 // NICHT in Dateien/Code. Der alte hartkodierte UUID-Fallback wird ersetzt:
 // NULL/leer = beim ersten Start generiert + in der DB persistiert (stabil über
 // Neustarts, Sessions bleiben gültig). AUTH_SECRET-Env ist nur ein optionaler

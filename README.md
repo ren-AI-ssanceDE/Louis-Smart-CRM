@@ -1,43 +1,7 @@
 # Louis Smart CRM
 
-> **Version 2.0.0** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
+> **Version 2.1.0** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
 > Ein integrierter AI-Assistent („Louis AI") erledigt CRM-Aufgaben im Chat: Kontakte, Firmen, Angebote, Rechnungen (ZUGFeRD/XRechnung), Notizen, Wissensdatenbank, Workflows und MCP-Anbindung.
-
----
-
-## 🚀 Schnellstart — ein Befehl, alles läuft
-
-**Voraussetzung:** [Docker](https://www.docker.com/) (mit Docker Compose v2) auf Windows, macOS oder Linux.
-
-```bash
-git clone <repo-url> louis-crm
-cd louis-crm
-docker compose up --build -d
-```
-
-Damit startet der **komplette Stack** automatisch: PostgreSQL-Datenbank (inkl. pgvector), App auf **http://localhost:3000**, Telegram-Gate, Whisper (Sprachsteuerung) und Ollama (lokale KI). Beim ersten Start migriert sich die Datenbank selbst und legt den Admin-Zugang an:
-
-- **Login:** `admin@louis-crm.de` / `admin` (beim ersten Login ändern!)
-
-**Für die KI-Funktionen (1 Minute extra):** Admin → KI-Einstellungen (Louis AI) → Provider wählen (OpenAI/DeepSeek/Anthropic/Gemini — oder lokales Ollama) → API-Key hinterlegen. Danach ist der Assistent voll einsatzfähig: Chat, Workflows, Rechnungen, Wissensdatenbank.
-
-**Telegram (optional):** Admin → Telegram → Bot-Token vom [@BotFather](https://t.me/BotFather) eintragen — der Gate-Container übernimmt die Konfiguration automatisch (kein Neustart nötig).
-
-> ✅ **Keine Datei-Editierung nötig:** Sämtliche Einstellungen (KI-Provider & -Key, Telegram, MCP-Server, Limits, Workflows, Governance) werden **ausschließlich über das Admin-Panel** konfiguriert und in der Datenbank gespeichert. Eine `.env`-Datei ist für den Betrieb nicht erforderlich — sie dient nur fortgeschrittenen Selbst-Hostern für Infrastruktur-Optimierung (z. B. eigenes Auth-Secret, DB-Zugang; Vorlage: `.env.example`).
-
-> 💡 **GPU-Beschleunigung (optional):** Für lokale LLM-Subtasks (Ollama) auf Rechnern mit NVIDIA-GPU den `deploy`-Block im `docker-compose.yml` beim Service `ollama` aktivieren:
-> ```yaml
->     deploy:
->       resources:
->         reservations:
->           devices:
->             - driver: nvidia
->               count: all
->               capabilities: [gpu]
-> ```
-> Ohne GPU läuft Ollama auf CPU — die KI-Hauptfunktionen nutzen den Cloud-Provider und sind davon unabhängig.
-
-**📚 Ausführliche Dokumentation:** Für Anwender und Entwickler liegt die komplette Doku im Ordner [`docs/`](docs/) (Module, Installation, MCP, E-Rechnung, Sicherheit u. v. m.).
 
 ---
 
@@ -68,6 +32,7 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 
 - **Direkt ansprechen:** Louis führt Schreib-Aktionen zunächst als **Entwurf** aus und fragt bei Änderungen nach (Freigabe). Bestätigst du, wird geschrieben.
 - **Kontext:** Louis merkt sich Präferenzen und Gespräche (Memory) und erinnert sich an frühere Sitzungen.
+- **Zwei Wissens-Bereiche:** Der **Obsidian-Vault** (Notizen, Skills, Memory — schreibend nur unter `_louis/`) und der **interne Wissensvault** (`knowledge_data_vault`, z. B. hochgeladene Dokumente) sind getrennt. Louis nutzt für jeden Bereich die passenden Werkzeuge (`vault_read`/`vault_search` für Obsidian, `knowledge_*` für intern).
 - **Dokumente anhängen:** PDF, DOCX, XLSX, CSV, TXT u. v. m. im Chat hochladen (max. 5, je 25 MB) — optional in die Wissensdatenbank indizieren.
 - **Grenzen:** Louis nutzt einen konfigurierten LLM-Provider. Schreibende Aktionen erzeugen zuerst Entwürfe; Workflows und MCP-Zugriffe folgen den Governance-Regeln.
 
@@ -75,6 +40,8 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 
 - Passwörter werden mit **bcrypt** (per-User-Salt) gespeichert; alte Hashes werden beim nächsten Login automatisch migriert.
 - **MCP-API-Schlüssel** sind widerrufbar und protokolliert; jeder Schreibzugriff landet im **Audit-Log** (filterbar, exportierbar).
+- **Audit-Protokolle:** Es werden nur Compliance-relevante Ereignisse (Anlegen/Ändern/Löschen + Governance) protokolliert — keine Laufzeit-Telemetrie. Optional kann im Admin-Panel eine automatische Bereinigung nach X Tagen aktiviert werden (Standard: aus).
+- **Chat-Verlauf:** Lange Gespräche werden von Louis automatisch zusammengefasst (komprimiert) — dabei wird der Verlauf kurzzeitig gesperrt (Nachrichten warten oder werden mit einem Hinweis beantwortet). Inaktive Sessions können im Admin-Panel optional nach X Tagen automatisch gelöscht werden (Standard: aus).
 - Mandanten sind isoliert (Tenant-Prinzip); die Liste der bekannten Restlücken findest du in der Entwickler-Doku.
 
 ---
@@ -98,6 +65,38 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 - **zod als Single Source of Truth** — jeder tRPC-Endpunkt mit Input-/Output-Schema
 - **Hybrid-Store-Pflicht** — DB-Pfad + Fallback-Store (JSON) für Tests/Preview
 - **i18n-Pflicht** — alle UI-Texte über `t()` mit `de.json` + `en.json`
+- **🚫 Heilige Dateien** — `src/lib/zugferd.ts` und `docker-entrypoint.sh` dürfen **nicht** verändert werden (mechanischer Guard im pre-commit-Hook, Regel 0)
+
+### Vault-Architektur (zwei Wissens-Welten)
+
+Louis kennt **zwei getrennte Vaults** — Tool-Namen sind disambiguiert (`knowledge_*` = intern, `vault_*` = Obsidian):
+
+| Vault | Ziel | Katalog-Tools | Schreib-Governance |
+|---|---|---|---|
+| **Interner Wissensvault** | `knowledge_data_vault/<tenantId>/` (App-Dateisystem) | `knowledge_write`, `knowledge_update`, `knowledge_delete`, `list_knowledge_files`, `knowledge_search` | Pfad-Traversal-saniert, nur `.md/.txt/.json/.csv`; Audit-Log `VAULT_*` |
+| **Obsidian-Vault (Tier 1)** | Obsidian Local-REST-API-Plugin (MCP, Port 27123/27124) | `vault_read`, `vault_search` (+ `save_skill`, `update_skill`, `delete_skill`, `update_memory`) | `_louis/`-Zwang für Schreiben; `Privat/`, `RO/` blockiert; Pfad-Sanitisierung in `vaultStore.ts` |
+
+- **Alias-Namen:** Die früheren internen Namen `vault_write`/`vault_update`/`vault_delete`/`list_vault_files`/`local_knowledge` bleiben als **Dispatch-Aliase** gültig (Workflows, MCP-Katalog, Alt-Sessions) — im LLM-Prompt erscheinen sie nicht mehr als eigene Tools.
+- **MCP-Exposition:** Der externe `MCP_TOOLS_CATALOG` behält die Namen `vault_search`/`vault_write`/`vault_update`/`vault_delete` (API-Vertrag) und zeigt auf den **internen** Vault — Dispatch über die `executeKnowledge*`-Aliase.
+- **Obsidian-MCP-Tools:** Die 16 `mcp_obsidian_vault__tier_1_*`-Tools bleiben aktiv (vaultStore nutzt sie per `getToolByNormalizedName`); im Prompt werden die gekapselten (`vault_read`/`vault_write`/`vault_delete`/`vault_list`/`search_simple`) als „gekapselt — nutze Katalog-Tools" markiert.
+- **Governance:** `vaultToolClassification.ts` klassifiziert suffix-basiert (logisch UND normalisiert, z. B. `mcp_<server>_knowledge_write` → write) für Governance & Duplicate-Block; `VAULT_WRITE_ACTION_MAP` deckt beide Familien ab.
+
+### Audit-Log (Event-Disziplin + Retention)
+
+- **Event-Disziplin (Allowlist):** `logAuditEvent` (db.ts) persistiert NUR Compliance-relevante Events — CRUD (`CREATE`/`UPDATE`/`DELETE` + Draft/Note/Board/User/Knowledge-Varianten), Governance (`GOVERNANCE_*`, `UPDATE_CONFIG`) und `FINALIZE`/`MEMORY_UPDATE`/`STATUS_CORRECTION`. Laufzeit-Telemetrie (`AGENT_PIPELINE_OPTIMIZED_EXECUTE`, `MEMORY_SYNC`, `TELEMETRY`, `AGENT_JOB*`, `SUB_TASK`, `RUN_WORKFLOW*`, `ERROR`, `WORKFLOW_MACRO`, `VAULT_*_FAILED`, …) wird verworfen (console.debug). Zentrale Allowlist: `AUDIT_WORTHY_EVENT_TYPES` / `isAuditWorthyEvent` — neue Event-Typen müssen dort BEWUSST ergänzt werden (Regel „Audit-Log NUR CRUD/Governance").
+- **Retention (Regel 12):** Admin-Config `audit_retention_days` (Louis AI Config → Agenten-Laufzeit) — Tage, nach denen der Scheduler Audit-Einträge löscht. **NULL/leer = kein Auto-Prune** (empfohlen für Compliance-Historie; Opt-in).
+- **Prune-Job:** `pruneAuditLogs`/`runAuditPruneBatches` (db.ts, CTE über `ctid`, Batches à 500, idempotent) — vom Scheduler (`tickWorkflowScheduler`) pro Tenant mit gesetzter Config aufgerufen. Der Prune selbst wird als `DELETE`-Audit (entity `audit_log`) protokolliert.
+- **Audit-UI:** Tab „Audit-Protokolle" (Admin) mit Filtern (Typ/Akteur/Entität/Volltext), 10er-Pagination und CSV-Export (`getAuditLogs` in filesAndLogs.ts).
+
+### Chat-Sessions (Kompression + Rotation + Retention)
+
+- **Kontext-Kompression:** `scheduleBackgroundCompression` (contextCompressor.ts) fasst die Verlaufs-Mitte zusammen (Threshold-basiert, Head/Tail-Schutz, Aux-Modell) — NIE auf dem Antwort-Pfad (fire-and-forget).
+- **Session-Rotation:** Statt die History in-place zu überschreiben (früher: Datenverlust), wird die bisherige Session zur abgeschlossenen **ELTERN-Session** (Voll-History bleibt erhalten!) und eine **KIND-Session** übernimmt die getrimmte History + Summary via `parent_session_id` (Titel: „<Eltern-Titel> (Fortsetzung)"). `persistCompressionResult` ist exportiert und testbar.
+- **Rotation-Registry:** `registerSessionRotation`/`resolveRotatedSessionId` (Modul-Level, tenant-scoped) leitet den nächsten `sendMessage` mit alter SessionId auf die Kind-Session um und liefert deren ID in der Antwort — das Frontend übernimmt sie automatisch (LouisAi.tsx). Einträge werden nach Übernahme entfernt (`forgetSessionRotation`); bei Neustart fällt die Rotation sauber zurück (alte Session wird weitergeführt).
+- **Kompressions-Lock:** Während der Zusammenfassung hält die Session einen Lock (TTL 60 s als Crash-Sicherheitsnetz). `sendMessage` wartet kurz (max 5 s, Polling 250 ms) und antwortet danach mit `compressionInProgress: true` statt parallel in die Session zu schreiben — die Chat-UI zeigt den Hinweis „🗜️ Louis komprimiert den Verlauf…" (Badge + „bitte kurz warten", i18n). Kein Button-Disabled im Voraus (Client kennt den Zustand nicht).
+- **Retention (Regel 12):** Admin-Config `session_retention_days` (Louis AI Config → Agenten-Laufzeit) — Tage, nach denen der Scheduler **inaktive** Sessions löscht. **NULL/leer = kein Auto-Prune.** Kriterium ist Aktivität (`updated_at_utc`), da `sys_louis_ai_sessions` keinen Ende-Marker hat (Kriterium: Aktivität — Louis-Äquivalent zu `last_activity`).
+- **Session-Prune:** `pruneSessions`/`runSessionPruneBatches` (db.ts, CTE über `ctid`, Batches à 500, idempotent) — vom Scheduler (`pruneSessionsIfConfigured`). **Kinder werden VOR dem Löschen verwaist** (parent → NULL); Konsequenz: recall verliert für verwaiste Kinder den Eltern-Bezug (bewusste Entscheidung). Der Prune selbst wird als `DELETE`-Audit (entity `session`) protokolliert.
+- **Session-Recall:** Volltextsuche über Titel, Summary UND Nachrichten-Inhalte — über die generierte Spalte `history_searchable_text` (nur `content`-Felder, kein JSON-Rauschen), gewichtete `ts_rank` (Titel A=1.0 > Summary B=0.4 > History C=0.3) + Recency-Bonus 15 % (90 Tage).
 
 ### Lokale Entwicklung
 
@@ -110,11 +109,47 @@ npm run dev                # Dev-Server mit Hot-Reload (oder Container nutzen)
 - Ohne DB-Env-Vars läuft die App im **Fallback-Modus** (`.local_fallback_db.json`, gitignored) — ideal für hermetische Tests.
 - Nach `npm install`: `npm approve-scripts esbuild @esbuild/win32-x64 protobufjs` (npm blockt Postinstall).
 
-### Qualitätssicherung
+### Test-Infrastruktur
 
-Das Projekt wird im Entwicklungsprozess mit **Unit-, Integrations- und End-to-End-Tests** abgesichert (Vitest + Playwright, inkl. MCP-Volltest und ZUGFeRD-/EN16931-Validierung). Die Test-Suiten und QA-Skripte sind Teil des internen Entwicklungsprozesses und liegen **nicht** im öffentlichen Repository.
+| Ebene | Befehl | Hinweise |
+|---|---|---|
+| Unit/Integration | `npm run test:unit` | Vitest, Node-Env, ohne DB; Mock-MCP-Server (Port 9333) startet automatisch via globalSetup |
+| E2E hermetisch | `npx playwright test` | Fallback-Server :3100, Auto-Login (webServer startet ihn) |
+| E2E live | `E2E_PORT=3000 npx playwright test` | Gegen Docker-Stack (Login `admin@louis-crm.de`/`admin`) |
+| E2E ephemeral | `E2E_STACK=ephemeral npx playwright test` | Gegen den Wegwerf-Test-Stack :3200 (frische Test-DB, QA-Fixtures) |
+| **Volltest** | **`npm run test:full`** | **Ein Befehl:** Test-Stack up + Seed → Unit → Hermetic → Ephemeral-E2E → MCP-Volltest (Exit ≠ 0 bei Fehler) |
+| AI-Szenarien | `E2E_PORT=3000 npx playwright test tests-e2e/ai-masterplan-scenarios.spec.ts` | Nur Testdaten: ren-AI-ssance + „Test Testkunde" |
+| MCP-Volltest (Server) | `node scripts/mcp-volltest.mjs <API_KEY>` | Alle Katalog-Tools + 3 Prompts (gegen Live :3000; gegen Test-Stack via `MCP_BASE_URL`/`TEST_DB_CONTAINER`) |
+| MCP-Volltest (Client) | `docker exec louis-crm-app npx --no-install tsx scripts/mcp-client-volltest.ts` | **Alle 49 externen Tools** (Google Gmail/Kalender/Drive + Obsidian) via Client-Engine; QA-Daten, Löschfunktionen nur auf selbst angelegten Testdaten  |
+| Preset-Katalog | `node scripts/mcp-preset-catalog-test.mjs` | 6/6 Checks |
+| ZUGFeRD | `docker exec louis-crm-app sh -c "cd /app && rm -rf e2e-out && npx --no-install tsx scripts/e2e-validate.ts"` | Muss Java 17/Ghostscript im Container |
 
-Qualitäts-Gates vor jedem Release: TypeScript-Lint (`tsc --noEmit`), Projektregeln (u. a. keine hardcodierten UI-Texte — i18n DE/EN), Produktions-Build, komplette Test-Suite, Live-Verifikation gegen den Docker-Stack.
+#### Test-Stack (Ephemeral)
+
+Der **Wegwerf-Test-Stack** (`docker-compose.test.yml`) ist von der Live-Umgebung vollständig getrennt:
+
+- **Eigene Test-DB** `louis_crm_test` (Container `louis-crm-test-db`, kein external-Volume) — **bereinigte Testdatenbank**: Sanitize + E-Mail-Guard in `qa-seed-all.mjs` erzwingen, dass nur Testdaten (ren-AI-ssance + Test Testkunde) existieren 
+- **Eigene App** auf Port **3200** (`louis-crm-test-app`) — Port 3100 bleibt der Hermetic-Fallback, 3000 der Live-Stack
+- **Eigene Wegwerf-Volumes** — die Live-Datenordner werden nie berührt
+
+```bash
+npm run test:stack:up      # Test-Stack bauen + starten
+npm run test:stack:seed    # QA-Fixtures + AI-Config (Key aus Live-DB, lesend) + MCP-Test-Key einspielen
+npm run test:stack:down    # Stack + ALLE Test-Volumes löschen (Wegwerf)
+npm run test:e2e:ephemeral # Playwright gegen den Test-Stack
+npm run test:full          # Kompletter Volltest (s. o.)
+```
+
+**Heilige Regeln im Test-Stack:** Google-MCP ist im Test-Stack **nicht konfiguriert** (frische DB = keine OAuth-Tokens) → verbindet sich nie. Im Client-Volltest gegen Live gilt: Löschfunktionen NUR auf selbst angelegten QA-Daten, Mails/Termine NUR an `stefan@ren-ai-ssance.de`.
+
+### Qualitäts-Gates (vor jedem Commit)
+
+```bash
+npm run check:rules   # Projektregeln (any-Verbot, i18n, heilige Dateien) — blockt im pre-commit-Hook
+npm run lint          # tsc --noEmit
+npm run test:unit     # alle Unit-Tests
+npm run build         # Produktions-Build
+```
 
 Deploy-Praxis: nach Änderungen `docker compose up -d --build app`, dann Verifikation gegen den Live-Stack. **Vor DB-Migrationen/Rebuilds: Backup** (`pg_dump` in ein separates Backup-Verzeichnis, nie ins Repo).
 
@@ -123,8 +158,10 @@ Deploy-Praxis: nach Änderungen `docker compose up -d --build app`, dann Verifik
 - **Health:** `curl localhost:3000/api/health` → `{"status":"ok"}`
 - **Logs:** `docker logs louis-crm-app`
 - **Bekannter Build-Fix:** Lato-Fonts werden aus dem Build-Kontext kopiert (kein GitHub-Download); Mustang-CLI wird beim Build geladen (Netz nötig)
+- **MCP-Test-Key:** `RAW="louis_mcp_<name>"` → `sha256sum` → INSERT in `mcp_api_keys`, nach Tests löschen
 
 ### Release & Versionierung
 
-- Version in `package.json` (aktuell **2.0.0**); Änderungshistorie: `CHANGELOG.md`
+- Version in `package.json` (aktuell **2.1.0**); Änderungshistorie: `CHANGELOG.md`
+- Bekannte akzeptierte Restrisiken für V2: Tenant-List-Vektor (`OR tenant_id = '1'`-Muster), lokaler-LLM-Subtask-Pfad unter paralleler Last
 - Rollback: Docker-Image `louis-smart-crm-app:latest` neu bauen aus git-Tag; DB-Backup einspielen (siehe oben)

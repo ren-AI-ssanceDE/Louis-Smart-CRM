@@ -336,6 +336,7 @@ export const TemplatesTab = ({ initialSection }: TemplatesTabProps = {}) => {
   const [isManageCategoriesOpen, setIsManageCategoriesOpen] = useState(false);
   const [categoryInputName, setCategoryInputName] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [confirmCategoryDeleteId, setConfirmCategoryDeleteId] = useState<string | null>(null);
 
   // Offer Text Form State
   const [offerTextName, setOfferTextName] = useState('');
@@ -2343,9 +2344,13 @@ export const TemplatesTab = ({ initialSection }: TemplatesTabProps = {}) => {
               editorRef.current.innerHTML = newValue;
             }
           } else if (aiFieldId === 'invoice_text_body') {
+            // Auftrag 032: State UND DOM setzen (contentEditable braucht beides, sonst
+            // überschreibt dangerouslySetInnerHTML die Übernahme beim Re-Render)
             setInvoiceTextBody(newValue);
+            if (editorRef.current) editorRef.current.innerHTML = newValue;
           } else if (aiFieldId === 'offer_text_body') {
             setOfferTextBody(newValue);
+            if (editorRef.current) editorRef.current.innerHTML = newValue;
           } else if (aiFieldId === 'item_description') {
             setItemDescription(newValue);
             if (editorRef.current) {
@@ -2532,14 +2537,18 @@ export const TemplatesTab = ({ initialSection }: TemplatesTabProps = {}) => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm(t('templates.delete_confirm_category', { defaultValue: 'Möchten Sie diese Kategorie wirklich löschen? Zugeordnete Posten werden auf "Keine Kategorie" zurückgesetzt.' }))) {
+                          if (confirmCategoryDeleteId === cat.id_uuid) {
+                            setConfirmCategoryDeleteId(null);
                             deleteCategoryMutation.mutate({ id_uuid: cat.id_uuid });
+                          } else {
+                            setConfirmCategoryDeleteId(cat.id_uuid);
                           }
                         }}
-                        className="p-1.5 hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange rounded-lg transition-colors"
-                        title={t('templates.category_delete_tooltip', { defaultValue: 'Kategorie löschen' }) || ''}
+                        data-testid="category-delete-btn"
+                        className={`p-1.5 rounded-lg transition-colors ${confirmCategoryDeleteId === cat.id_uuid ? "bg-accent-orange/20 text-accent-orange" : "hover:bg-accent-orange/10 text-slate-400 hover:text-accent-orange"}`}
+                        title={confirmCategoryDeleteId === cat.id_uuid ? t('templates.category_delete_confirm_tooltip', { defaultValue: 'Wirklich löschen? Nochmal klicken' }) || '' : t('templates.category_delete_tooltip', { defaultValue: 'Kategorie löschen' }) || ''}
                       >
-                        <Trash2 size={13} />
+                        {confirmCategoryDeleteId === cat.id_uuid ? <span className="text-[10px] font-black uppercase">{t('templates.category_delete_confirm_short', { defaultValue: 'Wirklich?' })}</span> : <Trash2 size={13} />}
                       </button>
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 // ============================================================================
-// Befund: Bearer-/Basic-Präfix-Filter fehlt (2026-08-17)
+// : Bearer-/Basic-Präfix-Filter fehlt (2026-08-17)
 // ----------------------------------------------------------------------------
 // Nutzer kopieren aus Plugin-UI-Anzeigen oft den kompletten Text
 // „Bearer <hex>" statt nur des Hex-Keys → die Engine sendet

@@ -68,7 +68,7 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   // Initialize Database
   await initDatabase();
-  // 021-F: Auth-Secret aus der DB laden (sys_app_security) — Regel: keine Einstellungen in Dateien
+  // Auth-Secret aus der DB laden (sys_app_security) — Regel: keine Einstellungen in Dateien
   await initAuthSecret();
   await seedDatabase();
 
@@ -82,7 +82,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // BUG-4 (Auftrag 015): JSON-Parse-Fehler auf MCP-Pfaden → JSON-RPC -32700 statt HTML 400
+  // JSON-Parse-Fehler auf MCP-Pfaden → JSON-RPC -32700 statt HTML 400
   // (express.json wirft sonst einen SyntaxError, der als HTML "Bad Request" endet)
   app.use("/api/mcp", (err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof SyntaxError && "body" in err) {

@@ -199,7 +199,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
   {
     id: 'obsidian-mcp',
     name: 'Obsidian Vault (Tier 1)',
-    // 2026-08-16 (Projektkorrektur): ECHTES Obsidian-MCP — das Local-REST-API-Plugin
+    // 2026-08-16: ECHTES Obsidian-MCP — das Local-REST-API-Plugin
     // ist selbst ein MCP-Server (http://127.0.0.1:27123/mcp/ bzw. https :27124/mcp/).
     // Konfiguration NUR im Admin (URL + API-Key) — kein .env, kein Vault-Pfad im Code.
     // (Dateisystem-Zugriff obsidian-mcp@2 wurde verworfen — kein Backup-Preset gewünscht.)
@@ -229,6 +229,9 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     ],
     defaultToolMappings: [
       // Echte Tools des Local-REST-API-MCP-Servers (16 Tools, README verifiziert)
+      // Auftrag 036: Ziel-Vault annotiert — ALLE diese Tools zeigen auf den OBSIDIAN-Vault
+      // (Tier 1), NICHT auf den internen Wissensvault (knowledge_data_vault). Die
+      // Katalog-Pendants vault_read/vault_search kapseln obsidian_vault_read/obsidian_search.
       { mcpToolName: 'vault_read', louisToolName: 'obsidian_vault_read', description: 'Datei aus dem Obsidian-Vault lesen', enabled: true },
       { mcpToolName: 'vault_write', louisToolName: 'obsidian_vault_write', description: 'Datei in den Obsidian-Vault schreiben', enabled: true },
       { mcpToolName: 'vault_patch', louisToolName: 'obsidian_vault_patch', description: 'Abschnitt in einer Notiz gezielt patchen', enabled: true },

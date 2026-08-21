@@ -34,7 +34,7 @@ export const EmailDraftsApprovalPanel: React.FC = () => {
       refetch();
     },
     onError: (err) => {
-      toast.error(t('admin:mail.toast_update_error', { defaultValue: 'Fehler beim Aktualisieren: ' }) + err.message);
+      toast.error(t('admin:mail.toast_update_error', { defaultValue: 'Fehler beim Aktualisieren.' }));
     }
   });
 
@@ -45,7 +45,7 @@ export const EmailDraftsApprovalPanel: React.FC = () => {
       utils.getWorkflowInstancesLog.invalidate();
     },
     onError: (err) => {
-      toast.error(t('admin:mail.toast_approve_error', { defaultValue: 'Fehler bei Freigabe: ' }) + err.message);
+      toast.error(t('admin:mail.toast_approve_error', { defaultValue: 'Fehler bei Freigabe.' }));
     }
   });
 
@@ -56,7 +56,7 @@ export const EmailDraftsApprovalPanel: React.FC = () => {
       utils.getWorkflowInstancesLog.invalidate();
     },
     onError: (err) => {
-      toast.error(t('admin:mail.toast_reject_error', { defaultValue: 'Fehler beim Ablehnen: ' }) + err.message);
+      toast.error(t('admin:mail.toast_reject_error', { defaultValue: 'Fehler beim Ablehnen.' }));
     }
   });
 

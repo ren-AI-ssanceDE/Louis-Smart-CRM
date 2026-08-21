@@ -36,7 +36,7 @@ export const AiTextGeneratorDialog: React.FC<AiTextGeneratorDialogProps> = ({
   context,
   onAccept
 }) => {
-  const { t } = useTranslation(['common', 'ai_generator']);
+  const { t, i18n } = useTranslation(['common', 'ai_generator']);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputVal, setInputVal] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -72,7 +72,9 @@ export const AiTextGeneratorDialog: React.FC<AiTextGeneratorDialogProps> = ({
         currentValue: fieldValue,
         context,
         userInstructions: defaultInstruction,
-        chatHistory: []
+        chatHistory: [],
+        // Auftrag 032: eingestellte CRM-Sprache durchreichen (kein Hardcoding)
+        language: i18n.language || 'de'
       });
     }
   }, [isOpen, fieldId, context, t]);
@@ -98,7 +100,9 @@ export const AiTextGeneratorDialog: React.FC<AiTextGeneratorDialogProps> = ({
       currentValue: fieldValue,
       context,
       userInstructions: instruction,
-      chatHistory: history
+      chatHistory: history,
+      // Auftrag 032: eingestellte CRM-Sprache durchreichen (kein Hardcoding)
+      language: i18n.language || 'de'
     });
   };
 

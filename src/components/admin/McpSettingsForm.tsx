@@ -19,6 +19,7 @@ export const McpSettingsForm = () => {
   const [copiedConfig, setCopiedConfig] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [keyToDelete, setKeyToDelete] = useState<{ id_uuid: string; key_name: string } | null>(null);
+  const [revokeKeyId, setRevokeKeyId] = useState<string | null>(null);
 
   const availableScopes = [
     { id: 'read', label: t('admin:mcp_scope_read', { defaultValue: 'Lesen (crm_list_*, crm_get_*, crm_search_*)' }) },
@@ -66,19 +67,21 @@ export const McpSettingsForm = () => {
       refetchKeys();
       setKeyToDelete(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('admin:mcp_delete_error', { defaultValue: 'Fehler beim Löschen des API-Schlüssels.' }));
+      // 2026-08-18 (Code-Regel): KEINE rohen Fehlertexte im Browser — generische Meldung, Details serverseitig geloggt.
+      toast.error(t('admin:mcp_delete_error', { defaultValue: 'Fehler beim Löschen des API-Schlüssels.' }));
     }
   };
 
-  // Auftrag 016 P1-1: Sanftes Widerrufen (Key bleibt sichtbar als inaktiv) — Button „Widerrufen“ neben „Löschen“
+  // Auftrag 016 P1-1: Sanftes Widerrufen (Key bleibt sichtbar als inaktiv) — Button „Widerrufen“ neben „Löschen“.
+  // 2026-08-18 (Code-Regel): KEIN window.confirm — Bestätigung über das etablierte Modal (Browser-Dialoge blockierbar).
   const handleRevokeKey = async (idUuid: string) => {
-    if (!window.confirm(t('admin:mcp_revoke_confirm', { defaultValue: 'MCP API-Schlüssel wirklich widerrufen? Er funktioniert danach nicht mehr, bleibt aber für die Historie sichtbar.' }))) return;
     try {
       await revokeKeyMutation.mutateAsync({ id_uuid: idUuid });
       toast.success(t('admin:mcp_revoke_success', { defaultValue: 'MCP API-Schlüssel wurde erfolgreich widerrufen.' }));
       refetchKeys();
+      setRevokeKeyId(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('admin:mcp_revoke_error', { defaultValue: 'Fehler beim Widerrufen des API-Schlüssels.' }));
+      toast.error(t('admin:mcp_revoke_error', { defaultValue: 'Fehler beim Widerrufen des API-Schlüssels.' }));
     }
   };
 
@@ -283,7 +286,7 @@ export const McpSettingsForm = () => {
                     <button
                       type="button"
                       data-testid="mcp-key-revoke"
-                      onClick={() => handleRevokeKey(k.id_uuid)}
+                      onClick={() => setRevokeKeyId(k.id_uuid)}
                       disabled={revokeKeyMutation.isPending}
                       className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
                     >
@@ -328,9 +331,9 @@ export const McpSettingsForm = () => {
         </pre>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete/Revoke Confirmation Modal (2026-08-18: Revoke über dasselbe Modal statt window.confirm — Code-Regel) */}
       <AnimatePresence>
-        {keyToDelete && (
+        {(keyToDelete || revokeKeyId) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -344,7 +347,7 @@ export const McpSettingsForm = () => {
                 </div>
                 <div>
                   <h4 className="text-base font-black text-white uppercase tracking-wider font-display">
-                    {t('admin:mcp_delete_key_title', { defaultValue: 'MCP API-Schlüssel löschen' })}
+                    {revokeKeyId ? t('admin:mcp_revoke_key_title', { defaultValue: 'MCP API-Schlüssel widerrufen' }) : t('admin:mcp_delete_key_title', { defaultValue: 'MCP API-Schlüssel löschen' })}
                   </h4>
                   <p className="text-xs text-slate-400 font-medium">
                     {t('common:irreversible_action', { defaultValue: 'Unwiderrufliche Aktion' })}
@@ -353,25 +356,27 @@ export const McpSettingsForm = () => {
               </div>
 
               <p className="text-xs text-slate-300 leading-relaxed bg-black/30 p-3 rounded-lg border border-white/5">
-                {t('admin:mcp_delete_confirm_text', { defaultValue: 'Möchten Sie den MCP API-Schlüssel' })} <strong className="text-white font-mono">{keyToDelete.key_name}</strong> {t('admin:mcp_delete_confirm_suffix', { defaultValue: 'wirklich unwiderruflich löschen? Alle verknüpften MCP-Clients verlieren sofort den Zugriff.' })}
+                {revokeKeyId
+                  ? t('admin:mcp_revoke_confirm', { defaultValue: 'MCP API-Schlüssel wirklich widerrufen? Er funktioniert danach nicht mehr, bleibt aber für die Historie sichtbar.' })
+                  : t('admin:mcp_delete_confirm_text', { defaultValue: 'Möchten Sie den MCP API-Schlüssel' }) + (keyToDelete ? ` <strong className="text-white font-mono">${keyToDelete.key_name}</strong> ` : " ") + t('admin:mcp_delete_confirm_suffix', { defaultValue: 'wirklich unwiderruflich löschen? Alle verknüpften MCP-Clients verlieren sofort den Zugriff.' })}
               </p>
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setKeyToDelete(null)}
-                  disabled={deleteKeyMutation.isPending}
+                  onClick={() => { setKeyToDelete(null); setRevokeKeyId(null); }}
+                  disabled={deleteKeyMutation.isPending || revokeKeyMutation.isPending}
                   className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold transition-all"
                 >
                   {t('common:cancel', { defaultValue: 'Abbrechen' })}
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmDelete}
-                  disabled={deleteKeyMutation.isPending}
+                  onClick={() => { if (revokeKeyId) void handleRevokeKey(revokeKeyId); else handleConfirmDelete(); }}
+                  disabled={deleteKeyMutation.isPending || revokeKeyMutation.isPending}
                   className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 disabled:opacity-50"
                 >
-                  {deleteKeyMutation.isPending ? (
+                  {deleteKeyMutation.isPending || revokeKeyMutation.isPending ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : (
                     <Trash2 size={14} />

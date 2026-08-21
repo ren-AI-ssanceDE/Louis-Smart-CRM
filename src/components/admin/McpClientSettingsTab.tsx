@@ -10,6 +10,8 @@ import {
   AlertCircle,
   XCircle,
   Clock,
+  Crown,
+  ShieldAlert,
   Terminal,
   Globe,
   Wrench,
@@ -36,6 +38,9 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { trpc } from '../../lib/trpc';
+// C.7/C.4 (Plan 2026-08-19): Chatprofile-Verwaltung + Genehmigungs-Queue
+import { McpChatProfilesPanel } from './McpChatProfilesPanel';
+import { McpApprovalsPanel } from './McpApprovalsPanel';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { McpTransportType, McpAuthType, McpPresetDefinition, McpPresetCategory } from '../../types';
@@ -439,6 +444,28 @@ export const McpClientSettingsTab: React.FC = () => {
               }`}
             >
               <Server size={14} /> Aktive Server ({servers?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('chatprofiles')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'chatprofiles'
+                  ? 'bg-accent-orange text-white shadow-md shadow-accent-orange/20'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Crown size={14} /> {t('admin:mcp_tab_chatprofiles', { defaultValue: 'Chatprofile' })}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('approvals')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'approvals'
+                  ? 'bg-accent-orange text-white shadow-md shadow-accent-orange/20'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShieldAlert size={14} /> {t('admin:mcp_tab_approvals', { defaultValue: 'Freigaben' })}
             </button>
           </div>
 
@@ -954,6 +981,7 @@ export const McpClientSettingsTab: React.FC = () => {
                       <option value="http">HTTP (Streamable JSON-RPC 2.0)</option>
                       <option value="sse">SSE (Server-Sent Events)</option>
                       <option value="stdio">Stdio (Local Process / CLI)</option>
+                      <option value="streamable_http">{t('admin:mcp_transport_streamable_http', { defaultValue: 'Streamable HTTP (Session-basiert)' })}</option>
                     </select>
                   </div>
                 </div>
@@ -1145,6 +1173,16 @@ export const McpClientSettingsTab: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* C.7 (Plan 2026-08-19): Chatprofile-Verwaltung (Admin-Systemebene) */}
+      {activeTab === 'chatprofiles' && (
+        <McpChatProfilesPanel />
+      )}
+
+      {/* C.4 (Plan 2026-08-19): Genehmigungs-Queue (untrusted Write-Tools) */}
+      {activeTab === 'approvals' && (
+        <McpApprovalsPanel />
+      )}
     </div>
   );
 };

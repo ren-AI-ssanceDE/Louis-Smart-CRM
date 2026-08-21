@@ -14,6 +14,12 @@ interface VaultSkill {
   tags: string[];
   version: number;
   pinned?: boolean;
+  // Auftrag 026 P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
+  useCount?: number;
+  viewCount?: number;
+  patchCount?: number;
+  status?: "active" | "inactive" | "archived";
+  lastUsedAtUtc?: string | null;
 }
 
 export function SkillsTab() {
@@ -95,13 +101,33 @@ export function SkillsTab() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-white truncate">{skill.name}</span>
-                      <span className="text-[9px] font-mono bg-accent-orange/10 border border-accent-orange/20 text-accent-orange px-1.5 py-0.5 rounded-full">
+                      <span className="text-[10px] font-mono bg-accent-orange/10 border border-accent-orange/20 text-accent-orange px-1.5 py-0.5 rounded-full">
                         v{skill.version}
                       </span>
                       {/* Auftrag 013 P2-E: Pinned-Badge */}
                       {skill.pinned && (
-                        <span className="text-[9px] font-mono bg-accent-blue/10 border border-accent-blue/30 text-accent-blue px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-mono bg-accent-blue/10 border border-accent-blue/30 text-accent-blue px-1.5 py-0.5 rounded-full">
                           {t('admin:skills.pinned', { defaultValue: '📌 gepinnt' })}
+                        </span>
+                      )}
+                      {/* Auftrag 026 P1-1 (#29): Curator-Status-Badge */}
+                      {skill.status === "inactive" && (
+                        <span className="text-[10px] font-mono bg-amber-500/10 border border-amber-500/30 text-amber-400 px-1.5 py-0.5 rounded-full">
+                          {t('admin:skills.status_inactive', { defaultValue: '💤 inaktiv' })}
+                        </span>
+                      )}
+                      {skill.status === "archived" && (
+                        <span className="text-[10px] font-mono bg-slate-500/20 border border-slate-500/40 text-slate-400 px-1.5 py-0.5 rounded-full">
+                          {t('admin:skills.status_archived', { defaultValue: '🗄️ archiviert' })}
+                        </span>
+                      )}
+                      {/* Auftrag 026 P1-1 (#30): Usage-Zähler + letzte Aktivität */}
+                      <span className="text-[10px] font-mono bg-slate-500/10 border border-white/5 text-slate-400 px-1.5 py-0.5 rounded-full" title={t('admin:skills.usage_title', { defaultValue: 'view = Injektionen (24h-Cooldown), use = vault_read auf die Datei, patch = update_skill-Freigaben' })}>
+                        👁 {skill.viewCount ?? 0} · 🔧 {skill.useCount ?? 0} · ✏️ {skill.patchCount ?? 0}
+                      </span>
+                      {skill.lastUsedAtUtc && (
+                        <span className="text-[10px] font-mono bg-slate-500/10 border border-white/5 text-slate-500 px-1.5 py-0.5 rounded-full">
+                          🕒 {skill.lastUsedAtUtc.slice(0, 10)}
                         </span>
                       )}
                     </div>
@@ -110,17 +136,17 @@ export function SkillsTab() {
                       <Tag size={10} className="text-slate-500" />
                       {(skill.tags || []).length > 0 ? (
                         skill.tags.slice(0, 4).map((tag) => (
-                          <span key={tag} className="text-[9px] font-mono bg-slate-500/10 border border-white/5 text-slate-400 px-1.5 py-0.5 rounded-full">
+                          <span key={tag} className="text-[10px] font-mono bg-slate-500/10 border border-white/5 text-slate-400 px-1.5 py-0.5 rounded-full">
                             {tag}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[9px] text-slate-600 italic">
+                        <span className="text-[10px] text-slate-600 italic">
                           {t('admin:skills.no_tags', { defaultValue: 'keine Tags' })}
                         </span>
                       )}
                     </div>
-                    <p className="text-[9px] text-slate-600 font-mono mt-2">{skill.path}</p>
+                    <p className="text-[10px] text-slate-600 font-mono mt-2">{skill.path}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {isConfirming ? (
@@ -132,14 +158,14 @@ export function SkillsTab() {
                             setConfirming(null);
                           }}
                           disabled={deleteSkill.isPending}
-                          className="p-1.5 px-2.5 bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/20 rounded-lg text-[9px] font-black uppercase tracking-wider cursor-pointer"
+                          className="p-1.5 px-2.5 bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/20 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer"
                         >
                           {t('admin:skills.confirm_delete', { defaultValue: 'Löschen?' })}
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirming(null)}
-                          className="p-1.5 px-2 border border-white/5 text-slate-400 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-wider cursor-pointer"
+                          className="p-1.5 px-2 border border-white/5 text-slate-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer"
                         >
                           {t('admin:skills.cancel', { defaultValue: 'Abbrechen' })}
                         </button>

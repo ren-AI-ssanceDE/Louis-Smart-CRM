@@ -73,10 +73,10 @@ Das Dashboard (`src/pages/Dashboard.tsx`) nutzt ein responsives Grid-Layout mit 
 * **Echtzeit-Liste**: Alle von Louis AI vorgeschlagenen Änderungen (`proposedChanges`), die noch nicht freigegeben wurden.
 * **Schnellaktionen**: Entwürfe direkt in der Karte ansehen und per Klick freigeben oder verwerfen (Human-in-the-Loop).
 
-### C. SystemStatusCard (`src/components/dashboard/SystemStatusCard.tsx`)
-* **Datenbank-Zustand**: PostgreSQL (Produktion) vs. lokaler Fallback-Modus.
-* **SMTP-Schnittstelle**: Status des konfigurierten Mailservers (*Bereit / Fehler*).
-* **Audit-Vorschau**: Die letzten Audit-Log-Einträge für sofortige Systemübersicht.
+### C. Dashboard-Kennzahlen & Aktions-Karten (`src/pages/Dashboard.tsx`)
+* **Kennzahlen-Kacheln**: Offene Rechnungen, ausstehende Freigaben u. a. — direkt aus den tRPC-Routern (Invoices, Settings), via TanStack React Query gecacht.
+* **Offene Rechnungen** (`src/components/dashboard/OpenInvoicesCard.tsx`): fällige Rechnungen mit Status 🟢/🟡/🔴.
+* **Ausstehende Freigaben** (`src/components/dashboard/PendingApprovalsCard.tsx`): Entwürfe direkt in der Karte ansehen und per Klick freigeben oder verwerfen (Human-in-the-Loop).
 
 ## 3. Design & Responsive-Verhalten
 
@@ -89,4 +89,4 @@ Das Dashboard (`src/pages/Dashboard.tsx`) nutzt ein responsives Grid-Layout mit 
 
 * Kennzahlen kommen aus den tRPC-Routern (Invoices, Settings, Audit-Logs) und werden über TanStack React Query gecacht.
 * Änderungen am Freigabe-Status der `proposedChanges` werden nach Aktion sofort reflektiert (Invalidierung der Query).
-* Der Systemstatus aggregiert `getSystemStatus` (DB-Modus, SMTP-Test, Audit-Vorschau).
+* Der Systemstatus (`getSystemStatus`: DB-Modus, SMTP-Test) ist über den Admin-Bereich einsehbar.

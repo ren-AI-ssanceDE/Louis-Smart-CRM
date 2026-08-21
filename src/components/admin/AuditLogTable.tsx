@@ -12,7 +12,7 @@ export const AuditLogTable = ({ logs }: AuditLogTableProps) => {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
 
-  // Filter (Entscheidung Produktleitung 2026-08-16: Audit-Log filterbar + exportierbar)
+  // Filter (Entscheidung 2026-08-16: Audit-Log filterbar + exportierbar)
   const [filterType, setFilterType] = React.useState('');
   const [filterActor, setFilterActor] = React.useState('');
   const [filterEntity, setFilterEntity] = React.useState('');

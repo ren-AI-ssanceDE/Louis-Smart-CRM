@@ -36,7 +36,12 @@ import {
   AgentQuestionFullSchema,
   AnswerQuestionSchema
 } from "../../lib/schemas.js";
-import { runLouisAiFlow, executePassiveShortTermCompression } from "../ai/orchestrator.js";
+import { runLouisAiFlow, getTenantAiConfig } from "../ai/orchestrator.js";
+import { scheduleBackgroundCompression, supportsNativeCompaction, waitForCompressionLock, resolveRotatedSessionId, forgetSessionRotationByChild } from "../ai/contextCompressor.js";
+// C.7 (Plan 2026-08-19): Chatprofile — Wechsel-Sperre + Default-Profil für neue Sessions
+import { markChatTaskActive, getDefaultProfileId } from "../mcp/chatProfiles.js";
+// Auftrag 025 Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung
+import { scheduleBackgroundMemorySync, scheduleMemoryConsolidation } from "../ai/memoryManager.js";
 import { AgentAttachmentContext } from "../ai/agentTypes.js";
 import { extractTextFromBuffer } from "./chatUpload.js";
 
@@ -52,6 +57,7 @@ function extractUsedSkills(thoughtLog: string[] | undefined): string[] {
   return [];
 }
 import { workflowEventBus } from "../ai/workflowEventBus.js";
+import { sanitizeFinalText } from "../ai/toolCallSanitizer.js";
 import { workflowExecutor } from "../ai/workflowExecutor.js";
 import { getLearnedWorkflows, learnWorkflow, deleteWorkflow } from "../ai/tools.js";
 import { generateContentSafe, generateContentUniversal } from "../ai/geminiHelper.js";
@@ -277,7 +283,53 @@ export const louisAiRouter = router({
       early_exit_after_tools: z.number().nullable().optional(),
       prompt_directives_mode: z.enum(['always', 'intent']).default('always'),
       react_tool_call_mode: z.enum(['auto', 'json', 'native']).default('auto'),
+      // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ, true = Text-Fallback erlaubt)
+      text_fallback_enabled: z.boolean().nullable().optional(),
       memory_budget_tokens: z.number().nullable().optional(),
+      // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default)
+      prompt_parallel_tool_guidance: z.boolean().nullable().optional(),
+      prompt_tool_guidance_trim: z.boolean().nullable().optional(),
+      memory_frozen_snapshot: z.boolean().nullable().optional(),
+      // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default)
+      compression_enabled: z.boolean().nullable().optional(),
+      compression_threshold_percent: z.number().nullable().optional(),
+      compression_tail_token_budget: z.number().nullable().optional(),
+      compression_aux_model: z.string().nullable().optional(),
+      compression_persist_summary: z.boolean().nullable().optional(),
+      compression_model_context_map: z.string().nullable().optional(),
+      // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default)
+      memory_prefetch_enabled: z.boolean().nullable().optional(),
+      memory_prefetch_timeout_s: z.number().nullable().optional(),
+      memory_recall_status_enabled: z.boolean().nullable().optional(),
+      memory_auto_scan_enabled: z.boolean().nullable().optional(),
+      memory_consolidation_budget: z.number().nullable().optional(),
+      // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default)
+      tool_call_retry_max: z.number().nullable().optional(),
+      empty_retry_budget: z.number().nullable().optional(),
+      empty_retry_cost_threshold_usd: z.number().nullable().optional(),
+      tool_guardrail_exact_block: z.number().nullable().optional(),
+      tool_guardrail_no_progress_block: z.number().nullable().optional(),
+      loop_deadline_s: z.number().nullable().optional(),
+      thinking_scrub_enabled: z.boolean().nullable().optional(),
+      // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default)
+      recall_fts_enabled: z.boolean().nullable().optional(),
+      recall_search_limit: z.number().nullable().optional(),
+      // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default)
+      skill_curator_enabled: z.boolean().nullable().optional(),
+      skill_inject_max_tokens: z.number().nullable().optional(),
+      skill_prune_inactive_after_days: z.number().nullable().optional(),
+      skill_inject_top_k: z.number().nullable().optional(),
+      curator_interval_hours: z.number().nullable().optional(),
+      curator_archive_after_days: z.number().nullable().optional(),
+      subtask_max_depth: z.number().nullable().optional(),
+      // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      audit_retention_days: z.number().nullable().optional(),
+      // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      session_retention_days: z.number().nullable().optional(),
+      // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default)
+      mcp_refresh_interval_s: z.number().nullable().optional(),
+      subtask_timeout_s: z.number().nullable().optional(),
+      subtask_max_parallel: z.number().nullable().optional(),
     }))
     .query(async ({ ctx }) => {
       const tenantId = ctx.tenantId;
@@ -313,6 +365,45 @@ export const louisAiRouter = router({
             early_exit_after_tools: found.early_exit_after_tools ?? null,
             prompt_directives_mode: (found.prompt_directives_mode as 'always' | 'intent') || 'always',
             react_tool_call_mode: (found.react_tool_call_mode as 'auto' | 'json' | 'native') || 'auto',
+            text_fallback_enabled: found.text_fallback_enabled ?? false,
+            memory_budget_tokens: found.memory_budget_tokens ?? null,
+            prompt_parallel_tool_guidance: found.prompt_parallel_tool_guidance ?? null,
+            prompt_tool_guidance_trim: found.prompt_tool_guidance_trim ?? null,
+            memory_frozen_snapshot: found.memory_frozen_snapshot ?? null,
+            compression_enabled: found.compression_enabled ?? null,
+            compression_threshold_percent: found.compression_threshold_percent ?? null,
+            compression_tail_token_budget: found.compression_tail_token_budget ?? null,
+            compression_aux_model: found.compression_aux_model ?? null,
+            compression_persist_summary: found.compression_persist_summary ?? null,
+            compression_model_context_map: found.compression_model_context_map ?? null,
+            memory_prefetch_enabled: found.memory_prefetch_enabled ?? null,
+            memory_prefetch_timeout_s: found.memory_prefetch_timeout_s ?? null,
+            memory_recall_status_enabled: found.memory_recall_status_enabled ?? null,
+            memory_auto_scan_enabled: found.memory_auto_scan_enabled ?? null,
+            memory_consolidation_budget: found.memory_consolidation_budget ?? null,
+            tool_call_retry_max: found.tool_call_retry_max ?? null,
+            empty_retry_budget: found.empty_retry_budget ?? null,
+            empty_retry_cost_threshold_usd: found.empty_retry_cost_threshold_usd ?? null,
+            tool_guardrail_exact_block: found.tool_guardrail_exact_block ?? null,
+            tool_guardrail_no_progress_block: found.tool_guardrail_no_progress_block ?? null,
+            loop_deadline_s: found.loop_deadline_s ?? null,
+            thinking_scrub_enabled: found.thinking_scrub_enabled ?? null,
+            recall_fts_enabled: found.recall_fts_enabled ?? null,
+            recall_search_limit: found.recall_search_limit ?? null,
+            skill_curator_enabled: found.skill_curator_enabled ?? null,
+            skill_inject_max_tokens: found.skill_inject_max_tokens ?? null,
+            skill_prune_inactive_after_days: found.skill_prune_inactive_after_days ?? null,
+            skill_inject_top_k: found.skill_inject_top_k ?? null,
+            curator_interval_hours: found.curator_interval_hours ?? null,
+            curator_archive_after_days: found.curator_archive_after_days ?? null,
+            subtask_max_depth: found.subtask_max_depth ?? null,
+            // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+            audit_retention_days: found.audit_retention_days ?? null,
+            // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+            session_retention_days: found.session_retention_days ?? null,
+            mcp_refresh_interval_s: found.mcp_refresh_interval_s ?? null,
+            subtask_timeout_s: found.subtask_timeout_s ?? null,
+            subtask_max_parallel: found.subtask_max_parallel ?? null,
           };
         }
       } else {
@@ -320,8 +411,8 @@ export const louisAiRouter = router({
           `SELECT id_uuid, provider_type, api_key_secret, base_url, model_name, temperature, top_p, top_k, num_ctx,
                   embedding_provider, embedding_api_key_secret, embedding_base_url, embedding_model_name, vector_dimensions,
                   keep_alive_minutes, parallel_slots, chunk_size, chunk_overlap,
-                  max_iterations, max_history_tokens, tool_result_truncate_chars, react_keep_last_results, react_compaction_from_iteration, early_exit_after_tools, prompt_directives_mode, react_tool_call_mode
-           FROM sys_integrations_louis_ai_config 
+                  max_iterations, max_history_tokens, tool_result_truncate_chars, react_keep_last_results, react_compaction_from_iteration, early_exit_after_tools, prompt_directives_mode, react_tool_call_mode, text_fallback_enabled, memory_budget_tokens, prompt_parallel_tool_guidance, prompt_tool_guidance_trim, memory_frozen_snapshot, compression_enabled, compression_threshold_percent, compression_tail_token_budget, compression_aux_model, compression_persist_summary, compression_model_context_map, memory_prefetch_enabled, memory_prefetch_timeout_s, memory_recall_status_enabled, memory_auto_scan_enabled, memory_consolidation_budget, tool_call_retry_max, empty_retry_budget, empty_retry_cost_threshold_usd, tool_guardrail_exact_block, tool_guardrail_no_progress_block, loop_deadline_s, thinking_scrub_enabled, recall_fts_enabled, recall_search_limit, skill_curator_enabled, skill_inject_max_tokens, skill_prune_inactive_after_days, skill_inject_top_k, curator_interval_hours, curator_archive_after_days, mcp_refresh_interval_s, subtask_timeout_s, subtask_max_parallel, subtask_max_depth, audit_retention_days, session_retention_days
+                  FROM sys_integrations_louis_ai_config 
            WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY CASE WHEN tenant_id = $1 THEN 0 ELSE 1 END LIMIT 1`,
           [tenantId]
         );
@@ -354,6 +445,45 @@ export const louisAiRouter = router({
             early_exit_after_tools: row.early_exit_after_tools ?? null,
             prompt_directives_mode: (row.prompt_directives_mode as 'always' | 'intent') || 'always',
             react_tool_call_mode: (row.react_tool_call_mode as 'auto' | 'json' | 'native') || 'auto',
+            text_fallback_enabled: row.text_fallback_enabled ?? false,
+            memory_budget_tokens: row.memory_budget_tokens ?? null,
+            prompt_parallel_tool_guidance: row.prompt_parallel_tool_guidance ?? null,
+            prompt_tool_guidance_trim: row.prompt_tool_guidance_trim ?? null,
+            memory_frozen_snapshot: row.memory_frozen_snapshot ?? null,
+            compression_enabled: row.compression_enabled ?? null,
+            compression_threshold_percent: row.compression_threshold_percent ?? null,
+            compression_tail_token_budget: row.compression_tail_token_budget ?? null,
+            compression_aux_model: row.compression_aux_model ?? null,
+            compression_persist_summary: row.compression_persist_summary ?? null,
+            compression_model_context_map: row.compression_model_context_map ?? null,
+            memory_prefetch_enabled: row.memory_prefetch_enabled ?? null,
+            memory_prefetch_timeout_s: row.memory_prefetch_timeout_s ?? null,
+            memory_recall_status_enabled: row.memory_recall_status_enabled ?? null,
+            memory_auto_scan_enabled: row.memory_auto_scan_enabled ?? null,
+            memory_consolidation_budget: row.memory_consolidation_budget ?? null,
+            tool_call_retry_max: row.tool_call_retry_max ?? null,
+            empty_retry_budget: row.empty_retry_budget ?? null,
+            empty_retry_cost_threshold_usd: row.empty_retry_cost_threshold_usd ?? null,
+            tool_guardrail_exact_block: row.tool_guardrail_exact_block ?? null,
+            tool_guardrail_no_progress_block: row.tool_guardrail_no_progress_block ?? null,
+            loop_deadline_s: row.loop_deadline_s ?? null,
+            thinking_scrub_enabled: row.thinking_scrub_enabled ?? null,
+            recall_fts_enabled: row.recall_fts_enabled ?? null,
+            recall_search_limit: row.recall_search_limit ?? null,
+            skill_curator_enabled: row.skill_curator_enabled ?? null,
+            skill_inject_max_tokens: row.skill_inject_max_tokens ?? null,
+            skill_prune_inactive_after_days: row.skill_prune_inactive_after_days ?? null,
+            skill_inject_top_k: row.skill_inject_top_k ?? null,
+            curator_interval_hours: row.curator_interval_hours ?? null,
+            curator_archive_after_days: row.curator_archive_after_days ?? null,
+            subtask_max_depth: row.subtask_max_depth ?? null,
+            // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+            audit_retention_days: row.audit_retention_days ?? null,
+            // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+            session_retention_days: row.session_retention_days ?? null,
+            mcp_refresh_interval_s: row.mcp_refresh_interval_s ?? null,
+            subtask_timeout_s: row.subtask_timeout_s ?? null,
+            subtask_max_parallel: row.subtask_max_parallel ?? null,
           };
         }
       }
@@ -383,6 +513,45 @@ export const louisAiRouter = router({
         react_keep_last_results: null,
         react_compaction_from_iteration: null,
         early_exit_after_tools: null,
+        text_fallback_enabled: false,
+        memory_budget_tokens: null,
+        prompt_parallel_tool_guidance: null,
+        prompt_tool_guidance_trim: null,
+        memory_frozen_snapshot: null,
+        compression_enabled: null,
+        compression_threshold_percent: null,
+        compression_tail_token_budget: null,
+        compression_aux_model: null,
+        compression_persist_summary: null,
+        compression_model_context_map: null,
+        memory_prefetch_enabled: null,
+        memory_prefetch_timeout_s: null,
+        memory_recall_status_enabled: null,
+        memory_auto_scan_enabled: null,
+        memory_consolidation_budget: null,
+        tool_call_retry_max: null,
+        empty_retry_budget: null,
+        empty_retry_cost_threshold_usd: null,
+        tool_guardrail_exact_block: null,
+        tool_guardrail_no_progress_block: null,
+        loop_deadline_s: null,
+        thinking_scrub_enabled: null,
+        recall_fts_enabled: null,
+        recall_search_limit: null,
+        skill_curator_enabled: null,
+        skill_inject_max_tokens: null,
+        skill_prune_inactive_after_days: null,
+        skill_inject_top_k: null,
+        curator_interval_hours: null,
+        curator_archive_after_days: null,
+        subtask_max_depth: null,
+        // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+        audit_retention_days: null,
+        // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+        session_retention_days: null,
+        mcp_refresh_interval_s: null,
+        subtask_timeout_s: null,
+        subtask_max_parallel: null,
       };
     }),
 
@@ -414,10 +583,10 @@ export const louisAiRouter = router({
             embedding_provider, embedding_api_key_secret, embedding_base_url, embedding_model_name, vector_dimensions,
             keep_alive_minutes, parallel_slots, chunk_size, chunk_overlap,
             max_iterations, max_history_tokens, tool_result_truncate_chars, react_keep_last_results, react_compaction_from_iteration, early_exit_after_tools, prompt_directives_mode, react_tool_call_mode,
-            memory_budget_tokens,
-            updated_at_utc
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, CURRENT_TIMESTAMP)
+            memory_budget_tokens, text_fallback_enabled, prompt_parallel_tool_guidance, prompt_tool_guidance_trim, memory_frozen_snapshot, compression_enabled, compression_threshold_percent, compression_tail_token_budget, compression_aux_model, compression_persist_summary, compression_model_context_map, memory_prefetch_enabled, memory_prefetch_timeout_s, memory_recall_status_enabled, memory_auto_scan_enabled, memory_consolidation_budget, tool_call_retry_max, empty_retry_budget, empty_retry_cost_threshold_usd, tool_guardrail_exact_block, tool_guardrail_no_progress_block, loop_deadline_s, thinking_scrub_enabled, recall_fts_enabled, recall_search_limit, skill_curator_enabled, skill_inject_max_tokens, skill_prune_inactive_after_days, skill_inject_top_k, mcp_refresh_interval_s, subtask_timeout_s, subtask_max_parallel, curator_interval_hours, curator_archive_after_days, subtask_max_depth, audit_retention_days, session_retention_days,
+ updated_at_utc
+ )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, CURRENT_TIMESTAMP)
           ON CONFLICT (tenant_id)
           DO UPDATE SET 
             provider_type = EXCLUDED.provider_type,
@@ -445,7 +614,43 @@ export const louisAiRouter = router({
             early_exit_after_tools = EXCLUDED.early_exit_after_tools,
             prompt_directives_mode = EXCLUDED.prompt_directives_mode,
             react_tool_call_mode = EXCLUDED.react_tool_call_mode,
+            text_fallback_enabled = EXCLUDED.text_fallback_enabled,
             memory_budget_tokens = EXCLUDED.memory_budget_tokens,
+            prompt_parallel_tool_guidance = EXCLUDED.prompt_parallel_tool_guidance,
+            prompt_tool_guidance_trim = EXCLUDED.prompt_tool_guidance_trim,
+            memory_frozen_snapshot = EXCLUDED.memory_frozen_snapshot,
+            compression_enabled = EXCLUDED.compression_enabled,
+            compression_threshold_percent = EXCLUDED.compression_threshold_percent,
+            compression_tail_token_budget = EXCLUDED.compression_tail_token_budget,
+            compression_aux_model = EXCLUDED.compression_aux_model,
+            compression_persist_summary = EXCLUDED.compression_persist_summary,
+            compression_model_context_map = EXCLUDED.compression_model_context_map,
+            memory_prefetch_enabled = EXCLUDED.memory_prefetch_enabled,
+            memory_prefetch_timeout_s = EXCLUDED.memory_prefetch_timeout_s,
+            memory_recall_status_enabled = EXCLUDED.memory_recall_status_enabled,
+            memory_auto_scan_enabled = EXCLUDED.memory_auto_scan_enabled,
+            memory_consolidation_budget = EXCLUDED.memory_consolidation_budget,
+            tool_call_retry_max = EXCLUDED.tool_call_retry_max,
+            empty_retry_budget = EXCLUDED.empty_retry_budget,
+            empty_retry_cost_threshold_usd = EXCLUDED.empty_retry_cost_threshold_usd,
+            tool_guardrail_exact_block = EXCLUDED.tool_guardrail_exact_block,
+            tool_guardrail_no_progress_block = EXCLUDED.tool_guardrail_no_progress_block,
+            loop_deadline_s = EXCLUDED.loop_deadline_s,
+            thinking_scrub_enabled = EXCLUDED.thinking_scrub_enabled,
+            recall_fts_enabled = EXCLUDED.recall_fts_enabled,
+            recall_search_limit = EXCLUDED.recall_search_limit,
+            skill_curator_enabled = EXCLUDED.skill_curator_enabled,
+            skill_inject_max_tokens = EXCLUDED.skill_inject_max_tokens,
+            skill_prune_inactive_after_days = EXCLUDED.skill_prune_inactive_after_days,
+            skill_inject_top_k = EXCLUDED.skill_inject_top_k,
+            mcp_refresh_interval_s = EXCLUDED.mcp_refresh_interval_s,
+            subtask_timeout_s = EXCLUDED.subtask_timeout_s,
+            subtask_max_parallel = EXCLUDED.subtask_max_parallel,
+            curator_interval_hours = EXCLUDED.curator_interval_hours,
+            curator_archive_after_days = EXCLUDED.curator_archive_after_days,
+            subtask_max_depth = EXCLUDED.subtask_max_depth,
+            audit_retention_days = EXCLUDED.audit_retention_days,
+            session_retention_days = EXCLUDED.session_retention_days,
             updated_at_utc = CURRENT_TIMESTAMP
         `, [
           id,
@@ -475,7 +680,45 @@ export const louisAiRouter = router({
           input.early_exit_after_tools ?? null,
           input.prompt_directives_mode || 'always',
           input.react_tool_call_mode || 'auto',
-          input.memory_budget_tokens ?? null
+          input.memory_budget_tokens ?? null,
+          input.text_fallback_enabled ?? null,
+          input.prompt_parallel_tool_guidance ?? null,
+          input.prompt_tool_guidance_trim ?? null,
+          input.memory_frozen_snapshot ?? null,
+          input.compression_enabled ?? null,
+          input.compression_threshold_percent ?? null,
+          input.compression_tail_token_budget ?? null,
+          input.compression_aux_model ?? null,
+          input.compression_persist_summary ?? null,
+          input.compression_model_context_map ?? null,
+          input.memory_prefetch_enabled ?? null,
+          input.memory_prefetch_timeout_s ?? null,
+          input.memory_recall_status_enabled ?? null,
+          input.memory_auto_scan_enabled ?? null,
+          input.memory_consolidation_budget ?? null,
+          input.tool_call_retry_max ?? null,
+          input.empty_retry_budget ?? null,
+          input.empty_retry_cost_threshold_usd ?? null,
+          input.tool_guardrail_exact_block ?? null,
+          input.tool_guardrail_no_progress_block ?? null,
+          input.loop_deadline_s ?? null,
+          input.thinking_scrub_enabled ?? null,
+          input.recall_fts_enabled ?? null,
+          input.recall_search_limit ?? null,
+          input.skill_curator_enabled ?? null,
+          input.skill_inject_max_tokens ?? null,
+          input.skill_prune_inactive_after_days ?? null,
+          input.skill_inject_top_k ?? null,
+          input.mcp_refresh_interval_s ?? null,
+          input.subtask_timeout_s ?? null,
+          input.subtask_max_parallel ?? null,
+          input.curator_interval_hours ?? null,
+          input.curator_archive_after_days ?? null,
+          input.subtask_max_depth ?? null,
+          // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+          input.audit_retention_days ?? null,
+          // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+          input.session_retention_days ?? null
         ]);
       }
 
@@ -609,9 +852,45 @@ export const louisAiRouter = router({
       }
     }),
 
+  // (2026-08-19): Warm Resume — die letzte Session des AKTIVEN Chatprofils
+  // (Default, sonst Main) beim Öffnen wiederherstellen. Hierarchie: erst Profil, dann Tenant
+  // (2026-2026-08-19: „Chats sind erstmal profilgebunden, dann tenantgebunden“).
+  getLastSession: protectedProcedure
+    .output(z.object({ id_uuid: z.string() }).nullable())
+    .query(async ({ ctx }) => {
+      if (isUsingFallback) {
+        const profiles = fallbackStore.mcpChatProfiles || [];
+        const anchor = profiles.find((p) => p.tenant_id === ctx.tenantId && p.is_default)
+          || profiles.find((p) => p.tenant_id === ctx.tenantId && p.is_system);
+        const anchorId = anchor?.id_uuid || null;
+        const s = (fallbackStore.louisAiSessions || [])
+          .filter((x) => (x.tenant_id === ctx.tenantId || x.tenant_id === "1") && (!anchorId || x.active_chat_profile_id === anchorId))
+          .sort((a, b) => String(b.updated_at_utc || "").localeCompare(String(a.updated_at_utc || "")))[0];
+        return s ? { id_uuid: s.id_uuid } : null;
+      }
+      const res = await pool.query(
+        `SELECT s.id_uuid FROM sys_louis_ai_sessions s
+         WHERE s.tenant_id = $1
+           AND s.active_chat_profile_id = (
+             SELECT id_uuid FROM sys_mcp_chat_profiles
+             WHERE tenant_id = $1 AND (is_default = TRUE OR is_system = TRUE)
+             ORDER BY is_default DESC LIMIT 1
+           )
+         ORDER BY s.updated_at_utc DESC NULLS LAST, s.created_at_utc DESC LIMIT 1`,
+        [ctx.tenantId]
+      );
+      return res.rows[0] ? { id_uuid: res.rows[0].id_uuid } : null;
+    }),
+
   // --- UI-Lücken-Schließung (2026-08-14): Session-Historie + Workflow-Run für die Chat-UI / Admin-Tabs ---
+  // Profilgebunden (2026-2026-08-19): Der Verlauf zeigt nur Sessions des AKTIVEN Chatprofils
+  // (jede Profile-Instanz hat ihre eigene Session-DB — ein Profil sieht nur
+  // seine eigenen Chats). Ohne profile_id: Bestandsverhalten (alle Tenant-Sessions).
   listSessions: protectedProcedure
-    .input(z.object({ limit: z.number().int().min(1).max(200).default(100) }).optional())
+    .input(z.object({
+      limit: z.number().int().min(1).max(200).default(100).optional(),
+      profile_id: z.string().uuid().optional()
+    }).optional())
     .output(z.array(z.object({
       id_uuid: z.string(),
       session_title: z.string(),
@@ -623,9 +902,10 @@ export const louisAiRouter = router({
     .query(async ({ ctx, input }) => {
       const tenantId = ctx.tenantId;
       const limit = input?.limit ?? 100;
+      const profileId = input?.profile_id ?? null;
       if (isUsingFallback) {
         return (fallbackStore.louisAiSessions || [])
-          .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
+          .filter((s) => (s.tenant_id === tenantId || s.tenant_id === "1") && (!profileId || s.active_chat_profile_id === profileId))
           .sort((a, b) => String(b.updated_at_utc).localeCompare(String(a.updated_at_utc)))
           .slice(0, limit)
           .map((s) => ({
@@ -638,8 +918,8 @@ export const louisAiRouter = router({
       }
       const res = await pool.query(
         `SELECT id_uuid, session_title, created_at_utc, updated_at_utc, COALESCE(jsonb_array_length(conversation_history_json), 0) AS message_count, short_term_summary_text
-         FROM sys_louis_ai_sessions WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY updated_at_utc DESC LIMIT $2`,
-        [tenantId, limit]
+         FROM sys_louis_ai_sessions WHERE (tenant_id = $1 OR tenant_id = '1') AND ($3::uuid IS NULL OR active_chat_profile_id = $3) ORDER BY updated_at_utc DESC LIMIT $2`,
+        [tenantId, limit, profileId]
       );
       return res.rows.map((r: unknown) => {
         const row = r as Record<string, unknown>;
@@ -717,7 +997,10 @@ export const louisAiRouter = router({
       language: z.string().default('de'),
       attachments: z.array(ChatAttachmentInputSchema).max(5).optional(),
       // Auftrag 012 P0-3: Optionale Session-Verkettung (Lineage) — Client setzt es bei „beziehe dich auf unser letztes Gespräch“
-      parentSessionId: z.string().uuid().optional()
+      parentSessionId: z.string().uuid().optional(),
+      // 2026-08-20: Das im Chat gewählte Chatprofil — die NEUE Session wird daran
+      // gebunden (nicht ans Default!): Profilwechsel = neuer Chat-Kontext, keine Umbindung.
+      chat_profile_id: z.string().uuid().optional()
     }))
     .output(z.object({
       replyText: z.string(),
@@ -726,6 +1009,10 @@ export const louisAiRouter = router({
       sessionId: z.string(),
       // Auftrag 013 P2-D: verwendete Vault-Skills (aus Thought-Log-Zeile, optional)
       usedSkills: z.array(z.string()).optional(),
+      // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
+      memoryRecallCount: z.number().optional(),
+      // Auftrag 038 P0-B: Louis komprimiert gerade den Verlauf — Nachricht NICHT verarbeitet
+      compressionInProgress: z.boolean().optional(),
       metrics: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
     }))
     .mutation(async ({ input, ctx }) => {
@@ -734,6 +1021,39 @@ export const louisAiRouter = router({
       let sessionId = input.sessionId || uuidv4();
       let history: ChatMessage[] = [];
       let currentSummary = "";
+
+      // Auftrag 038 P0-B (Plan-Review): Kompressions-Guard VOR der Session-Verarbeitung.
+      // bewährtes Lock-Muster (compression_locks + BUSY_WAIT) — kurz warten (max 5s,
+      // Polling 250ms), dann sauberes Refuse statt parallelem Schreiben in die Session
+      // (sonst gingen Nachrichten verloren, die während der Rotation in die alte Session
+      // wandern). Nur für bestehende Sessions relevant — neue Sessions haben keinen Lock.
+      if (input.sessionId && !(await waitForCompressionLock(input.sessionId))) {
+        return {
+          replyText: "",
+          sessionId: input.sessionId,
+          compressionInProgress: true
+        };
+      }
+
+      // Auftrag 038 P0: Rotation-Registry — der Client sendet evtl. noch mit der alten
+      // SessionId (die Kompression rotierte die Session im Hintergrund). Auf die
+      // Kind-Session umleiten, damit die Nachricht im aktiven Kontext landet.
+      // Auftrag 039 P1 (B2): Umleitung ist IDEMPOTENT — der Eintrag wird NICHT sofort
+      // gelöscht (früher: Race — bei LLM-Fehler nach der Umleitung lief der Chat in der
+      // falschen Session weiter). Cleanup passiert erst, wenn der Client nachweislich
+      // mit der Kind-SessionId sendet (forgetSessionRotationByChild) oder der TTL verfällt.
+      const rotatedTo = input.sessionId ? resolveRotatedSessionId(tenantId, input.sessionId) : undefined;
+      if (rotatedTo) {
+        sessionId = rotatedTo;
+      } else if (input.sessionId) {
+        // Client sendet direkt mit der (Kind-)SessionId → die Umleitung für die alte ID ist überflüssig
+        forgetSessionRotationByChild(tenantId, input.sessionId);
+      }
+
+      // C.7 (Plan 2026-08-19): Wechsel-Sperre — laufender Chat-Task blockiert Profilwechsel.
+      // Best-effort-Clear am Ende; TTL 10 min schützt vor klebenden Markern.
+      markChatTaskActive(sessionId, true);
+      const releaseChatTask = (): void => markChatTaskActive(sessionId, false);
 
       // 1. Load History
       if (isUsingFallback) {
@@ -769,10 +1089,13 @@ export const louisAiRouter = router({
           history = typeof rawHist === 'string' ? JSON.parse(rawHist) : rawHist;
           currentSummary = res.rows[0].short_term_summary_text || "";
         } else {
+          // 2026-08-20: Neue Session an das IM CHAT GEWÄHLTE Profil binden
+          // (chat_profile_id), sonst Default (Admin gesetzt) oder Main.
+          const defaultProfileId = await getDefaultProfileId(tenantId);
           await pool.query(`
-            INSERT INTO sys_louis_ai_sessions (id_uuid, tenant_id, session_title, conversation_history_json, short_term_summary_text, parent_session_id)
-            VALUES ($1, $2, $3, '[]'::jsonb, '', $4)
-          `, [sessionId, tenantId, input.message.slice(0, 40), input.parentSessionId || null]);
+            INSERT INTO sys_louis_ai_sessions (id_uuid, tenant_id, session_title, conversation_history_json, short_term_summary_text, parent_session_id, active_chat_profile_id)
+            VALUES ($1, $2, $3, '[]'::jsonb, '', $4, $5)
+          `, [sessionId, tenantId, input.message.slice(0, 40), input.parentSessionId || null, input.chat_profile_id || defaultProfileId]);
         }
       }
 
@@ -796,8 +1119,29 @@ export const louisAiRouter = router({
         ? await resolveChatAttachmentContexts(input.attachments)
         : [];
 
-      // Run compression if needed
-      const updatedSummary = await executePassiveShortTermCompression(tenantId, history, currentSummary);
+      // Auftrag 025 Phase 2 (#13): Kontext-Kompression NIE auf dem Antwort-Pfad.
+      // Früher: synchroner LLM-Call mit 4s-Timeout-Race (Ergebnis wurde still verworfen).
+      // Jetzt: Background-Worker persistiert Summary + trimmt die Session-History;
+      // der laufende Request nutzt den bisherigen Summary, der NÄCHSTE den neuen.
+      // #15: Modelle mit nativem Context-Management (z.B. Gemini) werden durchgereicht.
+      const compressionAiConfig = await getTenantAiConfig(tenantId);
+      const compressionModelName = compressionAiConfig.model_name || "llama3";
+      const nativeCompaction = supportsNativeCompaction(compressionModelName, compressionAiConfig.compression_model_context_map);
+      const updatedSummary = currentSummary;
+      if ((compressionAiConfig.compression_enabled ?? true) && !nativeCompaction) {
+        scheduleBackgroundCompression({
+          tenantId,
+          sessionId,
+          history,
+          currentSummary,
+          modelName: compressionModelName,
+          rawContextMap: compressionAiConfig.compression_model_context_map ?? null,
+          thresholdPercent: compressionAiConfig.compression_threshold_percent ?? null,
+          tailTokenBudget: compressionAiConfig.compression_tail_token_budget ?? null,
+          persistSummary: compressionAiConfig.compression_persist_summary ?? true,
+          auxModel: compressionAiConfig.compression_aux_model ?? null
+        }).catch((err) => console.warn("[025-P2 #13] Background-Kompression fehlgeschlagen (ignoriert):", err));
+      }
 
       // Retrieve Tenant specific language configuration
       let tenantLang = input.language || 'de';
@@ -822,7 +1166,7 @@ export const louisAiRouter = router({
       // We pass the up-to-date summary and a trimmed version of conversationHistory (last 5 items) to runLouisAiFlow
       // This reduces token footprint and improves model performance drastically, while memory maintains context.
       const trimmedHistory = history.length > 5 ? history.slice(-5) : history;
-      const result = await runLouisAiFlow(tenantId, userId, input.message, trimmedHistory, tenantLang, updatedSummary, attachmentContexts);
+      const result = await runLouisAiFlow(tenantId, userId, input.message, trimmedHistory, tenantLang, updatedSummary, attachmentContexts, undefined, sessionId);
 
       // Append assistant outcome
       history.push({
@@ -848,6 +1192,30 @@ export const louisAiRouter = router({
           SET conversation_history_json = $1, short_term_summary_text = $2, updated_at_utc = CURRENT_TIMESTAMP
           WHERE id_uuid = $3 AND tenant_id = $4
         `, [JSON.stringify(history), updatedSummary, sessionId, tenantId]);
+      }
+
+      // Auftrag 025 Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung — nie auf dem
+      // Antwort-Pfad (fire-and-forget, Fehler non-fatal; Muster sync_all: seriell, nie inline).
+      try {
+        scheduleBackgroundMemorySync({
+          tenantId,
+          userId,
+          userMessage: input.message,
+          replyText: result.replyText,
+          language: tenantLang,
+          autoScanEnabled: compressionAiConfig.memory_auto_scan_enabled ?? true,
+          modelName: compressionAiConfig.model_name || "llama3",
+          rawContextMap: compressionAiConfig.compression_model_context_map ?? null
+        }).catch((err) => console.warn("[025-P3 #19] Background-Memory-Sync fehlgeschlagen (ignoriert):", err));
+        scheduleMemoryConsolidation({
+          tenantId,
+          userId,
+          language: tenantLang,
+          budgetTokens: compressionAiConfig.memory_consolidation_budget ?? 800,
+          modelName: compressionAiConfig.model_name || "llama3"
+        }).catch((err) => console.warn("[025-P3 #22] Memory-Konsolidierung fehlgeschlagen (ignoriert):", err));
+      } catch (err) {
+        console.warn("[025-P3] Memory-Background-Jobs nicht gestartet (ignoriert):", err);
       }
 
       // 3. Dual-Storage Logging in ai_chat_logs
@@ -889,6 +1257,9 @@ export const louisAiRouter = router({
         });
       }
 
+      // C.7: Task-Marker freigeben (Wechsel-Sperre)
+      releaseChatTask();
+
       return {
         replyText: result.replyText,
         thoughtLog: result.thoughtLog,
@@ -896,6 +1267,8 @@ export const louisAiRouter = router({
         sessionId,
         // Auftrag 013 P2-D: Skill-Badges — aus „[S10] Verwendete Skills: X, Y“ extrahieren
         usedSkills: extractUsedSkills(result.thoughtLog),
+        // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
+        memoryRecallCount: result.memoryRecallCount ?? 0,
         metrics: result.metrics
       };
     }),
@@ -1615,6 +1988,34 @@ export const louisAiRouter = router({
                 updated_at_utc: new Date().toISOString()
               });
             });
+            // Auftrag 042 P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
+            const sampleCards = (pState.sample_cards && Array.isArray(pState.sample_cards))
+              ? (pState.sample_cards as string[])
+              : [];
+            if (sampleCards.length > 0) {
+              if (!fallbackStore.kanbanCards) fallbackStore.kanbanCards = [];
+              const colIds = fallbackStore.kanbanColumns.filter((c) => c.board_id === appliedId).map((c) => c.id_uuid);
+              sampleCards.forEach((cardTitle, idx) => {
+                fallbackStore.kanbanCards!.push({
+                  id_uuid: uuidv4(),
+                  tenant_id: tenantId,
+                  board_id: appliedId,
+                  column_id: colIds[Math.min(idx, colIds.length - 1)] || colIds[0],
+                  title: cardTitle,
+                  description: null,
+                  status: "todo",
+                  priority: "medium",
+                  position: idx,
+                  due_date: null,
+                  assigned_user: null,
+                  company_id_uuid: null,
+                  contact_id_uuid: null,
+                  labels: [],
+                  created_at_utc: new Date().toISOString(),
+                  updated_at_utc: new Date().toISOString()
+                });
+              });
+            }
           }
           workflowEventBus.emitEvent(tenantId, `kanban.board_${action.toLowerCase()}`, { id_uuid: appliedId, ...input.proposed_state });
         } else if (entityType === "kanban_column") {
@@ -1924,12 +2325,16 @@ export const louisAiRouter = router({
             await pool.query(`
               UPDATE core_registry_offers
               SET title = $1, offer_number = $2, associated_company_id = $3, associated_contact_id = $4,
-                  total_net_amount = $5, total_vat_amount = $6, total_gross_amount = $7,
-                  offer_status = $8, updated_at_utc = CURRENT_TIMESTAMP,
-                  line_items_json = $9
-              WHERE id_uuid = $10 AND tenant_id = $11
+                  issue_date = $5, valid_until = $6, payment_term = $7, currency_code = $8, is_vat_inclusive = $9,
+                  introductory_text = $10, closing_text = $11,
+                  total_net_amount = $12, total_vat_amount = $13, total_gross_amount = $14,
+                  offer_status = $15, updated_at_utc = CURRENT_TIMESTAMP,
+                  line_items_json = $16
+              WHERE id_uuid = $17 AND tenant_id = $18
             `, [
               pState.title, pState.offer_number, pState.associated_company_id, pState.associated_contact_id,
+              pState.issue_date || new Date().toISOString().split("T")[0], pState.valid_until || "", pState.payment_term || "14 Tage netto", pState.currency_code || "EUR", !!pState.is_vat_inclusive,
+              pState.introductory_text || "", pState.closing_text || "",
               pState.total_net_amount, pState.total_vat_amount, pState.total_gross_amount,
               pState.offer_status || 'draft', JSON.stringify(pState.line_items || []),
               appliedId, tenantId
@@ -1953,12 +2358,16 @@ export const louisAiRouter = router({
               await pool.query(`
                 UPDATE core_registry_offers
                 SET title = $1, offer_number = $2, associated_company_id = $3, associated_contact_id = $4,
-                    total_net_amount = $5, total_vat_amount = $6, total_gross_amount = $7,
-                    offer_status = $8, updated_at_utc = CURRENT_TIMESTAMP,
-                    line_items_json = $9
-                WHERE id_uuid = $10 AND tenant_id = $11
+                    issue_date = $5, valid_until = $6, payment_term = $7, currency_code = $8, is_vat_inclusive = $9,
+                    introductory_text = $10, closing_text = $11,
+                    total_net_amount = $12, total_vat_amount = $13, total_gross_amount = $14,
+                    offer_status = $15, updated_at_utc = CURRENT_TIMESTAMP,
+                    line_items_json = $16
+                WHERE id_uuid = $17 AND tenant_id = $18
               `, [
                 pState.title, pState.offer_number, pState.associated_company_id, pState.associated_contact_id,
+                pState.issue_date || new Date().toISOString().split("T")[0], pState.valid_until || "", pState.payment_term || "14 Tage netto", pState.currency_code || "EUR", !!pState.is_vat_inclusive,
+                pState.introductory_text || "", pState.closing_text || "",
                 pState.total_net_amount, pState.total_vat_amount, pState.total_gross_amount,
                 pState.offer_status || 'draft', JSON.stringify(pState.line_items || []),
                 existingId, tenantId
@@ -1967,12 +2376,16 @@ export const louisAiRouter = router({
               await pool.query(`
                 INSERT INTO core_registry_offers (
                   id_uuid, tenant_id, title, offer_number, associated_company_id, associated_contact_id,
+                  issue_date, valid_until, payment_term, currency_code, is_vat_inclusive,
+                  introductory_text, closing_text,
                   total_net_amount, total_vat_amount, total_gross_amount, offer_status,
                   created_by_identity, created_at_utc, updated_at_utc, line_items_json
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $12)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $19)
               `, [
                 appliedId, tenantId, pState.title, pState.offer_number, pState.associated_company_id, pState.associated_contact_id,
+                pState.issue_date || new Date().toISOString().split("T")[0], pState.valid_until || "", pState.payment_term || "14 Tage netto", pState.currency_code || "EUR", !!pState.is_vat_inclusive,
+                pState.introductory_text || "", pState.closing_text || "",
                 pState.total_net_amount, pState.total_vat_amount, pState.total_gross_amount, pState.offer_status || 'draft',
                 actorIdentity, JSON.stringify(pState.line_items || [])
               ]);
@@ -1989,8 +2402,8 @@ export const louisAiRouter = router({
             );
           } else {
             await pool.query(
-              "INSERT INTO kanban_boards (id_uuid, tenant_id, title, description, is_default, position) VALUES ($1, $2, $3, $4, $5, $6)",
-              [appliedId, tenantId, pState.title || "Neues Board", pState.description || null, pState.is_default || false, pState.position || 0]
+              "INSERT INTO kanban_boards (id_uuid, tenant_id, title, description, color, is_default) VALUES ($1, $2, $3, $4, $5, $6)",
+              [appliedId, tenantId, pState.title || "Neues Board", pState.description || null, pState.color || "#3b82f6", pState.is_default || false]
             );
             const defaultCols = (pState.columns && Array.isArray(pState.columns) && pState.columns.length > 0)
               ? (pState.columns as string[])
@@ -1999,9 +2412,26 @@ export const louisAiRouter = router({
               const colTitle = defaultCols[idx];
               const colHex = idx === 0 ? "#3b82f6" : idx === 1 ? "#f59e0b" : "#10b981";
               await pool.query(
-                "INSERT INTO kanban_columns (id_uuid, tenant_id, board_id, title, position, color_hex) VALUES ($1, $2, $3, $4, $5, $6)",
+                "INSERT INTO kanban_columns (id_uuid, tenant_id, board_id, title, position, color_accent) VALUES ($1, $2, $3, $4, $5, $6)",
                 [uuidv4(), tenantId, appliedId, colTitle, idx, colHex]
               );
+            }
+            // Auftrag 042 P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
+            const sampleCards = (pState.sample_cards && Array.isArray(pState.sample_cards))
+              ? (pState.sample_cards as string[])
+              : [];
+            if (sampleCards.length > 0) {
+              const colRes = await pool.query(
+                "SELECT id_uuid FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1') ORDER BY position ASC",
+                [appliedId, tenantId]
+              );
+              const colIds = colRes.rows.map((r: { id_uuid: string }) => r.id_uuid);
+              for (let idx = 0; idx < sampleCards.length; idx++) {
+                await pool.query(
+                  "INSERT INTO kanban_cards (id_uuid, tenant_id, board_id, column_id, title, status, priority, position) VALUES ($1, $2, $3, $4, $5, 'todo', 'medium', $6)",
+                  [uuidv4(), tenantId, appliedId, colIds[Math.min(idx, colIds.length - 1)] || colIds[0], sampleCards[idx], idx]
+                );
+              }
             }
           }
           workflowEventBus.emitEvent(tenantId, `kanban.board_${action.toLowerCase()}`, { id_uuid: appliedId, ...pState });
@@ -2011,13 +2441,13 @@ export const louisAiRouter = router({
             await pool.query("DELETE FROM kanban_columns WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')", [appliedId, tenantId]);
           } else if (action === "UPDATE") {
             await pool.query(
-              "UPDATE kanban_columns SET title = $1, position = $2, color_hex = $3, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $4 AND (tenant_id = $5 OR tenant_id = '1')",
-              [pState.title, pState.position, pState.color_hex || "#3b82f6", appliedId, tenantId]
+              "UPDATE kanban_columns SET title = $1, position = $2, color_accent = $3, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $4 AND (tenant_id = $5 OR tenant_id = '1')",
+              [pState.title, pState.position, pState.color_accent || "#3b82f6", appliedId, tenantId]
             );
           } else {
             await pool.query(
-              "INSERT INTO kanban_columns (id_uuid, tenant_id, board_id, title, position, color_hex) VALUES ($1, $2, $3, $4, $5, $6)",
-              [appliedId, tenantId, pState.board_id, pState.title || "Neue Spalte", pState.position || 0, pState.color_hex || "#3b82f6"]
+              "INSERT INTO kanban_columns (id_uuid, tenant_id, board_id, title, position, color_accent) VALUES ($1, $2, $3, $4, $5, $6)",
+              [appliedId, tenantId, pState.board_id, pState.title || "Neue Spalte", pState.position || 0, pState.color_accent || "#3b82f6"]
             );
           }
           workflowEventBus.emitEvent(tenantId, `kanban.column_${action.toLowerCase()}`, { id_uuid: appliedId, ...pState });
@@ -2089,10 +2519,15 @@ export const louisAiRouter = router({
             const skillMd = `---\ntags: [louis-skill]\nname: ${pState.name || ""}\ndescription: ${pState.description || ""}\nversion: ${version}\ncategory: ${pState.category || ""}\n---\n\n${pState.content || ""}\n`;
             const { vaultWriteText } = await import("../ai/vaultStore.js");
             await vaultWriteText(tenantId, skillPath, skillMd);
+            // #30 (026 P1-1): update_skill-Freigabe = Patch am Skill → patch_count+1 (best-effort)
+            if (action === "UPDATE") {
+              const { bumpSkillCounter } = await import("../ai/skillCurator.js");
+              void bumpSkillCounter(tenantId, skillPath, "patchCount");
+            }
             workflowEventBus.emitEvent(tenantId, "vault.skill_saved", { path: skillPath, name: pState.name, version });
           }
         } else if (entityType === "note") {
-          // QA-Befund #1: Notiz-Draft → nach Freigabe in sys_louis_ai_notes persistieren
+          // Notiz-Draft → nach Freigabe in sys_louis_ai_notes persistieren
           const pState = (input.proposed_state || {}) as Record<string, unknown>;
           const noteText = String(pState.note_text || "").trim();
           const contactId = typeof pState.contact_id_uuid === "string" && pState.contact_id_uuid ? pState.contact_id_uuid : null;
@@ -3081,7 +3516,9 @@ ${input.content.trim()}
       chatHistory: z.array(z.object({
         role: z.enum(['user', 'assistant']),
         content: z.string()
-      })).default([])
+      })).default([]),
+      // Auftrag 032: Sprache des CRM durchreichen (kein Hardcoding) — für Sanitizer-/Fallback-Sprache
+      language: z.string().default('de')
     }))
     .output(z.object({ text: z.string() }))
     .mutation(async ({ input, ctx }) => {
@@ -3180,25 +3617,56 @@ ${input.content.trim()}
       }
 
       // Construct a tailored prompt enclosing context, current element value & user instructions
+      // Auftrag 032: Feld-Typ aus fieldId ableiten — ALLE Zielfelder sind contentEditable-HTML-Editoren
+      // (Offers/Invoices/Templates/Mail). Der alte Prompt ließ das LLM plain text liefern, der ohne
+      // Konvertierung als innerHTML gesetzt wurde → Formatierungsverlust / rohes HTML-Markdown im Editor.
+      const HTML_EDITOR_FIELDS = new Set([
+        'introductory_text', 'closing_text', 'item_desc_single',
+        'email_body', 'signature_body', 'template_body',
+        'invoice_text_body', 'offer_text_body', 'item_description'
+      ]);
+      const isHtmlField = HTML_EDITOR_FIELDS.has(input.fieldId);
+      const outputFormatDirective = isHtmlField
+        ? `- Output ONLY the final HTML fragment for a contentEditable editor. Use clean HTML: <p> for paragraphs, <br> for line breaks, <strong>/<b> for bold, <em>/<i> for italic, <ul>/<li> for lists. NO <html>, <head>, <body> wrapper, NO markdown (no **, no #, no - bullets), NO code fences, NO conversational introduction. Preserve CRM placeholders like {{invoice_number}} exactly.`
+        : `- Output ONLY the newly drafted or refined text content. No conversational introduction ("Hier ist dein Entwurf..."), no markdown code blocks, no HTML tags — plain text only. Preserve CRM placeholders like {{invoice_number}} exactly.`;
+
+      // Construct chat structures and contents
+      // Auftrag 034: currentValue VOR dem Prompt von HTML auf reinen Text normalisieren —
+      // der rohe HTML-Body (mit Signatur/Tags) blähte den Input auf und verlangsamte den
+      // Call massiv („braucht sehr lange — wahrscheinlich wegen des ganzen HTML").
+      const stripHtmlToPlain = (html: string): string =>
+        html
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      const plainCurrentValue = stripHtmlToPlain(input.currentValue || '');
       const userMessageText = `
         ## CONTEXT:
         Current edited element/field: "${input.fieldId}" (${input.context})
         
-        ## CURRENT FIELD VALUE:
+        ## CURRENT FIELD VALUE (plain text, HTML entfernt):
         \`\`\`
-        ${input.currentValue || '--- (Leer) ---'}
+        ${plainCurrentValue || '--- (Leer) ---'}
         \`\`\`
 
         ## USER INSTRUCTIONS / AMENDMENTS:
         ${input.userInstructions}
 
+        ## LANGUAGE:
+        Write the output text in the CRM's configured language: ${input.language === 'en' ? 'English' : 'German / Deutsch'}. All generated sentences must be in that language.
+
         ## OUTPUT REQUIREMENTS:
-        - Output ONLY the newly drafted or refined text content. No conversational introduction ("Hier ist dein Entwurf..."), no markdown code blocks unless the element actually edits html (only if context is 'email_body' or 'signature' should you generate formatted HTML paragraphs, otherwise output plain text).
+        ${outputFormatDirective}
         - Act precisely on the instructions.
         - Erhalte CRM Platzhalter wie {{invoice_number}}, {{due_date}}, usw. unverändert!
       `;
 
-      // Construct chat structures and contents
       const contentsList: unknown[] = [];
       // Push history
       for (const msg of input.chatHistory) {
@@ -3225,7 +3693,29 @@ ${input.content.trim()}
         });
 
         const textOutput = aiResponse.text || "Fehler: Antwort konnte nicht generiert werden.";
-        return { text: textOutput };
+        // Auftrag 032: Antwort-Pfad sanitizen (Auftrag-010-Lektion: „Bei neuen Antwort-Pfaden
+        // IMMER sanitizen") — XML-Leaks/Thinking-Blöcke strippen, dann für HTML-Editoren den
+        // reinen Text (falls das Modell keinen HTML lieferte) zu Absätzen normalisieren.
+        const cleaned = sanitizeFinalText(textOutput, input.language === 'en' ? 'en' : 'de', { enableThinkingScrub: true });
+        // Auftrag 034 (Probe-Fund): DeepSeek liefert trotz „NO code fences" Markdown-Fences
+        // (```html … ```) — sanitizeFinalText strippt nur XML/Thinking, keine Fences.
+        // Fence-Marker entfernen, Inhalt (HTML-Fragment) behalten.
+        let cleanedNoFence = cleaned
+          .replace(/```(?:html|xml|markdown|text)?\s*/gi, '')
+          .replace(/```/g, '');
+        let normalized = cleanedNoFence;
+        if (isHtmlField) {
+          const hasHtml = /<[a-z][\s\S]*>/i.test(cleanedNoFence);
+          if (!hasHtml) {
+            normalized = cleanedNoFence
+              .split(/\n{2,}/)
+              .map((p) => p.trim())
+              .filter(Boolean)
+              .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+              .join('\n');
+          }
+        }
+        return { text: normalized };
       } catch (err) {
         console.error("Text Gen Call failed:", err);
         return { text: `Fehler bei der Textgenerierung: ${(err as Error).message}` };
@@ -4313,7 +4803,13 @@ ${input.content.trim()}
       content: z.string(),
       tags: z.array(z.string()),
       version: z.number(),
-      pinned: z.boolean().optional()
+      pinned: z.boolean().optional(),
+      // Auftrag 026 P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
+      useCount: z.number().optional(),
+      viewCount: z.number().optional(),
+      patchCount: z.number().optional(),
+      status: z.enum(["active", "inactive", "archived"]).optional(),
+      lastUsedAtUtc: z.string().nullable().optional()
     })))
     .query(async ({ ctx }) => {
       const { resolveSkillFiles } = await import("../ai/vaultStore.js");
@@ -4325,8 +4821,33 @@ ${input.content.trim()}
         content: s.content,
         tags: s.tags || [],
         version: s.version || 1,
-        pinned: s.pinned === true
+        pinned: s.pinned === true,
+        useCount: s.useCount ?? 0,
+        viewCount: s.viewCount ?? 0,
+        patchCount: s.patchCount ?? 0,
+        status: s.status ?? "active",
+        lastUsedAtUtc: s.lastUsedAtUtc ?? null
       }));
+    }),
+
+  // Auftrag 026 P2 (#53-UI): Laufende Subtasks + „Subtask abbrechen" (Chat-UI-Button)
+  listRunningSubtasks: protectedProcedure
+    .output(z.object({ subtask_ids: z.array(z.string()) }))
+    .query(async () => {
+      const { getRunningSubtaskIds } = await import("../ai/agentRuntime.js");
+      return { subtask_ids: getRunningSubtaskIds() };
+    }),
+
+  abortRunningSubtask: protectedProcedure
+    .input(z.object({ subtask_id: z.string().min(1).max(300) }))
+    .output(z.object({ success: z.boolean(), message: z.string() }))
+    .mutation(async ({ input }) => {
+      const { globalAgentRuntime } = await import("../ai/agentRuntime.js");
+      const rt = globalAgentRuntime as unknown as {
+        executeAbortSubtask: (ctx: unknown, argsStr: string) => Promise<{ success: boolean; data?: { message?: string }; error?: string }>;
+      };
+      const res = await rt.executeAbortSubtask({}, JSON.stringify({ subtask_id: input.subtask_id, reason: "per Chat-UI abgebrochen" }));
+      return { success: res.success, message: res.success ? (res.data?.message ?? "Abbruch ausgelöst.") : (res.error ?? "Abbruch fehlgeschlagen.") };
     }),
 
   // Auftrag 013 P2-E: Skill pinnen/entpinnen — schreibt Frontmatter-Flag via vaultWriteText (nur _louis/skills/)
@@ -4465,6 +4986,17 @@ ${input.content.trim()}
         const row = cleanDbRow(r) as Record<string, unknown>;
         if (row.created_at_utc !== undefined) row.created_at_utc = row.created_at_utc instanceof Date ? (row.created_at_utc as Date).toISOString() : String(row.created_at_utc);
         if (row.answered_at_utc !== undefined && row.answered_at_utc !== null) row.answered_at_utc = row.answered_at_utc instanceof Date ? (row.answered_at_utc as Date).toISOString() : String(row.answered_at_utc);
+        // 2026-08-18 (Multi-Turn-): choices_json ist JSONB → pg liefert ein Array,
+        // AgentQuestionFullSchema verlangt z.string() → Zod-Output-Validierung crashte
+        // die Chat-UI nach 1-2 Nachrichten (Sobald eine OPEN-Rückfrage existierte).
+        if (row.choices_json !== undefined && row.choices_json !== null && typeof row.choices_json !== 'string') {
+          row.choices_json = JSON.stringify(row.choices_json);
+        }
+        // 2026-08-18 (Admin- „keine Rückfrage angezeigt“): cleanDbRow LÖSCHT NULL-Felder
+        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string() → crashte.
+        if (row.answer === undefined || row.answer === null) {
+          row.answer = "";
+        }
         return row as unknown as z.infer<typeof AgentQuestionFullSchema>;
       });
     }),

@@ -305,25 +305,10 @@ export const MailDialog = ({
     return replaced;
   };
 
-  // Prepopulate default signature on open
-  useEffect(() => {
-    if (isOpen && signatures.length > 0 && !body) {
-      const defaultSig = signatures.find(s => s.is_default_signature);
-      if (defaultSig) {
-        const companyName = myCompany?.full_legal_name || 'Louis Smart CRM Node';
-        const contactPerson = myCompany?.responsible_person || '';
-        let sigText = defaultSig.signature_body_content;
-        sigText = replacePlaceholders(sigText, companyName, contactPerson);
-        
-        const initialBody = `<p><br></p>${sigText}`;
-        setBody(initialBody);
-        setSelectedSignatureId(defaultSig.id_uuid || '');
-        if (editorRef.current) {
-          editorRef.current.innerHTML = initialBody;
-        }
-      }
-    }
-  }, [isOpen, signatures, myCompany]);
+  // Auftrag 035 (Regel 2026-08-19): KEIN Signatur-Prefill im Mail-Editor.
+  // Weder Text noch Dropdown-Vorauswahl — der User fügt die Signatur per Klick ein
+  // (Signatur-Select → handleSignatureChange fügt sie in den Body ein).
+  // (Prefill-UseEffect vollständig entfernt.)
 
   // Synchronize contentEditable innerHTML with state body when editor is rendered or mode toggled
   useEffect(() => {
@@ -474,15 +459,9 @@ export const MailDialog = ({
       bodyText = replacePlaceholders(bodyText, companyName, contactPerson);
 
       setSubject(sub);
-      
-      // If signature is selected, append signature
-      const activeSig = signatures.find(s => s.id_uuid === selectedSignatureId);
-      if (activeSig) {
-        let sigText = activeSig.signature_body_content;
-        sigText = replacePlaceholders(sigText, companyName, contactPerson);
-        bodyText = `${bodyText}<p><br></p>${sigText}`;
-      }
 
+      // Auftrag 035: Template lädt NUR den Template-Text — keine Signatur anhängen.
+      // Signatur kommt ausschließlich per Klick (Signatur-Select).
       setBody(bodyText);
       if (editorRef.current) {
         editorRef.current.innerHTML = bodyText;
@@ -739,6 +718,8 @@ export const MailDialog = ({
                 <button
                   type="button"
                   onClick={() => {
+                    // Auftrag 035: Editor ist nie mehr mit Signatur vorbelegt (kein Prefill) —
+                    // der KI-Kontext ist daher immer reiner Mail-Text.
                     const currentText = editorRef.current ? editorRef.current.innerHTML : body;
                     setAiFieldId('email_body');
                     setAiContext('E-Mail Haupttext');

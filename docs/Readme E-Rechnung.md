@@ -102,7 +102,7 @@ export function roundFiscal(num: number): number {
 
 ## 5. E2E-Validierungsprüfung
 
-`scripts/e2e-validate.ts` (`npm run test:zugferd`) simuliert und prüft:
+Im Entwicklungsprozess wird die E-Rechnungs-Erzeugung mit einer E2E-Validierung (`npm run test:zugferd`) gegen die Mustang-Referenzvalidierung geprüft:
 1. Rechnungsstellung mit Einzelpositionen (`01-zugferd-single-line`)
 2. Mehrzeilige Rechnung (`02-zugferd-multi-line`)
 3. Gemischte Mehrwertsteuersätze (`03-zugferd-mixed-vat`)

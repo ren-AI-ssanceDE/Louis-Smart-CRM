@@ -28,7 +28,7 @@ export const CouncilSettingsTab = () => {
       utils.getSettings.invalidate();
     },
     onError: (err) => {
-      toast.error(t('admin:council_settings_tab.saved_error', { defaultValue: 'Fehler beim Speichern der Einstellungen: ' }) + err.message);
+      toast.error(t('admin:council_settings_tab.saved_error', { defaultValue: 'Fehler beim Speichern der Einstellungen.' }));
     }
   });
 

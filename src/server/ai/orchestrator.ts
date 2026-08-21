@@ -5,6 +5,7 @@ import path from "path";
 import { ModelUsageMetadata, CustomWorkflow, LouisAiKnowledgeMetadata, TenantAiConfig, ConversationMessage } from "../../types.js";
 export type { ConversationMessage, TenantAiConfig };
 import { generateContentSafe, generateContentUniversal } from "./geminiHelper.js";
+import { containsToolCallXml, normalizeToolCallText } from "./toolCallSanitizer.js";
 import { globalAgentRuntime } from "./agentRuntime.js";
 import { AgentPipelineContext, AgentAttachmentContext, AgentUserMemory, ToolDomain } from "./agentTypes.js";
 import { 
@@ -49,6 +50,8 @@ import {
   ProposeCrmChangesArgs
 } from "./tools/types.js";
 import { ToolCall, InferenceResultPayload, InferenceMessage } from "../../types/inference.js";
+// Auftrag 025 Phase 3 (#18): Query-abhängiges Memory-Prefetch
+import { prefetchRelevantMemoryNotes } from "./memoryManager.js";
 
 
 export const CompanyProposalSchema = z.object({
@@ -96,7 +99,7 @@ export interface ReActDecision {
   }[] | null;
   finalDraftText: string | null;
   /**
-   * Befund-2-Fix (2026-08-17): true, wenn die Rohantwort eine KAPUTTE JSON-Struktur
+   * Fix (2026-08-17): true, wenn die Rohantwort eine KAPUTTE JSON-Struktur
    * war (Klammern vorhanden, aber unparsbar) oder leer — die Antwort ist dann KEINE
    * echte Nutzerantwort, sondern ein Parse-Artefakt → ReAct-Loop startet eine
    * Korrektur-Runde (bounded) statt das Artefakt als finale Antwort auszuliefern.
@@ -278,7 +281,7 @@ export async function getTenantAiConfig(tenantId: string): Promise<TenantAiConfi
   } else {
     try {
       const res = await pool.query(
-        "SELECT id_uuid, tenant_id, provider_type, api_key_secret, base_url, model_name, temperature, top_p, top_k, num_ctx, max_iterations, max_history_tokens, tool_result_truncate_chars, react_keep_last_results, react_compaction_from_iteration, early_exit_after_tools, prompt_directives_mode, react_tool_call_mode, memory_budget_tokens FROM sys_integrations_louis_ai_config WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY CASE WHEN tenant_id = $1 THEN 0 ELSE 1 END LIMIT 1",
+        "SELECT id_uuid, tenant_id, provider_type, api_key_secret, base_url, model_name, temperature, top_p, top_k, num_ctx, max_iterations, max_history_tokens, tool_result_truncate_chars, react_keep_last_results, react_compaction_from_iteration, early_exit_after_tools, prompt_directives_mode, react_tool_call_mode, text_fallback_enabled, memory_budget_tokens, prompt_parallel_tool_guidance, prompt_tool_guidance_trim, memory_frozen_snapshot, compression_enabled, compression_threshold_percent, compression_tail_token_budget, compression_aux_model, compression_persist_summary, compression_model_context_map, memory_prefetch_enabled, memory_prefetch_timeout_s, memory_recall_status_enabled, memory_auto_scan_enabled, memory_consolidation_budget, tool_call_retry_max, empty_retry_budget, empty_retry_cost_threshold_usd, tool_guardrail_exact_block, tool_guardrail_no_progress_block, loop_deadline_s, thinking_scrub_enabled, recall_fts_enabled, recall_search_limit, skill_curator_enabled, skill_inject_max_tokens, skill_prune_inactive_after_days, skill_inject_top_k, curator_interval_hours, curator_archive_after_days, mcp_refresh_interval_s, subtask_timeout_s, subtask_max_parallel, subtask_max_depth, audit_retention_days, session_retention_days, mcp_approval_timeout_s, mcp_stdio_max_sessions FROM sys_integrations_louis_ai_config WHERE tenant_id = $1 OR tenant_id = '1' ORDER BY CASE WHEN tenant_id = $1 THEN 0 ELSE 1 END LIMIT 1",
         [tenantId]
       );
       if (res.rows.length > 0) {
@@ -304,20 +307,67 @@ export async function getTenantAiConfig(tenantId: string): Promise<TenantAiConfi
     react_compaction_from_iteration: null,
     early_exit_after_tools: null,
     prompt_directives_mode: "always" as const,
-    memory_budget_tokens: null
+    text_fallback_enabled: null,
+    memory_budget_tokens: null,
+    prompt_parallel_tool_guidance: null,
+    prompt_tool_guidance_trim: null,
+    memory_frozen_snapshot: null,
+    compression_enabled: null,
+    compression_threshold_percent: null,
+    compression_tail_token_budget: null,
+    compression_aux_model: null,
+    compression_persist_summary: null,
+    compression_model_context_map: null,
+    memory_prefetch_enabled: null,
+    memory_prefetch_timeout_s: null,
+    memory_recall_status_enabled: null,
+    memory_auto_scan_enabled: null,
+    memory_consolidation_budget: null,
+    tool_call_retry_max: null,
+    empty_retry_budget: null,
+    empty_retry_cost_threshold_usd: null,
+    tool_guardrail_exact_block: null,
+    tool_guardrail_no_progress_block: null,
+    loop_deadline_s: null,
+    mcp_approval_timeout_s: null,
+    mcp_stdio_max_sessions: null,
+    thinking_scrub_enabled: null,
+    recall_fts_enabled: null,
+    recall_search_limit: null,
+    skill_curator_enabled: null,
+    skill_inject_max_tokens: null,
+    skill_prune_inactive_after_days: null,
+    skill_inject_top_k: null,
+    curator_interval_hours: null,
+    curator_archive_after_days: null,
+    subtask_max_depth: null,
+    // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
+    audit_retention_days: null,
+    // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
+    session_retention_days: null,
+    mcp_refresh_interval_s: null,
+    subtask_timeout_s: null,
+    subtask_max_parallel: null
   };
 }
 
 /**
  * S2: Lädt das User-Memory (sys_louis_ai_user_memory) für Injektion in den System-Prompt.
  * S10: Vault-first — readUserMemoryVault (Tier 1/2) zuerst, sonst DB (Tier 3).
+ * Auftrag 025 Phase 3 (#25): Timeout-Gate — ein hängender Vault-/Provider-Call blockiert
+ * den Turn NIE (Default 8s, non-fatal; konfigurierbar via memory_prefetch_timeout_s).
  * Strikt fehlertolerant — Memory darf die Pipeline nie brechen (nie werfen).
  */
-export async function getTenantUserMemory(tenantId: string, userId: string): Promise<AgentUserMemory | null> {
+export async function getTenantUserMemory(tenantId: string, userId: string, timeoutMs: number = 8000): Promise<AgentUserMemory | null> {
   try {
     const { readUserMemoryVault } = await import("./vaultStore.js");
-    const vaultMemory = await readUserMemoryVault(tenantId, userId);
+    const vaultMemory = await Promise.race([
+      readUserMemoryVault(tenantId, userId),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
+    ]);
     if (vaultMemory) return vaultMemory;
+    // Timeout (null vom Race) vs. Vault ohne Memory (null vom Store) sind hier nicht
+    // unterscheidbar — in beiden Fällen sauber auf Tier 3 (DB) weitergehen.
   } catch {
     // Vault-Tiers down → DB-Fallback (Tier 3)
   }
@@ -453,12 +503,16 @@ export async function runLouisAiFlow(
   shortTermSummaryText: string = '',
   attachments: AgentAttachmentContext[] = [],
   // Auftrag 012 P1-3: optionale Tool-Domänen-Einschränkung (z. B. Agent-Jobs mit allowed_domains)
-  allowedDomains?: ToolDomain[]
+  allowedDomains?: ToolDomain[],
+  // C.7 (Plan 2026-08-19): aktive Chat-Session → Chatprofil-Filter für MCP-Tools
+  sessionId?: string
 ): Promise<{
   replyText: string;
   thoughtLog: string[];
   proposedChanges: ReActDecision['proposedChanges'] | null;
   sessionId: string;
+  // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
+  memoryRecallCount?: number;
   metrics?: {
     durationMs: number;
     inputTokens: number;
@@ -468,18 +522,28 @@ export async function runLouisAiFlow(
   };
 }> {
   const aiConfig = await getTenantAiConfig(tenantId);
-  const userMemory = await getTenantUserMemory(tenantId, userId);
+  // Auftrag 025 Phase 3 (#25): Prefetch-Timeout konfigurierbar (memory_prefetch_timeout_s, NULL = 8s)
+  const userMemory = await getTenantUserMemory(tenantId, userId, aiConfig.memory_prefetch_timeout_s ?? 8000);
   const agentLanguage = language.toLowerCase().startsWith('en') ? 'en' : 'de';
 
-  let activeSummary = shortTermSummaryText;
-  if (conversationHistory.length > 8) {
-    activeSummary = await executePassiveShortTermCompression(
-      tenantId,
-      conversationHistory,
-      shortTermSummaryText,
-      aiConfig.model_name
-    );
+  // Auftrag 025 Phase 3 (#18): Query-abhängiges Prefetch — relevante Memory-Einträge werden
+  // VOR dem Loop nach Relevanz sortiert und budgetiert (nicht nur Budget-Injektion).
+  // Ergebnis: prefetchedUserMemory (budgetierte, relevanz-sortierte Notizen) + recallCount.
+  let prefetchedUserMemory: AgentUserMemory | null = userMemory;
+  let memoryRecallCount = 0;
+  if (userMemory && userMemory.chat_notes_json.length > 0) {
+    if (aiConfig.memory_prefetch_enabled ?? true) {
+      const budget = aiConfig.memory_budget_tokens ?? 800;
+      const prefetch = prefetchRelevantMemoryNotes(userMessage, userMemory.chat_notes_json, budget);
+      prefetchedUserMemory = { ...userMemory, chat_notes_json: prefetch.notes };
+      memoryRecallCount = prefetch.relevantCount;
+    }
   }
+
+  // Auftrag 025 Phase 2 (#13): KEINE Kompression mehr auf dem Antwort-Pfad.
+  // Der Summary kommt ausschließlich vom Background-Worker (sendMessage) —
+  // nie ein synchroner LLM-Call im Request-Pfad, nie ein 4s-Timeout-Race.
+  const activeSummary = shortTermSummaryText;
 
   const complexity = classifyQueryComplexity(userMessage);
 
@@ -491,9 +555,13 @@ export async function runLouisAiFlow(
     aiConfig,
     history: conversationHistory,
     shortTermSummary: activeSummary,
-    userMemory,
+    userMemory: prefetchedUserMemory,
+    // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
+    memoryRecallCount,
     temporalAnchor: new Date().toISOString(),
     attachments,
+    // C.7 (Plan 2026-08-19): Session-Kontext für den Chatprofil-Filter der MCP-Tools
+    sessionId,
     // Auftrag 006 A3: History-Budget 1200 (Admin-einstellbar über max_history_tokens)
     maxHistoryTokens: aiConfig.max_history_tokens ?? 1200,
     isFastPath: complexity.isFastPath,
@@ -509,6 +577,55 @@ export async function runLouisAiFlow(
     earlyExitAfterTools: aiConfig.early_exit_after_tools ?? 4,
     promptDirectivesMode: (aiConfig.prompt_directives_mode as 'always' | 'intent') || 'always',
     toolCallMode: (aiConfig.react_tool_call_mode as 'auto' | 'json' | 'native') || 'auto',
+    // Auftrag 031 (Effekt-Test-Fund): text_fallback_enabled war nie verdrahtet —
+    // fehlte im getTenantAiConfig-SELECT UND im Mapping → Admin-Einstellung wirkte nie.
+    textFallbackEnabled: aiConfig.text_fallback_enabled ?? false,
+    // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
+    promptParallelToolGuidance: aiConfig.prompt_parallel_tool_guidance ?? true,
+    promptToolGuidanceTrim: aiConfig.prompt_tool_guidance_trim ?? true,
+    memoryFrozenSnapshot: aiConfig.memory_frozen_snapshot ?? true,
+    // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+    compressionEnabled: aiConfig.compression_enabled ?? true,
+    compressionThresholdPercent: aiConfig.compression_threshold_percent ?? null,
+    compressionTailTokenBudget: aiConfig.compression_tail_token_budget ?? null,
+    compressionAuxModel: aiConfig.compression_aux_model ?? null,
+    compressionPersistSummary: aiConfig.compression_persist_summary ?? true,
+    compressionModelContextMap: aiConfig.compression_model_context_map ?? null,
+    // Auftrag 025 Phase 3 (Parität): Memory-Toggles (NULL = Backend-Default, Regel 12)
+    memoryPrefetchEnabled: aiConfig.memory_prefetch_enabled ?? true,
+    memoryPrefetchTimeoutS: aiConfig.memory_prefetch_timeout_s ?? null,
+    memoryRecallStatusEnabled: aiConfig.memory_recall_status_enabled ?? true,
+    memoryAutoScanEnabled: aiConfig.memory_auto_scan_enabled ?? true,
+    memoryConsolidationBudget: aiConfig.memory_consolidation_budget ?? null,
+    // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+    toolCallRetryMax: aiConfig.tool_call_retry_max ?? null,
+    emptyRetryBudget: aiConfig.empty_retry_budget ?? null,
+    emptyRetryCostThresholdUsd: aiConfig.empty_retry_cost_threshold_usd ?? null,
+    toolGuardrailExactBlock: aiConfig.tool_guardrail_exact_block ?? null,
+    toolGuardrailNoProgressBlock: aiConfig.tool_guardrail_no_progress_block ?? null,
+    loopDeadlineS: aiConfig.loop_deadline_s ?? null,
+    thinkingScrubEnabled: aiConfig.thinking_scrub_enabled ?? true,
+    // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+    recallFtsEnabled: aiConfig.recall_fts_enabled ?? true,
+    recallSearchLimit: aiConfig.recall_search_limit ?? null,
+    // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+    skillCuratorEnabled: aiConfig.skill_curator_enabled ?? true,
+    skillInjectMaxTokens: aiConfig.skill_inject_max_tokens ?? null,
+    skillPruneInactiveAfterDays: aiConfig.skill_prune_inactive_after_days ?? null,
+    skillInjectTopK: aiConfig.skill_inject_top_k ?? null,
+    // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+    curatorIntervalHours: aiConfig.curator_interval_hours ?? null,
+    curatorArchiveAfterDays: aiConfig.curator_archive_after_days ?? null,
+    // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+    subtaskMaxDepth: aiConfig.subtask_max_depth ?? null,
+    // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
+    auditRetentionDays: aiConfig.audit_retention_days ?? null,
+    // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
+    sessionRetentionDays: aiConfig.session_retention_days ?? null,
+    // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+    mcpRefreshIntervalS: aiConfig.mcp_refresh_interval_s ?? null,
+    subtaskTimeoutS: aiConfig.subtask_timeout_s ?? null,
+    subtaskMaxParallel: aiConfig.subtask_max_parallel ?? null,
     // Auftrag 012 P1-3: Domänen-Limit (nur wenn gesetzt — sonst alle Domänen wie bisher)
     ...(allowedDomains && allowedDomains.length > 0 ? { allowedDomains } : {}),
     inputTokens: 0,
@@ -526,6 +643,8 @@ export async function runLouisAiFlow(
     thoughtLog: result.thoughtLog,
     proposedChanges: result.proposedChanges as ReActDecision['proposedChanges'] | null,
     sessionId: uuidv4(),
+    // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback an die Chat-UI
+    memoryRecallCount: result.memoryRecallCount ?? memoryRecallCount,
     metrics: {
       durationMs: result.executionTimeMs,
       inputTokens: result.inputTokens,
@@ -609,14 +728,35 @@ export async function executePassiveShortTermCompression(
  * Robustly catches incomplete LLM JSON outputs or Markdown code blocks.
  */
 
+// 2026-08-18: XML-Parameter auto-typisieren — DeepSeek liefert Werte im XML-Pfad IMMER als Strings
+// (z.B. contextLength="300", columns="[...]"). Tools erwarten aber number/boolean/array → koerzieren.
+// Vorsicht: Strings mit führender Null (z.B. PLZ "01234") bleiben Strings.
+const autoType = (v: string): unknown => {
+  const t = v.trim();
+  if (t === "true") return true;
+  if (t === "false") return false;
+  if (/^-?(0|[1-9]\d*)(\.\d+)?$/.test(t)) return Number(t);
+  if ((t.startsWith("[") && t.endsWith("]")) || (t.startsWith("{") && t.endsWith("}"))) {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return v;
+    }
+  }
+  return v;
+};
+
 // Auftrag 007 T6: XML-Tool-Call-Parser (Claude/DeepSeek-Format)
 // <invoke name="list_companies"><parameter name="search">Acme</parameter></invoke>
 // → UniversalToolCall-ähnliche ToolCall[] (querys als JSON/plain string).
 export function parseXmlToolCalls(text: string): ToolCall[] {
+  // 2026-08-18: NFKC + DSML-Pipe-Normalisierung — DeepSeek liefert teils Fullwidth-
+  // Konfusionszeichen (﹤ statt <) oder Maskierungen (<||DSML||tool_calls>).
+  const normalized = normalizeToolCallText(text || "");
   const calls: ToolCall[] = [];
   const invokeRegex = /<invoke name="([^"]+)">([\s\S]*?)<\/invoke>/g;
   let m: RegExpExecArray | null;
-  while ((m = invokeRegex.exec(text)) !== null) {
+  while ((m = invokeRegex.exec(normalized)) !== null) {
     const toolName = m[1].trim();
     if (!toolName) continue;
     const body = m[2] || "";
@@ -627,7 +767,7 @@ export function parseXmlToolCalls(text: string): ToolCall[] {
     let hasParams = false;
     while ((p = paramRegex.exec(body)) !== null) {
       hasParams = true;
-      args[p[1].trim()] = p[2].trim();
+      args[p[1].trim()] = autoType(p[2].trim());
     }
     // Ohne <parameter>-Blöcke: Body direkt als query (falls nicht leer)
     const argumentsStr = hasParams
@@ -643,7 +783,7 @@ export function parseXmlToolCalls(text: string): ToolCall[] {
   // vor </invoke> ab — z. B. Token-Limit). Nur wenn keine vollständigen Calls
   // gefunden wurden UND der XML-Block am Anfang dominiert (Schutz vor Halluzination).
   if (calls.length === 0) {
-    const incompleteMatch = text.match(/^[\s\S]*?<invoke name="([^"]+)">([\s\S]*)$/);
+    const incompleteMatch = normalized.match(/^[\s\S]*?<invoke name="([^"]+)">([\s\S]*)$/);
     if (incompleteMatch) {
       const toolName = incompleteMatch[1].trim();
       const body = incompleteMatch[2] || "";
@@ -654,7 +794,7 @@ export function parseXmlToolCalls(text: string): ToolCall[] {
         let p: RegExpExecArray | null;
         while ((p = paramRegex.exec(body)) !== null) {
           const pName = p[1].trim();
-          if (pName) args[pName] = p[2].trim();
+          if (pName) args[pName] = autoType(p[2].trim());
         }
         if (Object.keys(args).length > 0) {
           calls.push({
@@ -674,7 +814,10 @@ export function buildDecisionFromToolCalls(calls: ToolCall[], rawText: string): 
   return safeParseReActDecision({ text: rawText, tool_calls: calls });
 }
 
-export function safeParseReActDecision(res: { text: string; tool_calls?: ToolCall[] }): ReActDecision {
+export function safeParseReActDecision(
+  res: { text: string; tool_calls?: ToolCall[] },
+  opts?: { strictNativeOnly?: boolean }
+): ReActDecision {
   if (res.tool_calls && res.tool_calls.length > 0) {
     const thoughtMatch = res.text.match(/<think>([\s\S]*?)<\/think>/);
     const thought = thoughtMatch ? thoughtMatch[1].trim() : (res.text.trim() || "Native tool call invoked.");
@@ -773,6 +916,31 @@ export function safeParseReActDecision(res: { text: string; tool_calls?: ToolCal
 
   let cleaned = (res.text || "").trim();
 
+  // 2026-08-18: Strikter Modus (Text-Fallback-Kanal AUS) — nur strukturierte tool_calls.
+  // XML-/JSON-Textpfade werden übersprungen: gültige native Calls liefen oben; Text gilt als
+  // finale Antwort. Enthält der Text Tool-Call-XML (Leak-Kandidat), wird parseFailed gesetzt,
+  // damit der Loop eine Korrektur-Runde (strikter Retry-Prompt) startet.
+  if (opts?.strictNativeOnly) {
+    // 2026-08-18 (Vorgabe): XML-Tool-Calls werden im Strict-Modus WEITERHIN ausgeführt
+    // (kein Tool-Call-Verlust — F29-Lehre); der Strict-Modus verhindert nur den LEAK
+    // (XML als Antworttext). Unparsbare XML-Reste → parseFailed (Korrektur-Runde).
+    const xmlCalls = parseXmlToolCalls(normalizeToolCallText(res.text || ""));
+    if (xmlCalls.length > 0) {
+      return buildDecisionFromToolCalls(xmlCalls, res.text || "");
+    }
+    const rawText = (res.text || "").trim();
+    const looksLikeXml = containsToolCallXml(rawText);
+    return {
+      thought: looksLikeXml ? "Strikter Modus: XML-Text statt strukturiertem Tool-Call erkannt." : "Strikter Modus: Textantwort.",
+      isComplete: true,
+      callToolName: null,
+      callToolQuery: null,
+      parseFailed: looksLikeXml || undefined,
+      finalDraftText: rawText.length > 0 ? res.text : "Die Antwort konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.",
+      proposedChanges: null
+    };
+  }
+
   // Auftrag 007 T6: XML-Tool-Call-Format (Claude/DeepSeek: <invoke name="..."><parameter name="...">)
   // → in Tool-Calls konvertieren, BEVOR der JSON-Fallback greift. Einige Modelle (z. B. DeepSeek-V4)
   // antworten trotz tools-Parameter im XML-Text-Stil.
@@ -812,10 +980,10 @@ export function safeParseReActDecision(res: { text: string; tool_calls?: ToolCal
     }
     
     // 3. Fail-safe fallback structure
-    // Fix (QA-Befund: interner Hinweis leakte in Nutzerantworten über den thought-Fallback):
+    // Fix: interner Hinweis leakte in Nutzerantworten über den thought-Fallback —
     // finalDraftText = Rohantwort (bestmögliche Antwort) oder ehrliche deutsche Fehlermeldung.
     const rawText = (res.text || "").trim();
-    // Befund-2-Fix (2026-08-17): Klammern vorhanden (JSON-Versuch) aber unparsbar,
+    // Fix (2026-08-17): Klammern vorhanden (JSON-Versuch) aber unparsbar,
     // oder komplett leer → KEINE echte Nutzerantwort → parseFailed für Korrektur-Runde.
     // Reine Prosa (keine Klammern, nicht leer) bleibt eine legitime Text-Antwort.
     const looksLikeBrokenJson = (startIdx !== -1 && endIdx > startIdx) || rawText.length === 0;

@@ -21,6 +21,8 @@ import {
 } from "../ai/tools/crm.js";
 import {
   executeListVaultFiles, executeLocalKnowledgeSearch, executeVaultWrite, executeVaultUpdate, executeVaultDelete,
+  // Auftrag 036 P1: knowledge_*-Familie (Alias-Funktionen für die MCP-Exposition)
+  executeKnowledgeWrite, executeKnowledgeUpdate, executeKnowledgeDelete, executeKnowledgeSearch,
   executeRecallSessions, executeLearnWorkflow
 } from "../ai/tools/knowledge.js";
 import { executeListMailDrafts, executeApproveMailDraft } from "../ai/tools/messaging.js";
@@ -30,7 +32,7 @@ import { runCouncilDeliberation } from "../council/councilEngine.js";
 import crypto from "node:crypto";
 
 /**
- * MCP-Audit-Helper (Entscheidung Produktleitung 2026-08-16): MCP-Write-Aktionen (CREATE/UPDATE/DELETE)
+ * MCP-Audit-Helper (Entscheidung 2026-08-16): MCP-Write-Aktionen (CREATE/UPDATE/DELETE)
  * MÜSSEN einen Audit-Eintrag erzeugen — MCP schreibt direkt in die DB (kein Draft-Flow),
  * ohne Audit wäre die Änderung unsichtbar und der Auditlog inkonsistent.
  * Lese-Tools (get/list/search) werden bewusst NICHT geloggt.
@@ -500,10 +502,10 @@ export const MCP_TOOLS_CATALOG = [
     }
   },
 
-  // --- Vault (Wissensdatenbank) ---
+  // --- Vault (INTERNER Wissensvault / knowledge_data_vault — NICHT der Obsidian-Vault; 036) ---
   {
     name: "vault_search",
-    description: "Durchsucht den Knowledge Vault (semantische + Volltext-Suche)",
+    description: "Durchsucht den INTERNEN Wissensvault (knowledge_data_vault, semantische + Volltext-Suche) — NICHT der Obsidian-Vault",
     inputSchema: {
       type: "object",
       properties: {
@@ -515,7 +517,7 @@ export const MCP_TOOLS_CATALOG = [
   },
   {
     name: "vault_write",
-    description: "Schreibt ein Dokument in den Knowledge Vault",
+    description: "Schreibt ein Dokument in den INTERNEN Wissensvault (knowledge_data_vault) — NICHT der Obsidian-Vault",
     inputSchema: {
       type: "object",
       properties: {
@@ -527,7 +529,7 @@ export const MCP_TOOLS_CATALOG = [
   },
   {
     name: "vault_update",
-    description: "Aktualisiert ein Dokument im Knowledge Vault",
+    description: "Aktualisiert ein Dokument im INTERNEN Wissensvault (knowledge_data_vault) — NICHT der Obsidian-Vault",
     inputSchema: {
       type: "object",
       properties: {
@@ -539,7 +541,7 @@ export const MCP_TOOLS_CATALOG = [
   },
   {
     name: "vault_delete",
-    description: "Löscht ein Dokument aus dem Knowledge Vault",
+    description: "Löscht ein Dokument aus dem INTERNEN Wissensvault (knowledge_data_vault) — NICHT der Obsidian-Vault",
     inputSchema: {
       type: "object",
       properties: {
@@ -1630,30 +1632,31 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
 
-    // --- Vault (Wissensdatenbank) ---
-    case "vault_search": {
-      const res = await executeLocalKnowledgeSearch(tenantId, String(args.query || ""), undefined);
-      if (!res.success) throw new Error(res.error || "Fehler bei der Vault-Suche");
-      return res.data;
-    }
-    case "vault_write": {
-      const res = await executeVaultWrite(tenantId, JSON.stringify(args), "mcp_client");
-      if (!res.success) throw new Error(res.error || "Fehler beim Schreiben in den Vault");
-      await mcpAudit(tenantId, "CREATE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei geschrieben (${String(args.path || "n/a")}, ${String(args.content || "").length} Zeichen)`);
-      return res.data;
-    }
-    case "vault_update": {
-      const res = await executeVaultUpdate(tenantId, JSON.stringify(args), "mcp_client");
-      if (!res.success) throw new Error(res.error || "Fehler beim Aktualisieren im Vault");
-      await mcpAudit(tenantId, "UPDATE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei aktualisiert (${String(args.path || "n/a")})`);
-      return res.data;
-    }
-    case "vault_delete": {
-      const res = await executeVaultDelete(tenantId, JSON.stringify(args), "mcp_client");
-      if (!res.success) throw new Error(res.error || "Fehler beim Löschen aus dem Vault");
-      await mcpAudit(tenantId, "DELETE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei gelöscht (${String(args.path || "n/a")})`);
-      return res.data;
-    }
+    // --- Vault (INTERNER Wissensvault / knowledge_data_vault — NICHT der Obsidian-Vault; 036) ---
+        case "vault_search": {
+          // 036 P1: Dispatch über die knowledge_*-Alias-Funktionen (Katalog-Name bleibt vault_*)
+          const res = await executeKnowledgeSearch(tenantId, String(args.query || ""), undefined);
+          if (!res.success) throw new Error(res.error || "Fehler bei der Vault-Suche");
+          return res.data;
+        }
+        case "vault_write": {
+          const res = await executeKnowledgeWrite(tenantId, JSON.stringify(args), "mcp_client");
+          if (!res.success) throw new Error(res.error || "Fehler beim Schreiben in den Vault");
+          await mcpAudit(tenantId, "CREATE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei geschrieben (${String(args.path || "n/a")}, ${String(args.content || "").length} Zeichen)`);
+          return res.data;
+        }
+        case "vault_update": {
+          const res = await executeKnowledgeUpdate(tenantId, JSON.stringify(args), "mcp_client");
+          if (!res.success) throw new Error(res.error || "Fehler beim Aktualisieren im Vault");
+          await mcpAudit(tenantId, "UPDATE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei aktualisiert (${String(args.path || "n/a")})`);
+          return res.data;
+        }
+        case "vault_delete": {
+          const res = await executeKnowledgeDelete(tenantId, JSON.stringify(args), "mcp_client");
+          if (!res.success) throw new Error(res.error || "Fehler beim Löschen aus dem Vault");
+          await mcpAudit(tenantId, "DELETE", "VAULT_FILE", String(args.path || "n/a"), `MCP: Vault-Datei gelöscht (${String(args.path || "n/a")})`);
+          return res.data;
+        }
 
     // --- E-Mail / Mailing ---
     case "mail_list_drafts": {

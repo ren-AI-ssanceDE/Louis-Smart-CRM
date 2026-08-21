@@ -144,8 +144,9 @@ export async function executeListVaultFiles(
 }
 
 /**
- * S1-Tool: Recall Sessions — Volltextsuche über vergangene KI-Sessions (analog der internen Session-Suche).
- * Fallback: deterministisches Scoring (Titel 3 / Summary 2 / History 1); PG: tsvector/plainto_tsquery (injektionssicher).
+ * S1-Tool: Recall Sessions — Volltextsuche über vergangene KI-Sessions (analog session_search).
+ * Fallback: deterministisches Scoring (Titel 3 / Summary 2 / History 1) NUR für den Fallback-Store
+ * (Test/Notbetrieb — nicht identisch zur PG-ts_rank-Gewichtung); PG: tsvector/plainto_tsquery (injektionssicher).
  */
 function buildRecallSnippet(row: {
   conversation_history_json?: unknown;
@@ -229,9 +230,29 @@ async function resolveParentSession(tenantId: string, parentId: string | null | 
   }
 }
 
+// Auftrag 025 Phase 5 (#48): Reines Recall-Scoring (Fallback-Store-Zweig) — Gewichte
+// identisch zur PG-ts_rank-Gewichtung (Titel > Summary > History). Testbar, kein any.
+export function scoreSessionForRecall(
+  session: { session_title?: unknown; short_term_summary_text?: unknown; conversation_history_json?: unknown },
+  term: string
+): number {
+  const title = String(session.session_title || "").toLowerCase();
+  const summary = String(session.short_term_summary_text || "").toLowerCase();
+  const historyStr = JSON.stringify(session.conversation_history_json || {}).toLowerCase();
+  const t = String(term || "").toLowerCase().trim();
+  if (!t) return 0;
+  let score = 0;
+  if (title.includes(t)) score += 3;
+  if (summary.includes(t)) score += 2;
+  if (historyStr.includes(t)) score += 1;
+  return score;
+}
+
 export async function executeRecallSessions(
   tenantId: string,
-  argsStr?: string
+  argsStr?: string,
+  // Auftrag 025 Phase 5 (#48): Admin-Config (NULL = Backend-Default, Regel 12)
+  opts?: { ftsEnabled?: boolean; defaultLimit?: number }
 ): Promise<ToolResult<PaginatedToolResponse<SessionRecallHit>>> {
   try {
     let rawArgs: unknown = {};
@@ -247,10 +268,11 @@ export async function executeRecallSessions(
     if (!parsed.success) {
       return createToolError(`Bitte einen Suchbegriff angeben (recall_sessions): ${parsed.error.message}`);
     }
-    const { query, limit, offset } = parsed.data;
-    // Serverseitig hart klemmen (LLM-generierte Werte)
-    const clampedLimit = Math.min(limit, 20);
+    const { query, offset } = parsed.data;
+    // Serverseitig hart klemmen (LLM-generierte Werte); Default aus Admin-Config (recall_search_limit)
+    const clampedLimit = Math.min(parsed.data.limit ?? (opts?.defaultLimit ?? 10), 20);
     const clampedOffset = Math.min(offset, 1000);
+    const ftsEnabled = opts?.ftsEnabled ?? true;
 
     let hits: SessionRecallHit[] = [];
     let totalCount = 0;
@@ -259,31 +281,13 @@ export async function executeRecallSessions(
     if (isUsingFallback || !pool) {
       const sessions = fallbackStore.louisAiSessions || [];
       const term = query.toLowerCase().trim();
-      const scored = sessions
-        .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
-        .map((s) => {
-          const title = String(s.session_title || "").toLowerCase();
-          const summary = String(s.short_term_summary_text || "").toLowerCase();
-          const historyStr = JSON.stringify(s.conversation_history_json || {}).toLowerCase();
-          let score = 0;
-          if (title.includes(term)) score += 3;
-          if (summary.includes(term)) score += 2;
-          if (historyStr.includes(term)) score += 1;
-          return { s, score };
-        })
-        .filter((x) => x.score > 0)
-        .sort(
-          (a, b) => b.score - a.score || String(b.s.created_at_utc).localeCompare(String(a.s.created_at_utc))
-        );
-      totalCount = scored.length;
-      // B5 (Auftrag 010): Fallback bei 0 Treffern → neueste Sessions liefern
-      if (scored.length === 0) {
-        usedFallback = true;
+      // Auftrag 025 Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
+      if (!ftsEnabled) {
         const newest = sessions
           .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
           .sort((a, b) => String(b.created_at_utc).localeCompare(String(a.created_at_utc)));
+        usedFallback = true;
         totalCount = newest.length;
-        hits = [];
         for (const x of newest.slice(0, clampedLimit)) {
           hits.push({
             id_uuid: String(x.id_uuid),
@@ -291,40 +295,55 @@ export async function executeRecallSessions(
             snippet: buildRecallSnippet(x),
             relevance: 0,
             created_at_utc: String(x.created_at_utc || ""),
-            // Auftrag 012 P0-3: Kontext-Fenster + Lineage
             context_window: buildContextWindow(x.conversation_history_json, query),
             parent_session: await resolveParentSession(tenantId, x.parent_session_id)
           });
         }
       } else {
-        hits = [];
-        for (const x of scored.slice(clampedOffset, clampedOffset + clampedLimit)) {
-          hits.push({
-            id_uuid: String(x.s.id_uuid),
-            session_title: String(x.s.session_title || ""),
-            snippet: buildRecallSnippet(x.s),
-            relevance: x.score,
-            created_at_utc: String(x.s.created_at_utc || ""),
-            context_window: buildContextWindow(x.s.conversation_history_json, query),
-            parent_session: await resolveParentSession(tenantId, x.s.parent_session_id)
-          });
+        const scored = sessions
+          .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
+          .map((s) => ({ s, score: scoreSessionForRecall(s, term) }))
+          .filter((x) => x.score > 0)
+          .sort(
+            (a, b) => b.score - a.score || String(b.s.created_at_utc).localeCompare(String(a.s.created_at_utc))
+          );
+        totalCount = scored.length;
+        // (Auftrag 010): Fallback bei 0 Treffern → neueste Sessions liefern
+        if (scored.length === 0) {
+          usedFallback = true;
+          const newest = sessions
+            .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
+            .sort((a, b) => String(b.created_at_utc).localeCompare(String(a.created_at_utc)));
+          totalCount = newest.length;
+          for (const x of newest.slice(0, clampedLimit)) {
+            hits.push({
+              id_uuid: String(x.id_uuid),
+              session_title: String(x.session_title || ""),
+              snippet: buildRecallSnippet(x),
+              relevance: 0,
+              created_at_utc: String(x.created_at_utc || ""),
+              // Auftrag 012 P0-3: Kontext-Fenster + Lineage
+              context_window: buildContextWindow(x.conversation_history_json, query),
+              parent_session: await resolveParentSession(tenantId, x.parent_session_id)
+            });
+          }
+        } else {
+          for (const x of scored.slice(clampedOffset, clampedOffset + clampedLimit)) {
+            hits.push({
+              id_uuid: String(x.s.id_uuid),
+              session_title: String(x.s.session_title || ""),
+              snippet: buildRecallSnippet(x.s),
+              relevance: x.score,
+              created_at_utc: String(x.s.created_at_utc || ""),
+              context_window: buildContextWindow(x.s.conversation_history_json, query),
+              parent_session: await resolveParentSession(tenantId, x.s.parent_session_id)
+            });
+          }
         }
       }
     } else {
-      const res = await pool.query(
-        `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id,
-                ts_rank(to_tsvector('german', session_title || ' ' || COALESCE(short_term_summary_text,'') || ' ' || conversation_history_json::text), plainto_tsquery('german', $1)) AS relevance,
-                COUNT(*) OVER() AS total_count
-         FROM sys_louis_ai_sessions
-         WHERE (tenant_id = $2 OR tenant_id = '1')
-           AND to_tsvector('german', session_title || ' ' || COALESCE(short_term_summary_text,'') || ' ' || conversation_history_json::text) @@ plainto_tsquery('german', $1)
-         ORDER BY relevance DESC, created_at_utc DESC
-         LIMIT $3 OFFSET $4`,
-        [query, tenantId, clampedLimit, clampedOffset]
-      );
-      totalCount = res.rows.length > 0 ? Number(res.rows[0].total_count || 0) : 0;
-      // B5 (Auftrag 010): Fallback bei 0 Volltext-Treffern → neueste Sessions
-      if (res.rows.length === 0) {
+      // Auftrag 025 Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
+      if (!ftsEnabled) {
         const fb = await pool.query(
           `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id
            FROM sys_louis_ai_sessions
@@ -335,7 +354,6 @@ export async function executeRecallSessions(
         );
         usedFallback = true;
         totalCount = fb.rows.length;
-        hits = [];
         for (const row of fb.rows) {
           hits.push({
             id_uuid: String(row.id_uuid),
@@ -348,17 +366,65 @@ export async function executeRecallSessions(
           });
         }
       } else {
-        hits = [];
-        for (const row of res.rows) {
-          hits.push({
-            id_uuid: String(row.id_uuid),
-            session_title: String(row.session_title || ""),
-            snippet: buildRecallSnippet(row),
-            relevance: Number(row.relevance || 0),
-            created_at_utc: String(row.created_at_utc || ""),
-            context_window: buildContextWindow(row.conversation_history_json, query),
-            parent_session: await resolveParentSession(tenantId, row.parent_session_id)
-          });
+        // #48 Ranking-Verbesserung: gewichtete ts_rank (Titel A=1.0 > Summary B=0.4 > History C=0.3)
+        // + Recency-Bonus (+15 % für Sessions aus den letzten 90 Tagen — neuere > ältere).
+        // Auftrag 041 (Option B): History via history_searchable_text (generierte Spalte, nur
+        // content-Felder — kein JSON-Rauschen mehr), Gewicht C 0.2 → 0.3.
+        const res = await pool.query(
+          `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id,
+                  (ts_rank('{0.1, 0.2, 0.4, 1.0}',
+                           setweight(to_tsvector('german', COALESCE(session_title,'')), 'A') ||
+                           setweight(to_tsvector('german', COALESCE(short_term_summary_text,'')), 'B') ||
+                           setweight(to_tsvector('german', COALESCE(history_searchable_text,'')), 'C'),
+                           plainto_tsquery('german', $1))
+                   * (1.0 + 0.15 * GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - created_at_utc)) / (90.0*86400.0)))) AS relevance,
+                  COUNT(*) OVER() AS total_count
+           FROM sys_louis_ai_sessions
+           WHERE (tenant_id = $2 OR tenant_id = '1')
+             AND (setweight(to_tsvector('german', COALESCE(session_title,'')), 'A') ||
+                  setweight(to_tsvector('german', COALESCE(short_term_summary_text,'')), 'B') ||
+                  setweight(to_tsvector('german', COALESCE(history_searchable_text,'')), 'C'))
+                 @@ plainto_tsquery('german', $1)
+           ORDER BY relevance DESC, created_at_utc DESC
+           LIMIT $3 OFFSET $4`,
+          [query, tenantId, clampedLimit, clampedOffset]
+        );
+        totalCount = res.rows.length > 0 ? Number(res.rows[0].total_count || 0) : 0;
+        // (Auftrag 010): Fallback bei 0 Volltext-Treffern → neueste Sessions
+        if (res.rows.length === 0) {
+          const fb = await pool.query(
+            `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id
+             FROM sys_louis_ai_sessions
+             WHERE (tenant_id = $1 OR tenant_id = '1')
+             ORDER BY created_at_utc DESC
+             LIMIT $2`,
+            [tenantId, clampedLimit]
+          );
+          usedFallback = true;
+          totalCount = fb.rows.length;
+          for (const row of fb.rows) {
+            hits.push({
+              id_uuid: String(row.id_uuid),
+              session_title: String(row.session_title || ""),
+              snippet: buildRecallSnippet(row),
+              relevance: 0,
+              created_at_utc: String(row.created_at_utc || ""),
+              context_window: buildContextWindow(row.conversation_history_json, query),
+              parent_session: await resolveParentSession(tenantId, row.parent_session_id)
+            });
+          }
+        } else {
+          for (const row of res.rows) {
+            hits.push({
+              id_uuid: String(row.id_uuid),
+              session_title: String(row.session_title || ""),
+              snippet: buildRecallSnippet(row),
+              relevance: Number(row.relevance || 0),
+              created_at_utc: String(row.created_at_utc || ""),
+              context_window: buildContextWindow(row.conversation_history_json, query),
+              parent_session: await resolveParentSession(tenantId, row.parent_session_id)
+            });
+          }
         }
       }
     }
@@ -948,7 +1014,7 @@ export async function learnWorkflow(
 ): Promise<CustomWorkflow> {
   const final_id = id_uuid || uuidv4();
 
-  // Auftrag 008 4B/4C (Produktentscheid Option A): DAG ist der einzige Workflow-Pfad.
+  // DAG ist der einzige Workflow-Pfad.
   // Fehlt eine dag_structure, wird sie automatisch aus der linearen Sequenz erzeugt
   // (Kette) — so laufen NEUE Workflows IMMER über die DAG-Engine (Abwärtskompatibilität:
   // bestehende dag_structure wird nie überschrieben, tool_chain_sequence bleibt erhalten).
@@ -1564,13 +1630,18 @@ async function validateWorkflowTools(tenantId: string, steps: Array<{ tool?: str
   const known = new Set<string>();
   try {
     // Dynamischer Import bricht den zirkulären Import (agentRuntime → tools.js → knowledge.ts)
-    const { SYSTEM_TOOL_CATALOG } = await import("../agentRuntime.js");
+    const { SYSTEM_TOOL_CATALOG, INTERNAL_VAULT_TOOL_ALIASES } = await import("../agentRuntime.js");
     for (const t of SYSTEM_TOOL_CATALOG) known.add(t.name);
+    // Auftrag 036 P1: alte vault_*-Alias-Namen aus dem Katalog sind nicht mehr primär,
+    // bleiben aber als Workflow-Schritt-Tools gültig (Abwärtskompatibilität).
+    if (INTERNAL_VAULT_TOOL_ALIASES) {
+      for (const alias of INTERNAL_VAULT_TOOL_ALIASES) known.add(alias);
+    }
   } catch {
     // Katalog nicht ladbar — Validierung stützt sich dann auf MCP-Tools + Executor-Aliase
   }
   try {
-    const mcpTools = await McpClientEngine.listToolsForLouis(tenantId);
+    const mcpTools = await McpClientEngine.listToolsForLouis(tenantId, null);
     for (const t of mcpTools) known.add(t.normalized_tool_name);
   } catch {
     // MCP-Liste nicht ladbar — ignorieren
@@ -1915,5 +1986,55 @@ export async function executeVaultDelete(
     const msg = err instanceof Error ? err.message : String(err);
     return createToolError(`Fehler im Tool 'vault_delete': ${msg}`);
   }
+}
+
+// ============================================================================
+// Auftrag 036 P1: knowledge_*-Familie — exportierte Alias-Funktionen (wrappbar)
+// Die MCP-Exposition (mcpServer.ts) und Workflow-Executoren können die neuen
+// Namen aufrufen; die Implementierung bleibt in den vault_-Funktionen (DRY).
+// ============================================================================
+
+/** 036 P1: Alias für executeVaultWrite — neuer Wissensvault-Name (knowledge_write). */
+export async function executeKnowledgeWrite(
+  tenantId: string,
+  argsStr: string,
+  actor: string = "system"
+): Promise<ToolResult<Record<string, unknown>>> {
+  return executeVaultWrite(tenantId, argsStr, actor);
+}
+
+/** 036 P1: Alias für executeVaultUpdate — neuer Wissensvault-Name (knowledge_update). */
+export async function executeKnowledgeUpdate(
+  tenantId: string,
+  argsStr: string,
+  actor: string = "system"
+): Promise<ToolResult<Record<string, unknown>>> {
+  return executeVaultUpdate(tenantId, argsStr, actor);
+}
+
+/** 036 P1: Alias für executeVaultDelete — neuer Wissensvault-Name (knowledge_delete). */
+export async function executeKnowledgeDelete(
+  tenantId: string,
+  argsStr: string,
+  actor: string = "system"
+): Promise<ToolResult<Record<string, unknown>>> {
+  return executeVaultDelete(tenantId, argsStr, actor);
+}
+
+/** 036 P1: Alias für executeLocalKnowledgeSearch — neuer Wissensvault-Name (knowledge_search). */
+export async function executeKnowledgeSearch(
+  tenantId: string,
+  query: string,
+  aiClient?: GoogleGenAI
+): Promise<ToolResult<Record<string, unknown>>> {
+  return executeLocalKnowledgeSearch(tenantId, query, aiClient);
+}
+
+/** 036 P1: Alias für executeListVaultFiles — neuer Wissensvault-Name (list_knowledge_files). */
+export async function executeListKnowledgeFiles(
+  tenantId: string,
+  argsStr?: string
+): Promise<ToolResult<PaginatedToolResponse<string>>> {
+  return executeListVaultFiles(tenantId, argsStr);
 }
 

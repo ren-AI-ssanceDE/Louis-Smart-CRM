@@ -67,7 +67,7 @@ export const LouisAiMemoryForm = () => {
       setEditingNoteId(null);
     },
     onError: (err) => {
-      toast.error(t('admin:toast_note_updated_error', { defaultValue: 'Fehler beim Aktualisieren: ' }) + err.message);
+      toast.error(t('admin:toast_note_updated_error', { defaultValue: 'Fehler beim Aktualisieren der Notiz.' }));
     }
   });
 
@@ -80,7 +80,7 @@ export const LouisAiMemoryForm = () => {
       setDeletingNoteId(null);
     },
     onError: (err) => {
-      toast.error(t('admin:toast_note_deleted_error', { defaultValue: 'Fehler beim Löschen: ' }) + err.message);
+      toast.error(t('admin:toast_note_deleted_error', { defaultValue: 'Fehler beim Löschen der Notiz.' }));
       setDeletingNoteId(null);
     }
   });
@@ -99,7 +99,7 @@ export const LouisAiMemoryForm = () => {
       setIsNoteSubmitAttempted(false);
     },
     onError: (err) => {
-      toast.error(t('admin:toast_note_added_error', { defaultValue: 'Fehler beim Hinzufügen der Notiz: ' }) + err.message);
+      toast.error(t('admin:toast_note_added_error', { defaultValue: 'Fehler beim Hinzufügen der Notiz.' }));
     }
   });
 
@@ -115,7 +115,7 @@ export const LouisAiMemoryForm = () => {
       refetchKFiles();
     },
     onError: (err) => {
-      toast.error(t('admin:toast_rag_toggle_error', { defaultValue: 'RAG-Umschaltung fehlgeschlagen: ' }) + err.message);
+      toast.error(t('admin:toast_rag_toggle_error', { defaultValue: 'RAG-Umschaltung fehlgeschlagen.' }));
       setTogglingNoteRagId(null);
     }
   });

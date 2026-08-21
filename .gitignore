@@ -9,13 +9,15 @@ coverage/
 
 # Local fallback databases
 .local_fallback_db.json*
+.local/
 
 # End-to-end test outputs
 e2e-out/
 playwright-report/
 test-results/
 
-# Vendored build-time assets (Lato-Fonts, im Repo getrackt für reproduzierbare Builds)
+# Vendored build-time assets — provisioned by `npm run setup-assets`
+src/assets/fonts/*.ttf
 mustang-cli.jar
 
 # Local invoice artifacts (PDF/A-3b output, generated XML, validation logs)
@@ -36,3 +38,10 @@ ollama/gguf/
 docker-compose.yml.bak-20260816
 containers-before.txt
 ollama-inspect-before.json
+
+# Lokale Artefakte — nie committen (Stefan-Go 2026-08-21)
+louis-smart-crm.rar
+.hermes/
+
+# Interne Dokumentation — nie in die öffentliche Kopie (Stefan 2026-08-21)
+AGENTS.md

@@ -22,6 +22,9 @@ contacts_data_vault
 knowledge_data_vault
 uploads
 
+# Stryker-Sandbox-Kopien (125 GB+ Projektkopien mit node_modules — nie im Build-Kontext!)
+.stryker-tmp
+
 # Ollama local model store (50 GB+ GGUF/Blobs — nur als Volume, nie im Build-Kontext)
 ollama
 ollama/models

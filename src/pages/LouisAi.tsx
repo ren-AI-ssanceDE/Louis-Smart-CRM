@@ -31,6 +31,8 @@ import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { MailDraftAttachment } from '../types';
 import { trpc } from '../lib/trpc';
+// C.7 (Plan 2026-08-19): Chatprofil-Selektor + Tool-Panel im Chat-Header
+import { ChatProfileSelector } from '../components/chat/ChatProfileSelector';
 import { toast } from 'sonner';
 import { downloadFileFromUrl } from '../lib/utils';
 import { ProposedChangeViewer } from '../components/ProposedChangeViewer';
@@ -40,9 +42,11 @@ interface Message {
   content: string;
   thought_log?: string[];
   used_skills?: string[];
+  // Auftrag 025 Phase 3 (#20): Anzahl der erinnerten Memory-Einträge (🧠-Feedback)
+  memory_recall_count?: number;
   proposed_changes?: {
-    entity_type: 'companies' | 'contacts' | 'invoices' | 'vault_skill';
-    action: 'CREATE' | 'UPDATE' | 'DELETE';
+    entity_type: 'companies' | 'contacts' | 'invoices' | 'vault_skill' | 'emails' | 'offers' | 'note' | 'kanban_board' | 'kanban_column' | 'kanban_card';
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'SEND' | 'MOVE';
     id_uuid?: string;
     proposed_state: Record<string, unknown>;
     explanation_rational: string;
@@ -184,7 +188,6 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
   // UI-Lücke S1: ausklappbare Session-Historie direkt am Chat
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loadedSessionTitle, setLoadedSessionTitle] = useState<string | undefined>(undefined);
-  const sessionsQuery = trpc.listSessions.useQuery(undefined, { enabled: historyOpen });
   const deleteSessionMutation = trpc.deleteChatSession.useMutation({
     onSuccess: () => sessionsQuery.refetch()
   });
@@ -234,10 +237,42 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
 
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  // 2026-08-20: Das IM CHAT gewählte Chatprofil (UI-Auswahl, unabhängig von der
+  // Session-Bindung) — der Wechsel startet einen neuen Chat-Kontext, keine Umbindung.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>(undefined);
+  // Profilgebundener Verlauf (2026-08-19): Der Verlauf zeigt nur Sessions des AKTIVEN
+  // Chatprofils (eigene Session-DB pro Profil). Anker: Bindung der aktuellen
+  // Session, sonst das Default-Profil (bzw. Main).
+  const sessionProfileQuery = trpc.getSessionProfileInfo.useQuery({ session_id: sessionId }, { enabled: !!sessionId });
+  const chatProfilesQuery = trpc.listChatProfiles.useQuery(undefined, { enabled: !sessionId });
+  // Verlauf-Anker (2026-08-20): 1. die UI-Auswahl (selectedProfileId), 2. die
+  // Bindung der aktiven Session, 3. das Default-Profil (bzw. Main).
+  const activeProfileId = selectedProfileId
+    ?? (sessionId ? (sessionProfileQuery.data as { profile_id?: string } | undefined)?.profile_id : undefined)
+    ?? (((chatProfilesQuery.data || []) as Array<{ id_uuid: string; is_default?: boolean; is_system?: boolean }>).find((p) => p.is_default)?.id_uuid
+      || ((chatProfilesQuery.data || []) as Array<{ id_uuid: string; is_system?: boolean }>).find((p) => p.is_system)?.id_uuid);
+  const sessionsQuery = trpc.listSessions.useQuery({ profile_id: activeProfileId }, { enabled: historyOpen });
+  // (2026-08-19): Warm Resume — beim Öffnen die letzte Session laden,
+  // falls noch keine aktiv ist (die letzte Session wird wiederhergestellt).
+  const lastSessionQuery = trpc.getLastSession.useQuery(undefined, { enabled: !sessionId });
+  // 2026-08-20: Warm Resume NUR beim ersten Öffnen (die letzte Session wird nur beim Start wiederhergestellt).
+  // Nach einem PROFILWECHSEL darf die letzte Session NICHT erneut geladen werden — der Wechsel
+  // ist ein NEUER Kontext (leeres Fenster).
+  const warmResumeDone = useRef(false);
+  useEffect(() => {
+    if (warmResumeDone.current) return;
+    if (!sessionId && lastSessionQuery.data) {
+      warmResumeDone.current = true;
+      void loadSession(lastSessionQuery.data.id_uuid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, lastSessionQuery.data]);
   // Auftrag 013 P2-B: bisherige Session als parent beim nächsten sendMessage (nur 1x)
   const [pendingParentSessionId, setPendingParentSessionId] = useState<string | undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showThoughts, setShowThoughts] = useState<Record<number, boolean>>({});
+  // Auftrag 038 P0-B: Kompressions-Anzeige (Louis komprimiert gerade den Verlauf)
+  const [compressionNotice, setCompressionNotice] = useState<'in_progress' | 'done' | null>(null);
 
   // Auftrag 013 P2-A: Skill-Suggestions (Backend-Event → Chat-Karte)
   const skillSuggestionsQuery = trpc.listSkillSuggestions.useQuery(undefined, { enabled: true });
@@ -355,6 +390,11 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [isPending, setIsPending] = useState(false);
+  // Auftrag 026 P2 (#53-UI): laufende Subtasks im Thought-Log abbrechen (Polling nur während einer Antwort)
+  const runningSubtasksQuery = trpc.listRunningSubtasks.useQuery(undefined, { refetchInterval: isPending ? 5000 : false });
+  const abortSubtaskMutation = trpc.abortRunningSubtask.useMutation({
+    onSuccess: () => { void runningSubtasksQuery.refetch(); }
+  });
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // File attachment states (chat upload)
@@ -557,7 +597,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     if (pendingAttachments.some(a => a.status === 'uploading')) return;
 
     // Default prompt when only files are attached (e.g. "search in this file")
-    // Fix (QA-Befund F1-16/17): fehlgeschlagene Uploads dem Agenten als Kontext mitgeben,
+    // Fix: fehlgeschlagene Uploads dem Agenten als Kontext mitgeben,
     // damit er die Ablehnung ehrlich meldet statt Datei-Inhalte zu erfinden.
     const failedAttachments = pendingAttachments.filter(a => a.status === 'error');
     const failedNote = failedAttachments.length > 0
@@ -574,13 +614,17 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
       isIndexedInKnowledgeBase: a.descriptor!.isIndexedInKnowledgeBase
     }));
 
-    // Add user message to state (with attachment chips)
+    // Add user message to state (with attachment chips).
+    // Auftrag 039 P0 (B1): Timestamp-Marker für die Bubble — bei compressionInProgress
+    // wird genau DIESE Bubble wieder entfernt (nicht slice(0,-1), das wäre bei
+    // parallelen State-Updates unsicher).
+    const userBubbleTimestamp = new Date().toISOString();
     setMessages(prev => [
       ...prev,
       {
         role: 'user',
         content: userMsg,
-        timestamp_utc: new Date().toISOString(),
+        timestamp_utc: userBubbleTimestamp,
         attachments: attachmentRefs.map(a => ({ fileName: a.fileName, isIndexedInKnowledgeBase: a.isIndexedInKnowledgeBase }))
       }
     ]);
@@ -600,7 +644,9 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         language: i18n.language,
         attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
         // Auftrag 013 P2-B: Lineage — beim ersten sendMessage nach „Als Verlauf fortsetzen“
-        parentSessionId: pendingParentSessionId
+        parentSessionId: pendingParentSessionId,
+        // 2026-08-20: Das im Chat gewählte Profil — die NEUE Session wird daran gebunden
+        chat_profile_id: selectedProfileId
       }, {
         signal: controller.signal
       });
@@ -614,6 +660,21 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         setSessionId(resultObj.sessionId);
       }
 
+      // Auftrag 038 P0-B: Louis komprimiert gerade den Verlauf → Hinweis anzeigen,
+      // Nachricht NICHT als Antwort hängen (Server hat sie nicht verarbeitet).
+      // Auftrag 039 P0 (B1): die eben hinzugefügte User-Bubble wieder entfernen,
+      // sonst steht die Nachricht doppelt (Bubble + Eingabefeld) beim erneuten Senden.
+      if (resultObj.compressionInProgress) {
+        setMessages(prev => prev.filter(m => !(m.role === 'user' && m.timestamp_utc === userBubbleTimestamp)));
+        setCompressionNotice('in_progress');
+        setInputText(userMsg);
+        return;
+      }
+      if (compressionNotice !== null) {
+        setCompressionNotice('done');
+        setTimeout(() => setCompressionNotice(null), 4000);
+      }
+
       setMessages(prev => [
         ...prev,
         {
@@ -621,6 +682,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
           content: resultObj.replyText,
           thought_log: resultObj.thoughtLog,
           used_skills: resultObj.usedSkills,
+          memory_recall_count: resultObj.memoryRecallCount,
           proposed_changes: resultObj.proposedChanges,
           timestamp_utc: new Date().toISOString(),
           metrics: resultObj.metrics
@@ -692,15 +754,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
             <div className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-primary-dark shadow-[0_0_8px_#10b981]" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-black tracking-wide text-white font-display uppercase italic">{t('louis_copilot:title_brand', { defaultValue: 'LOUIS CRM AI' })}</h2>
-              <span className="bg-accent-orange/10 border border-accent-orange/20 text-accent-orange text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest font-mono">
-                ReAct Core v1.4
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 font-medium">
-              {t('louis_copilot:louis_ai_subtitle', { defaultValue: "Intelligenter Assistent für Analysen, Recherche & Zero-Direct-Write CRM-Mutierung" })}
-            </p>
+            <h2 className="text-base font-black tracking-wide text-white font-display uppercase italic">{t('louis_copilot:title_brand', { defaultValue: 'Louis' })}</h2>
             {loadedSessionTitle && (
               <p className="text-[10px] text-accent-orange font-bold mt-0.5 truncate max-w-[220px]" title={loadedSessionTitle}>
                 {t('louis_copilot:session_active', { defaultValue: "Aktiv" })}: {loadedSessionTitle}
@@ -709,6 +763,22 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* C.7 + 2026-08-20: Profilwechsel = NEUER Chat-Kontext (keine Umbindung!) —
+              die aktive Session bleibt beim alten Profil, der nächste sendMessage erstellt
+              eine neue Session im gewählten Profil */}
+          <ChatProfileSelector
+            sessionId={sessionId}
+            selectedProfileId={selectedProfileId}
+            onProfileSwitched={(profileId) => {
+              setSelectedProfileId(profileId);
+              setSessionId(undefined);
+              // 2026-08-20: KOMPLETTER Reset des Chatfensters (neuer Konversationskontext) —
+              // Session-Titel + Nachrichten leeren, sonst bleibt „Aktiv: <alte Session>“ stehen
+              setLoadedSessionTitle(undefined);
+              setMessages([]);
+              setHistoryOpen(false);
+            }}
+          />
           <button
             onClick={() => setHistoryOpen((o) => !o)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all ${historyOpen ? "border-accent-orange/40 text-accent-orange bg-white/5" : "border-white/5 text-slate-400 hover:text-white hover:bg-white/5"}`}
@@ -717,12 +787,14 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
             <History size={12} />
             {t('louis_copilot:chat_history', { defaultValue: "Verlauf" })}
           </button>
+          {/* 2026-08-20: „Neu starten“ = NEUER Chat im aktiven Profil — der bisherige
+              Chat bleibt in der DB + im Verlauf erhalten (KEIN Löschen!) */}
           <button
             onClick={() => {
               setMessages([]);
               setSessionId(undefined);
               setLoadedSessionTitle(undefined);
-              toast.success(t('louis_copilot:chat_reset', { defaultValue: "Unterhaltung zurückgesetzt" }));
+              toast.success(t('louis_copilot:chat_reset', { defaultValue: "Neuer Chat gestartet" }));
             }}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/5 text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-all font-bold uppercase tracking-wider"
           >
@@ -994,6 +1066,14 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                   </div>
                 )}
 
+                {/* Auftrag 025 Phase 3 (#20): Recall-Status — sichtbares Memory-Feedback */}
+                {msg.role === 'assistant' && (msg.memory_recall_count ?? 0) > 0 && (
+                  <div className="flex items-center gap-1 text-[9px] font-mono text-slate-400 bg-accent-blue/5 border border-accent-blue/10 px-2 py-0.5 rounded-full select-none">
+                    <span>🧠</span>
+                    <span>{t('louis_copilot:memory_recall_label', { defaultValue: 'erinnert an' })} {msg.memory_recall_count} {t('louis_copilot:memory_recall_entries', { defaultValue: 'Einträge' })}</span>
+                  </div>
+                )}
+
                 {msg.role === 'assistant' && (
                   <button
                     onClick={() => {
@@ -1036,6 +1116,26 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                           <Database className="w-3.5 h-3.5 text-accent-blue" />
                           <span className="text-xs uppercase font-black text-slate-400 tracking-wider">{t('louis_copilot:multi_agent_log', { defaultValue: 'Multi-Agent State Log' })}</span>
                         </div>
+                        {/* Auftrag 026 P2 (#53-UI): laufende Sub-Agenten abbrechen */}
+                        {(runningSubtasksQuery.data?.subtask_ids ?? []).length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 pb-2 mb-2 border-b border-white/5">
+                            <span className="text-[10px] uppercase font-black text-amber-400 tracking-wider">
+                              {t('louis_copilot:running_subtasks', { defaultValue: '⏳ Laufende Sub-Agenten' })}
+                            </span>
+                            {(runningSubtasksQuery.data?.subtask_ids ?? []).map((sid) => (
+                              <button
+                                key={sid}
+                                type="button"
+                                data-testid={`abort-subtask-${sid}`}
+                                onClick={() => abortSubtaskMutation.mutate({ subtask_id: sid })}
+                                disabled={abortSubtaskMutation.isPending}
+                                className="text-[10px] font-mono bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/20 px-2 py-1 rounded-lg cursor-pointer disabled:opacity-50"
+                              >
+                                ⏹ {sid} {t('louis_copilot:abort_subtask', { defaultValue: 'abbrechen' })}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {msg.thought_log.map((thought, idx) => {
                           const isTool = thought.includes("Executing tool") || thought.includes("Tool");
                           const isSuccess = thought.includes("Success");
@@ -1138,6 +1238,32 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
 
         <div ref={chatEndRef} />
       </div>
+
+      {/* Auftrag 038 P0-B: Kompressions-Hinweis (Louis komprimiert den Verlauf) */}
+      {compressionNotice !== null && (
+        <div className="px-4 py-2 bg-primary-dark/60 border-t border-white/5">
+          <div className="flex items-center gap-2 text-xs">
+            {compressionNotice === 'in_progress' ? (
+              <>
+                <RefreshCw size={12} className="shrink-0 text-violet-400 animate-spin" />
+                <span className="text-violet-300 font-sans">
+                  {t('louis_copilot:compression_in_progress', { defaultValue: '🗜️ Louis komprimiert den Verlauf…' })}
+                </span>
+                <span className="text-slate-400 font-sans">
+                  {t('louis_copilot:compression_wait_hint', { defaultValue: 'Bitte in ein paar Sekunden erneut senden.' })}
+                </span>
+              </>
+            ) : (
+              <>
+                <Check size={12} className="shrink-0 text-emerald-400" />
+                <span className="text-emerald-300 font-sans">
+                  {t('louis_copilot:compression_done', { defaultValue: '✓ Louis hat den Verlauf zusammengefasst.' })}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="p-4 bg-primary-dark/80 border-t border-white/5">

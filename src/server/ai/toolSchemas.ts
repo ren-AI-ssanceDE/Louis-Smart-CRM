@@ -81,12 +81,18 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
 
   // KNOWLEDGE / VAULT
   web_search: queryOnly("Suchbegriff (z. B. 'Mehrwertsteuersatz Dänemark 2026')"),
-  local_knowledge: queryOnly("Suchbegriff oder Dateiname im Vault"),
-  list_vault_files: queryOnly("optional: Filter (Kategorie) oder leerer String"),
+  // Auftrag 036 P1: knowledge_*-Familie (interne Wissensvault-Tools) — Alias-Schemas
+  knowledge_search: queryOnly("Suchbegriff oder Dateiname im Vault (INTERNER Wissensvault)"),
+  list_knowledge_files: queryOnly("optional: Filter (Kategorie) oder leerer String"),
+  knowledge_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv"),
+  knowledge_update: queryOnly("Datei-Daten als JSON: { file_name, content }"),
+  knowledge_delete: queryOnly("Dateiname als JSON: { file_name }"),
+  local_knowledge: queryOnly("Suchbegriff oder Dateiname im Vault (Alias: knowledge_search)"),
+  list_vault_files: queryOnly("optional: Filter (Kategorie) oder leerer String (Alias: list_knowledge_files)"),
   // G8 (Auftrag 009): Vault-Vollverwaltung
-  vault_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv"),
-  vault_update: queryOnly("Datei-Daten als JSON: { file_name, content }"),
-  vault_delete: queryOnly("Dateiname als JSON: { file_name }"),
+  vault_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv (Alias: knowledge_write)"),
+  vault_update: queryOnly("Datei-Daten als JSON: { file_name, content } (Alias: knowledge_update)"),
+  vault_delete: queryOnly("Dateiname als JSON: { file_name } (Alias: knowledge_delete)"),
   recall_sessions: queryOnly("Suchbegriff als JSON: { query, limit, offset } oder Freitext"),
   vault_search: queryOnly("Suchbegriff als JSON: { query, limit } oder Freitext"),
   vault_read: queryOnly("Dateipfad als JSON: { path } oder Pfad-String"),
@@ -205,6 +211,9 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
     additionalProperties: false
   },
   verify_subtask: queryOnly("Subtask-Status als JSON: { subtask_id, evidence }"),
+  // Auftrag 026 P1-3 (#53): Subagent-Steering
+  steer_subtask: queryOnly("Steer-Nachricht als JSON: { subtask_id, message }"),
+  abort_subtask: queryOnly("Abbruch als JSON: { subtask_id, reason? }"),
   ask_user_question: {
     type: "object",
     properties: {
@@ -257,4 +266,76 @@ export function buildNativeTools(
         parameters: TOOL_PARAMETERS[t.name] || { type: "object" as const }
       }
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Auftrag 025 Phase 1 (#8): Tool-Schema-Normalisierung.
+// Doppelt gewrappte OpenAI-Tool-Schemas unwrappen, BEVOR sie an den Provider
+// gehen (DeepSeek-HTTP-400-Schutz; Muster normalize_tool_schema).
+// Erkennung: parameters.properties enthält GENAU EIN
+// Feld, dessen Wert wieder ein vollständiges JSON-Schema
+// ({ type, properties, required }) ist → der äußere Wrap entfällt.
+// Reine, deterministische Funktion — kein any (Regel 4), testbar.
+// ---------------------------------------------------------------------------
+export type NativeToolDeclaration = {
+  type: "function";
+  function: { name: string; description: string; parameters: ToolJsonSchema };
+};
+
+function isNestedSchema(value: unknown): value is ToolJsonSchema {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  // Nur Objekt-Schemas sind Kandidaten für einen doppelten Wrap — primitive
+  // Typ-Schemas ({ type: "string" }) dürfen NIE unwrapped werden.
+  if (v.type !== "object") return false;
+  // Ein vollständiges Schema hat properties (Objekt) und/oder required (Array)
+  if (v.properties !== undefined) {
+    if (typeof v.properties !== "object" || v.properties === null || Array.isArray(v.properties)) return false;
+  }
+  if (v.required !== undefined && !Array.isArray(v.required)) return false;
+  return true;
+}
+
+// Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung — unwrappt doppelt gewrappte
+// inputSchema (genau EIN properties-Feld, dessen Wert ein vollständiges Schema ist).
+// Wird in der MCP-Discovery angewendet; normalizeToolSchemas (#8) nutzt dieselbe Logik.
+export function unwrapWrappedSchema(schema: unknown): ToolJsonSchema {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return { type: "object", properties: {} };
+  }
+  const s = schema as Record<string, unknown>;
+  const props = s.properties;
+  if (typeof props === "object" && props !== null && !Array.isArray(props)) {
+    const entries = Object.entries(props as Record<string, unknown>);
+    if (entries.length === 1 && isNestedSchema(entries[0][1])) {
+      const inner = entries[0][1] as ToolJsonSchema;
+      // Unwrap nur, wenn das äußere Schema nichts Eigenes behält
+      const ownKeys = Object.keys(s).filter((k) => k !== "type" && k !== "properties" && k !== "required" && k !== "$schema");
+      if (ownKeys.length === 0) {
+        return inner;
+      }
+    }
+  }
+  return s as ToolJsonSchema;
+}
+
+export function normalizeToolSchemas(tools: NativeToolDeclaration[]): NativeToolDeclaration[] {
+  return tools.map((tool) => {
+    const params = tool.function.parameters;
+    const props = params.properties;
+    if (!props || typeof props !== "object" || Array.isArray(props)) return tool;
+    const entries = Object.entries(props as Record<string, unknown>);
+    // Genau EIN Feld, dessen Wert ein verschachteltes Schema ist → unwrappen
+    if (entries.length === 1 && isNestedSchema(entries[0][1])) {
+      const inner = entries[0][1];
+      return {
+        ...tool,
+        function: {
+          ...tool.function,
+          parameters: inner
+        }
+      };
+    }
+    return tool;
+  });
 }

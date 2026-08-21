@@ -4,7 +4,7 @@
 // Tier 1: Obsidian-MCP (obsidian-mcp@2, direkt auf Vault-Dateien) — Konvention: obsidian_<op>
 // Tier 2: sys_louis_ai_user_memory (DB)   — NUR LESEN (Memory); Schreiben: Fehler+Audit (nie still)
 //
-// (Tier-2-Markdown-Vault vaultmd wurde am 2026-08-16 entfernt — Obsidian ist die
+// (Der frühere Tier-2-Markdown-Vault-Server wurde am 2026-08-16 entfernt — Obsidian ist die
 // einzige Wissensanbindung; knowledge_data_vault bleibt als interne KI-DB.)
 //
 // Die Zuordnung Tier↔Tool kommt aus sys_mcp_tool_mappings (Admin-Konfiguration).
@@ -318,6 +318,12 @@ export async function writeUserMemoryVault(tenantId: string, userId: string, mem
 // Wissens-Skills (nur lesen/injizieren; Schreiben via save_skill → Freigabe-Flow)
 // ---------------------------------------------------------------------------
 
+// Auftrag 025 (2026-08-18): Eindeutiger Skill-Marker — wird von ALLEN
+// Schreibpfaden gesetzt (approveProposal louisAi.ts + SkillsTab.tsx: tags: [louis-skill]).
+// resolveSkillFiles löst Skills über diese Volltext-Markierung auf (bewährte Lösung:
+// deterministischer, funktionierender Pfad statt fragiler API-Ordner-Listung).
+export const SKILL_SEARCH_MARKER = "louis-skill";
+
 export interface VaultSkillFile {
   path: string;
   name: string;
@@ -327,10 +333,79 @@ export interface VaultSkillFile {
   version: number;
   // Auftrag 013 P2-E: Pinned-Skills werden immer injiziert (Prio vor Scoring)
   pinned?: boolean;
+  // Auftrag 025 Phase 6 (#28/#29): Curator-Status (active|inactive, inaktiv bis aktiviert, NIE löschen)
+  // Auftrag 026 P1-1: + archived (in _archive/ verschoben — nie gelöscht) + Usage-Zähler (#30)
+  status?: "active" | "inactive" | "archived";
+  lastUsedAtUtc?: string | null;
+  useCount?: number;
+  viewCount?: number;
+  patchCount?: number;
+}
+
+/** Parst eine Skill-Datei (Frontmatter + Body) in VaultSkillFile — pure, testbar, kein any. */
+export function parseSkillFile(filename: string, content: string): VaultSkillFile {
+  const name = filename.replace(/\.md$/, "").split("/").pop() || filename.replace(/\.md$/, "");
+  // Frontmatter-Tags parsen (tags: [a, b] oder tags: [a] oder tags:\n - a)
+  const tagMatch = content.match(/^tags:\s*\[(.*?)\]/m) || content.match(/^tags:\s*\n((?:\s*-\s*.+\n?)+)/m);
+  const tags = tagMatch
+    ? tagMatch[1].includes(",")
+      ? tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean)
+      : tagMatch[1].includes("\n")
+        ? (tagMatch[1].match(/- (.+)/g) || []).map((t) => t.replace("- ", "").trim())
+        : [tagMatch[1].trim()] // Einzel-Tag ohne Komma (z.B. tags: [louis-skill])
+    : [];
+  const descMatch = content.match(/^description:\s*(.+)$/m);
+  // Auftrag 025 Phase 6 (#28/#29): Curator-Frontmatter (status/last_used_at_utc) parsen
+  // Auftrag 026 P1-1: + archived-Status + Usage-Zähler (#30)
+  const statusMatch = content.match(/^status:\s*(active|inactive|archived)\s*$/m);
+  const usedMatch = content.match(/^last_used_at_utc:\s*(.+)$/m);
+  const counter = (name: string): number => {
+    const m = content.match(new RegExp(`^${name}:\\s*(\\d+)\\s*$`, "m"));
+    return m ? Number(m[1]) : 0;
+  };
+  return {
+    path: filename,
+    name,
+    description: descMatch ? descMatch[1].trim() : "",
+    content,
+    tags,
+    version: 1,
+    status: statusMatch ? (statusMatch[1] as "active" | "inactive" | "archived") : "active",
+    lastUsedAtUtc: usedMatch ? usedMatch[1].trim() : null,
+    useCount: counter("use_count"),
+    viewCount: counter("view_count"),
+    patchCount: counter("patch_count")
+  };
 }
 
 export async function resolveSkillFiles(tenantId: string): Promise<VaultSkillFile[]> {
-  // Tier 1 (Obsidian, Local-REST-API-MCP-Plugin): vault_list auf _louis/skills → vault_read je Datei
+  // Auftrag 025 (2026-08-18): Tier-1-`vault_list` kann KEINE Unterordner-Listungen
+  // (liefert für "_louis/skills" immer [] — nur die Wurzel-Ebene funktioniert; verifiziert).
+  // bewährte Lösung: Skills über die Volltext-Suche mit dem Skill-Marker auflösen (analog
+  // Dateisystem-Scan des Skill-Ordners) — deterministisch, nutzt den funktionierenden Pfad.
+  // `vault_list` bleibt als Fallback-Versuch für künftige API-Verbesserungen.
+  try {
+    const searchRes = await tryTierCall<unknown>("obsidian", "search_simple", tenantId, { query: SKILL_SEARCH_MARKER, limit: 50 });
+    const raw = searchRes.ok ? searchRes.data : null;
+    const hits = Array.isArray(raw) ? raw : (raw as { matches?: unknown[] } | undefined)?.matches;
+    if (Array.isArray(hits) && hits.length > 0) {
+      const skills: VaultSkillFile[] = [];
+      for (const entry of hits) {
+        const filename = String((entry as { filename?: string })?.filename || "");
+        // Nur Dateien im Skill-Ordner (verhindert Rauschen aus anderen _louis-/Doku-Dateien);
+        // _archive/-Skills (026 P1-1) bleiben erhalten, werden aber nicht injiziert.
+        if (!filename.startsWith("_louis/skills/") || filename.startsWith("_louis/skills/_archive/") || !filename.endsWith(".md")) continue;
+        const readRes = await tryTierCall<{ content: string }>("obsidian", "vault_read", tenantId, { path: filename });
+        if (!readRes.ok || !readRes.data) continue;
+        skills.push(parseSkillFile(filename, String(readRes.data.content || "")));
+      }
+      return skills;
+    }
+  } catch (err) {
+    console.warn("[vaultStore] resolveSkillFiles (Suche über Skill-Marker) fehlgeschlagen:", err);
+  }
+
+  // Fallback: bisheriger vault_list-Weg (funktioniert, falls die API später Rekursion kann)
   try {
     const listRes = await tryTierCall<unknown>("obsidian", "vault_list", tenantId, { path: "_louis/skills" });
     if (!listRes.ok || !listRes.data) return [];
@@ -341,31 +416,15 @@ export async function resolveSkillFiles(tenantId: string): Promise<VaultSkillFil
     for (const entry of files) {
       const fileName = entry?.name || (entry?.path || "").split("/").pop() || "";
       if (!fileName.endsWith(".md")) continue;
+      if (fileName.startsWith("_archive")) continue; // 026 P1-1: Archiv nicht injizieren
       const relPath = `_louis/skills/${fileName}`;
       const readRes = await tryTierCall<{ content: string }>("obsidian", "vault_read", tenantId, { path: relPath });
       if (!readRes.ok || !readRes.data) continue;
-      const content = String(readRes.data.content || "");
-      const name = fileName.replace(/\.md$/, "");
-      // Frontmatter-Tags parsen (tags: [a, b] oder tags:\n - a)
-      const tagMatch = content.match(/^tags:\s*\[(.*?)\]/m) || content.match(/^tags:\s*\n((?:\s*-\s*.+\n?)+)/m);
-      const tags = tagMatch
-        ? tagMatch[1].includes(",")
-          ? tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean)
-          : (tagMatch[1].match(/- (.+)/g) || []).map((t) => t.replace("- ", "").trim())
-        : [];
-      const descMatch = content.match(/^description:\s*(.+)$/m);
-      skills.push({
-        path: relPath,
-        name,
-        description: descMatch ? descMatch[1].trim() : "",
-        content,
-        tags,
-        version: 1
-      });
+      skills.push(parseSkillFile(relPath, String(readRes.data.content || "")));
     }
     return skills;
   } catch (err) {
-    console.warn("[vaultStore] resolveSkillFiles (MCP vault_list) fehlgeschlagen:", err);
+    console.warn("[vaultStore] resolveSkillFiles (vault_list-Fallback) fehlgeschlagen:", err);
     return []; // fehlertolerant
   }
 }

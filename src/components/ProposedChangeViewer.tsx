@@ -497,6 +497,80 @@ export const ProposedChangeViewer: React.FC<ProposedChangeViewerProps> = ({
     );
   }
 
+  // --- 4b. KANBAN (Auftrag 042): Board/Card-Vorschau ---
+  if (entityType === 'kanban_board' || entityType === 'kanban_card') {
+    const isBoard = entityType === 'kanban_board';
+    const title = String(proposedState.title || (isBoard ? 'Neues Board' : 'Neue Karte'));
+    const columns = Array.isArray(proposedState.columns) ? (proposedState.columns as unknown[]).map(String) : [];
+    const sampleCards = Array.isArray(proposedState.sample_cards) ? (proposedState.sample_cards as unknown[]).map(String) : [];
+    const columnTitle = proposedState.column_title ? String(proposedState.column_title) : null;
+    const status = proposedState.status ? String(proposedState.status) : null;
+    const priority = proposedState.priority ? String(proposedState.priority) : null;
+    const description = proposedState.description ? String(proposedState.description) : null;
+
+    const usedKeys = new Set(['title', 'columns', 'sample_cards', 'column_title', 'status', 'priority', 'description', 'board_id', 'board_id_uuid', 'column_id', 'card_id', 'id_uuid', 'tenant_id', 'from_column_id', 'position']);
+    const remainingEntries = Object.entries(proposedState).filter(([key, val]) => {
+      if (HIDDEN_KEYS.has(key) || usedKeys.has(key)) return false;
+      if (val === null || val === undefined || val === '') return false;
+      return true;
+    });
+
+    return (
+      <div className="space-y-3 font-sans text-xs">
+        <div className="flex items-center gap-3 bg-primary-dark/80 border border-white/5 p-3.5 rounded-xl">
+          <div className="p-2.5 bg-accent-orange/10 border border-accent-orange/20 rounded-lg text-accent-orange shrink-0">
+            <span className="text-base leading-none">🗂️</span>
+          </div>
+          <div>
+            <div className="font-bold text-white text-sm">{title}</div>
+            {(columnTitle || status || priority) && (
+              <span className="text-[10px] font-mono text-slate-400 block mt-0.5">
+                {[
+                  columnTitle ? `${t('proposed_change.column_label', { defaultValue: 'Spalte' })}: ${columnTitle}` : '',
+                  status ? `${t('proposed_change.status_label', { defaultValue: 'Status' })}: ${status}` : '',
+                  priority ? `${t('proposed_change.priority_label', { defaultValue: 'Priorität' })}: ${priority}` : ''
+                ].filter(Boolean).join(' • ')}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {description && (
+          <div className="bg-primary-dark/40 border border-white/5 p-3 rounded-xl text-slate-300">
+            {description}
+          </div>
+        )}
+
+        {isBoard && columns.length > 0 && (
+          <div className="bg-primary-dark/40 border border-white/5 p-3 rounded-xl">
+            <span className="text-[10px] text-slate-400 block font-bold mb-1.5">{t('proposed_change.columns', { defaultValue: 'Spalten' })}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {columns.map((c, i) => (
+                <span key={i} className="text-[10px] font-mono bg-white/5 border border-white/10 text-slate-300 px-2 py-0.5 rounded-full">{c}</span>
+              ))}
+            </div>
+            {sampleCards.length > 0 && (
+              <div className="mt-2 text-[10px] text-slate-400">
+                {t('proposed_change.sample_cards', { defaultValue: 'Beispielkarten' })}: {sampleCards.join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {remainingEntries.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-primary-dark/40 border border-white/5 p-3 rounded-xl">
+            {remainingEntries.map(([key, val]) => (
+              <div key={key} className="flex flex-col border-b border-white/5 pb-1">
+                <span className="text-[10px] text-slate-400 font-bold">{key.replace(/_/g, ' ')}</span>
+                <span className="text-white font-medium break-words">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // --- 5. GENERIC FALLBACK FOR OTHER ENTITIES ---
   const entries = Object.entries(proposedState).filter(([key, val]) => {
     if (HIDDEN_KEYS.has(key)) return false;

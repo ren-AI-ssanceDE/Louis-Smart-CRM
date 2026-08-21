@@ -398,7 +398,7 @@ export async function buildOfferPDFBuffer(
   const countryCode = myCompany?.country_code || "DE";
   const vatId = myCompany?.tax_vat_id || "DE999999999";
   const taxNumber = myCompany?.tax_number || "";
-  const senderEmail = myCompany?.email_address || "billing@musterfirma.test";
+  const senderEmail = myCompany?.email_address || "billing@louis-systems.de";
   const senderPhone = myCompany?.phone_number || "+49 30 123 456 78";
   
   const iban = myCompany?.iban || "DE89 1005 0000 0123 4567 89";
@@ -839,7 +839,7 @@ export async function buildOfferPDFBuffer(
     p.drawText(tPDF("contact_support"), { x: 420, y: footerY, size: 7, font: fontBold, color: darkGray });
     p.drawText(`${tPDF("phone_label")} ${senderPhone}`, { x: 420, y: footerY - 10, size: 7, font: fontRegular, color: darkGray });
     p.drawText(`E-Mail: ${senderEmail}`, { x: 420, y: footerY - 18, size: 7, font: fontRegular, color: darkGray });
-    p.drawText(`Web: ${myCompany?.website || "www.musterfirma.test"}`, { x: 420, y: footerY - 26, size: 7, font: fontRegular, color: darkGray });
+    p.drawText(`Web: ${myCompany?.website || "www.louis-systems.de"}`, { x: 420, y: footerY - 26, size: 7, font: fontRegular, color: darkGray });
 
     // Page Number
     const totalPagesStr = `${pages.length}`;

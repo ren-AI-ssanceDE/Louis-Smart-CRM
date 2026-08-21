@@ -240,7 +240,9 @@ export const EmailTemplateSchema = z.object({
   template_name_text: z.string().min(1),
   email_subject_text: z.string().min(1),
   email_body_content: z.string(),
-  created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
+  // 'seed' = System-Seed-Vorlagen (db.ts: Standard/Zahlungserinnerung/Angebots-E-Mail, idempotent).
+  // Fehlt der Wert im Enum, scheitert die komplette Vorlagen-Antwort (UI: „KEINE VORLAGEN GEFUNDEN").
+  created_by_identity: z.enum(['human', 'ai_assistant', 'system', 'seed']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),
   metadata: z.record(z.string(), z.unknown()).optional().nullable(),
@@ -355,6 +357,9 @@ export const LouisAiConfigSchema = z.object({
   max_iterations: z.number().int().min(1).max(15).nullable().optional(),
   max_history_tokens: z.number().int().min(200).max(8000).nullable().optional(),
   tool_result_truncate_chars: z.number().int().min(200).max(20000).nullable().optional(),
+  // C.4 (Plan 2026-08-19, Regel 12): MCP-Genehmigungs-Timeout (s) + stdio-Session-Limit
+  mcp_approval_timeout_s: z.number().int().min(5).max(3600).nullable().optional(),
+  mcp_stdio_max_sessions: z.number().int().min(1).max(50).nullable().optional(),
   react_keep_last_results: z.number().int().min(1).max(10).nullable().optional(),
   react_compaction_from_iteration: z.number().int().min(2).max(20).nullable().optional(),
   early_exit_after_tools: z.number().int().min(1).max(20).nullable().optional(),
@@ -362,8 +367,56 @@ export const LouisAiConfigSchema = z.object({
   prompt_directives_mode: z.enum(['always', 'intent']).default('always'),
   // Auftrag 007 T5: Tool-Call-Modus ('auto' default = native mit JSON-Fallback, 'json' = JSON-Freitext, 'native' = erzwungen)
   react_tool_call_mode: z.enum(['auto', 'json', 'native']).default('auto'),
+  // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ; true = Fallback für Modelle ohne function calling; NULL = Default false)
+  text_fallback_enabled: z.boolean().nullable().optional(),
   // Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
   memory_budget_tokens: z.number().int().min(200).max(8000).nullable().optional(),
+  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+  prompt_parallel_tool_guidance: z.boolean().nullable().optional(),
+  prompt_tool_guidance_trim: z.boolean().nullable().optional(),
+  memory_frozen_snapshot: z.boolean().nullable().optional(),
+  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+  compression_enabled: z.boolean().nullable().optional(),
+  compression_threshold_percent: z.number().int().min(10).max(95).nullable().optional(),
+  compression_tail_token_budget: z.number().int().min(2000).max(100000).nullable().optional(),
+  compression_aux_model: z.string().nullable().optional(),
+  compression_persist_summary: z.boolean().nullable().optional(),
+  compression_model_context_map: z.string().nullable().optional(),
+  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+  memory_prefetch_enabled: z.boolean().nullable().optional(),
+  memory_prefetch_timeout_s: z.number().int().min(1).max(30).nullable().optional(),
+  memory_recall_status_enabled: z.boolean().nullable().optional(),
+  memory_auto_scan_enabled: z.boolean().nullable().optional(),
+  memory_consolidation_budget: z.number().int().min(200).max(4000).nullable().optional(),
+  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+  tool_call_retry_max: z.number().int().min(0).max(10).nullable().optional(),
+  empty_retry_budget: z.number().int().min(1).max(10).nullable().optional(),
+  empty_retry_cost_threshold_usd: z.number().min(0.001).max(1).nullable().optional(),
+  tool_guardrail_exact_block: z.number().int().min(1).max(10).nullable().optional(),
+  tool_guardrail_no_progress_block: z.number().int().min(1).max(10).nullable().optional(),
+  loop_deadline_s: z.number().int().min(10).max(600).nullable().optional(),
+  thinking_scrub_enabled: z.boolean().nullable().optional(),
+  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+  recall_fts_enabled: z.boolean().nullable().optional(),
+  recall_search_limit: z.number().int().min(1).max(20).nullable().optional(),
+  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+  skill_curator_enabled: z.boolean().nullable().optional(),
+  skill_inject_max_tokens: z.number().int().min(200).max(8000).nullable().optional(),
+  skill_prune_inactive_after_days: z.number().int().min(7).max(365).nullable().optional(),
+  skill_inject_top_k: z.number().int().min(1).max(10).nullable().optional(),
+  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+  curator_interval_hours: z.number().int().min(1).max(720).nullable().optional(),
+  curator_archive_after_days: z.number().int().min(7).max(3650).nullable().optional(),
+  // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+  subtask_max_depth: z.number().int().min(1).max(5).nullable().optional(),
+  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  audit_retention_days: z.number().int().min(1).max(3650).nullable().optional(),
+  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+  session_retention_days: z.number().int().min(1).max(3650).nullable().optional(),
+  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+  mcp_refresh_interval_s: z.number().int().min(30).max(3600).nullable().optional(),
+  subtask_timeout_s: z.number().int().min(30).max(600).nullable().optional(),
+  subtask_max_parallel: z.number().int().min(1).max(5).nullable().optional(),
 });
 
 export const TextGeneratorConfigSchema = z.object({
@@ -1226,6 +1279,20 @@ export const McpExternalServerSchema = z.object({
   last_error_message: z.string().optional().nullable(),
   created_at: z.string().or(z.date()).optional(),
   updated_at: z.string().or(z.date()).optional(),
+  // C.3 (Plan 2026-08-19): Konfigurationsfelder (additiv, optional — Defaults = bisheriges Verhalten)
+  protocol: z.enum(['auto', 'stateless', 'legacy']).optional().nullable(),
+  keepalive_interval_s: z.number().int().positive().optional().nullable(),
+  connect_timeout_s: z.number().int().positive().optional().nullable(),
+  ssl_verify: z.boolean().optional().nullable(),
+  client_cert: z.string().optional().nullable(),
+  client_key: z.string().optional().nullable(),
+  custom_headers: z.string().optional().nullable(),
+  supports_parallel_tool_calls: z.boolean().optional().nullable(),
+  trust: z.enum(['full', 'untrusted']).optional().nullable(),
+  tools_include_json: z.array(z.string()).optional().nullable(),
+  tools_exclude_json: z.array(z.string()).optional().nullable(),
+  idle_timeout_s: z.number().int().positive().optional().nullable(),
+  max_lifetime_s: z.number().int().positive().optional().nullable()
 });
 
 export const McpExternalServerInputSchema = McpExternalServerSchema.omit({
@@ -1234,8 +1301,44 @@ export const McpExternalServerInputSchema = McpExternalServerSchema.omit({
   updated_at: true,
   last_ping_at: true,
   health_status: true,
-  last_error_message: true,
+  last_error_message: true
 });
+
+// C.4 (Plan 2026-08-19): Genehmigungs-Queue (Trust-Gate)
+export const McpApprovalRequestSchema = z.object({
+  id_uuid: z.string().uuid(),
+  tenant_id: z.string(),
+  server_id_uuid: z.string().uuid(),
+  server_name: z.string(),
+  tool_id_uuid: z.string().uuid(),
+  normalized_tool_name: z.string(),
+  original_tool_name: z.string(),
+  tool_arguments_json: z.unknown(),
+  requested_by: z.string(),
+  status: z.enum(["pending", "approved", "rejected", "expired"]),
+  created_at: z.string().or(z.date()),
+  decided_by: z.string().nullable().optional(),
+  decided_at: z.string().or(z.date()).nullable().optional(),
+  decision_comment: z.string().nullable().optional()
+});
+
+export type McpApprovalRequestRecord = z.infer<typeof McpApprovalRequestSchema>;
+
+// C.7 (Plan 2026-08-19): Chatprofile
+export const McpChatProfileSchema = z.object({
+  id_uuid: z.string().uuid(),
+  tenant_id: z.string(),
+  profile_name: z.string().min(1).max(60),
+  description: z.string().nullable().optional(),
+  tools_json: z.array(z.string()).nullable().optional(),
+  is_system: z.boolean(),
+  is_default: z.boolean(),
+  created_by_user_id: z.string().nullable().optional(),
+  created_at: z.string().or(z.date()).optional(),
+  updated_at: z.string().or(z.date()).optional()
+});
+
+export type McpChatProfileRecord = z.infer<typeof McpChatProfileSchema>;
 
 export const McpExternalServerFullSchema = McpExternalServerSchema.extend({
   id_uuid: z.string().uuid(),
@@ -1255,6 +1358,8 @@ export const McpDiscoveredToolSchema = z.object({
   is_enabled_for_ui: z.boolean().default(true),
   category: z.string().default('custom'),
   last_discovered_at: z.string().or(z.date()).optional(),
+  // C.4 (Plan 2026-08-19): readOnlyHint des Servers (nur exakt true = read-only; fehlend = write-capable)
+  readonly_hint: z.boolean().optional().nullable()
 });
 
 export const McpDiscoveredToolFullSchema = McpDiscoveredToolSchema.extend({
@@ -1394,9 +1499,11 @@ export const McpSanitizeOptionsSchema = z.object({
 export type McpSanitizeOptions = z.infer<typeof McpSanitizeOptionsSchema>;
 
 // --- S1: Session-Recall-Tool (recall_sessions) ---
+// Auftrag 025 Phase 5 (#48): limit ohne festen Default — der Backend-Default kommt aus der
+// Admin-Config recall_search_limit (Regel 12, NULL = 10). Explizite LLM-Limits gewinnen.
 export const RecallSessionsInputSchema = z.object({
   query: z.string().min(1, "Suchbegriff erforderlich").max(200),
-  limit: z.number().int().min(1).max(20).default(5),
+  limit: z.number().int().min(1).max(20).optional(),
   offset: z.number().int().min(0).max(1000).default(0)
 });
 export type RecallSessionsInput = z.infer<typeof RecallSessionsInputSchema>;
@@ -1427,7 +1534,7 @@ export const WorkflowLearnSuggestionSchema = z.object({
 });
 export type WorkflowLearnSuggestion = z.infer<typeof WorkflowLearnSuggestionSchema>;
 
-// --- Notizen (QA-Befund #1: Notiz-Tool, 2026-08-14) ---
+// --- Notizen (Notiz-Tool, 2026-08-14) ---
 export const CreateNoteDraftArgsSchema = z.object({
   contact_id_uuid: z.string().uuid().optional(),
   company_id_uuid: z.string().uuid().optional(),

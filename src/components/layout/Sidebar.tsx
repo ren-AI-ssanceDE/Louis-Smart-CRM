@@ -371,7 +371,7 @@ export const Sidebar = ({ activeTab, setActiveTab, timezone, isLouisAiOpen, setI
 
         {isOpen && (
           <div className="text-[9px] text-slate-600 font-bold uppercase tracking-widest select-none text-center pt-2">
-            {t('common:gpl_license_prefix', { defaultValue: 'GPLv3 Lizenzgeber: ' })} <a href="https://www.musterfirma.de" target="_blank" rel="noopener noreferrer" className="text-accent-orange/70 hover:text-accent-orange transition-colors">Musterfirma GmbH®</a>
+            {t('common:gpl_license_prefix', { defaultValue: 'GPLv3 Lizenzgeber: ' })} <a href="https://www.ren-ai-ssance.de" target="_blank" rel="noopener noreferrer" className="text-accent-orange/70 hover:text-accent-orange transition-colors">ren-AI-ssance®</a>
           </div>
         )}
 

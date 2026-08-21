@@ -388,7 +388,7 @@ export const filesAndLogsRouter = router({
       }
     }),
 
-  // Audit Logs — filterbar (eventType, Zeitraum, actor, entity) + Pagination (Entscheidung Produktleitung 2026-08-16)
+  // Audit Logs — filterbar (eventType, Zeitraum, actor, entity) + Pagination (Entscheidung 2026-08-16)
   getAuditLogs: adminProcedure
     .input(
       z
@@ -420,12 +420,14 @@ export const filesAndLogsRouter = router({
       if (f.entityType) { params.push(`%${f.entityType}%`); conditions.push(`LOWER(entity_type) LIKE LOWER($${params.length})`); }
       if (f.from) { params.push(f.from); conditions.push(`created_at_utc >= $${params.length}`); }
       if (f.to) { params.push(f.to); conditions.push(`created_at_utc <= $${params.length}`); }
+      // BUG-FIX (2026-08-19,  „Audit-Log leer"): LIMIT/OFFSET gehörten
+      // in die WHERE-Conditions → SQL-Syntaxfehler → Anzeige immer leer (DB hatte 4827 Einträge).
       params.push((f.limit || 100));
-      conditions.push(`LIMIT $${params.length}`);
+      const limitParam = params.length;
       params.push((f.offset || 0));
-      conditions.push(`OFFSET $${params.length}`);
+      const offsetParam = params.length;
       const res = await pool.query(
-        `SELECT * FROM sys_audit_event_logs WHERE ${conditions.join(" AND ")} ORDER BY created_at_utc DESC`,
+        `SELECT * FROM sys_audit_event_logs WHERE ${conditions.join(" AND ")} ORDER BY created_at_utc DESC LIMIT $${limitParam} OFFSET $${offsetParam}`,
         params
       );
       return res.rows;

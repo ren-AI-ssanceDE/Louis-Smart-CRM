@@ -68,7 +68,7 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 | `sys_integrations_telegram_settings` | Telegram-Gateway |
 | `sys_integrations_stt_config` | Speech-to-Text-Konfiguration |
 | `sys_integrations_louis_ai_config` | KI-Konfiguration (Provider, Modell, Temp …) |
-| `sys_mcp_api_keys` / `sys_mcp_servers` / `sys_mcp_discovered_tools` / `sys_mcp_oauth_tokens` | MCP-Server & Client (API-Keys, Server, Tools, OAuth) |
+| `sys_mcp_api_keys` / `sys_mcp_external_servers` / `sys_mcp_discovered_tools` / `sys_mcp_oauth_tokens` | MCP-Server & Client (API-Keys, Server, Tools, OAuth) |
 | `sys_audit_log` | Append-Only-Audit-Log |
 | `sys_louis_ai_questions` | Persistierte Rückfragen (ask_user_question) |
 

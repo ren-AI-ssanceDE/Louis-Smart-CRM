@@ -677,7 +677,8 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         } else if (toolName === "executeVaultRead" || toolName === "vault_read") {
           const rel = instructions.trim().replace(/^path[:：]\s*/i, "");
           rawResult = JSON.stringify(await vaultStoreMod.vaultReadText(tenantId, rel));
-        } else if (toolName === "executeListVaultFiles" || toolName === "list_vault_files") {
+        } else if (toolName === "executeListVaultFiles" || toolName === "list_vault_files"
+          || toolName === "list_knowledge_files" || toolName === "executeListKnowledgeFiles") {
           rawResult = await knowledgeMod.executeListVaultFiles(tenantId);
         } else if (toolName === "executeRecallSessions" || toolName === "recall_sessions") {
           rawResult = await knowledgeMod.executeRecallSessions(tenantId, instructions);
@@ -758,14 +759,18 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         } else if (toolName === "executeDeleteNote" || toolName === "delete_note") {
           rawResult = await crmMod.executeDeleteNote(tenantId, instructions, "ai_workflow_dag");
         } else if (toolName === "executeCreateKanbanBoard" || toolName === "create_kanban_board") {
-          rawResult = await crmMod.executeCreateKanbanBoard(tenantId, instructions, "ai_workflow_dag");
+          // Auftrag 042: Workflow-Graph-Pfad schreibt direkt (bypassApproval=true)
+          rawResult = await crmMod.executeCreateKanbanBoard(tenantId, instructions, "ai_workflow_dag", true);
         } else if (toolName === "executeListMailDrafts" || toolName === "list_mail_drafts") {
           rawResult = await messagingMod.executeListMailDrafts(tenantId, instructions);
-        } else if (toolName === "executeVaultWrite" || toolName === "vault_write") {
+        } else if (toolName === "executeVaultWrite" || toolName === "vault_write"
+          || toolName === "knowledge_write" || toolName === "executeKnowledgeWrite") {
           rawResult = await knowledgeMod.executeVaultWrite(tenantId, instructions, "ai_workflow_dag");
-        } else if (toolName === "executeVaultUpdate" || toolName === "vault_update") {
+        } else if (toolName === "executeVaultUpdate" || toolName === "vault_update"
+          || toolName === "knowledge_update" || toolName === "executeKnowledgeUpdate") {
           rawResult = await knowledgeMod.executeVaultUpdate(tenantId, instructions, "ai_workflow_dag");
-        } else if (toolName === "executeVaultDelete" || toolName === "vault_delete") {
+        } else if (toolName === "executeVaultDelete" || toolName === "vault_delete"
+          || toolName === "knowledge_delete" || toolName === "executeKnowledgeDelete") {
           rawResult = await knowledgeMod.executeVaultDelete(tenantId, instructions, "ai_workflow_dag");
         } else {
           throw new Error(`Nicht unterstützter Werkzeugbezeichner: ${node.tool_identifier}`);

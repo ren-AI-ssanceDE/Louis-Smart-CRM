@@ -2584,6 +2584,16 @@ export const settingsRouter = router({
         // cleanDbRow lässt Date-Objekte unkonvertiert — Zod-Output verlangt ISO-Strings
         if (row.created_at_utc !== undefined) row.created_at_utc = row.created_at_utc instanceof Date ? (row.created_at_utc as Date).toISOString() : String(row.created_at_utc);
         if (row.answered_at_utc !== undefined && row.answered_at_utc !== null) row.answered_at_utc = row.answered_at_utc instanceof Date ? (row.answered_at_utc as Date).toISOString() : String(row.answered_at_utc);
+        // 2026-08-18 (Multi-Turn-): choices_json ist JSONB → pg liefert ein Array,
+        // AgentQuestionFullSchema verlangt z.string() → Zod-Output-Validierung crashte.
+        if (row.choices_json !== undefined && row.choices_json !== null && typeof row.choices_json !== 'string') {
+          row.choices_json = JSON.stringify(row.choices_json);
+        }
+        // 2026-08-18 (Admin- „keine Rückfrage angezeigt“): cleanDbRow LÖSCHT NULL-Felder
+        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string() → crashte.
+        if (row.answer === undefined || row.answer === null) {
+          row.answer = "";
+        }
         return row as unknown as z.infer<typeof AgentQuestionFullSchema>;
       });
     }),
@@ -2611,6 +2621,31 @@ export const settingsRouter = router({
         if (res.rows.length === 0) throw new Error("Rückfrage nicht gefunden");
       }
       await logAuditEvent({ tenantId, eventType: "GOVERNANCE_ASK_ANSWERED", entityType: "question", eventDetails: `${input.question_id}: ${input.answer.slice(0, 100)}`, actorIdentity: ctx.session?.user?.email || "unknown" });
+      return { success: true };
+    }),
+
+  // Auftrag 026 (2026-08-18,  „Rückfragen sollen löschbar sein“):
+  // Rückfrage unwiderruflich löschen (nicht relevant für Memory/spätere Nutzung).
+  deleteQuestion: adminProcedure
+    .input(z.object({ question_id: z.string().uuid() }))
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.tenantId || "1";
+      if (isUsingFallback || !pool) {
+        const idx = (fallbackStore.aiQuestions || []).findIndex(
+          (rec) => rec.id_uuid === input.question_id && (rec.tenant_id === tenantId || rec.tenant_id === "1")
+        );
+        if (idx === -1) throw new Error("Rückfrage nicht gefunden");
+        fallbackStore.aiQuestions!.splice(idx, 1);
+        saveFallbackStore();
+      } else {
+        const res = await pool.query(
+          `DELETE FROM sys_louis_ai_questions WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1') RETURNING id_uuid`,
+          [input.question_id, tenantId]
+        );
+        if (res.rows.length === 0) throw new Error("Rückfrage nicht gefunden");
+      }
+      await logAuditEvent({ tenantId, eventType: "GOVERNANCE_ASK_DELETED", entityType: "question", eventDetails: input.question_id, actorIdentity: ctx.session?.user?.email || "unknown" });
       return { success: true };
     })
 });

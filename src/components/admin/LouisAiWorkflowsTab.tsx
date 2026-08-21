@@ -90,7 +90,7 @@ export const LouisAiWorkflowsTab = () => {
   // Auftrag 008 4B: DAG-Editor-Overlay
   const [dagEditorOpen, setDagEditorOpen] = useState(false);
   const [dagEditorWorkflow, setDagEditorWorkflow] = useState<Workflow | null>(null);
-  // Auftrag 008 Option A (Produktentscheid): DAG ist der einzige Workflow-Pfad —
+  // DAG ist der einzige Workflow-Pfad —
   // das Formular hält den bearbeiteten Graph; true = Overlay aus dem Formular geöffnet
   const [formDag, setFormDag] = useState<IWorkflowDAG | null>(null);
   const [dagEditorFromForm, setDagEditorFromForm] = useState(false);
