@@ -36,6 +36,7 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 - **Zwei Wissens-Bereiche:** Der **Obsidian-Vault** (Notizen, Skills, Memory — schreibend nur unter `_louis/`) und der **interne Wissensvault** (`knowledge_data_vault`, z. B. hochgeladene Dokumente) sind getrennt. Louis nutzt für jeden Bereich die passenden Werkzeuge (`vault_read`/`vault_search` für Obsidian, `knowledge_*` für intern).
 - **Dokumente anhängen:** PDF, DOCX, XLSX, CSV, TXT u. v. m. im Chat hochladen (max. 5, je 25 MB) — optional in die Wissensdatenbank indizieren.
 - **Grenzen:** Louis nutzt einen konfigurierten LLM-Provider. Schreibende Aktionen erzeugen zuerst Entwürfe; Workflows und MCP-Zugriffe folgen den Governance-Regeln.
+- **Tool-Steuerung (Chatprofile):** Louis' eigene Tools sind immer verfügbar (CRM, Wissensvault, Kanban u. a.). Externe MCP-Tools (z. B. Google Workspace, Obsidian) steuerst du über **Chatprofile** — Auswahl im Chat-Header, Konfiguration im Admin (Tab „Chatprofile"): welches Profil welche externen Tools nutzen darf, inkl. Freigaben und Session-Override.
 
 ### Sicherheit & Datenschutz
 

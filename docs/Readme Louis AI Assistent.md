@@ -107,7 +107,7 @@ Louis ist nach der Installation sofort verfügbar (Google-Gemini-Schlüssel in d
 | `KANBAN` | `list_kanban_boards`, `get_kanban_board_details`, `create_kanban_board`, `create_kanban_card`, `update_kanban_card`, `move_kanban_card`, `delete_kanban_card` |
 | `TEMPLATES` | `get_templates`, `get_template_details`, `apply_template` |
 | `WORKFLOWS` | `learn_workflow`, `get_workflows`, `save_skill`, `delegate_subtask` (Sub-Agents, max. 3 parallel) |
-| **MCP (dynamisch)** | Externe Tools via `mcp_<server>__<tool>` (Namespace-Mapping) |
+| **MCP (dynamisch)** | Externe Tools via `mcp_<server>_<tool>` (Namespace-Mapping) |
 
 ## 4. QA-Critic (`critic.ts`)
 
