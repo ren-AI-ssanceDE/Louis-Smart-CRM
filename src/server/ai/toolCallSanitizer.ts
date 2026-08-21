@@ -1,5 +1,5 @@
 // ============================================================================
-// Tool-Call-XML-Sanitizer (Auftrag 010, B1)
+// Tool-Call-XML-Sanitizer 
 // Entfernt rohe ReAct-/Tool-Call-XML-Blöcke aus finalen Chat-Antworten.
 // Hintergrund: DeepSeek-V4 (und andere Provider) liefern im natives Modus teils
 // XML-Tool-Calls als Text (<REACT_LOOP_STATE>, <TOOL_CALLS>, <CALL_RESULTS>,
@@ -84,7 +84,7 @@ export function stripToolCallXml(text: string | null | undefined): string {
 }
 
 /**
- * Auftrag 025 Phase 4 (#34): Thinking-Scrubber (Muster think_scrubber.py:64).
+ * Phase 4 (#34): Thinking-Scrubber (Muster think_scrubber.py:64).
  * Entfernt Reasoning-/Thinking-Blöcke aus Antworten: <thinking>-Tags, markdown-```thinking```-Blöcke,
  * "Thought:"-Zeilen (ReAct-internes Reasoning). Fail-open: nur klare Muster.
  */
@@ -105,7 +105,7 @@ export function stripThinkingBlocks(text: string | null | undefined): string {
 }
 
 /**
- * Auftrag 025 Phase 4 (#36): Reasoning-Summary-Separation (Muster reasoning_summaries.py:37).
+ * Phase 4 (#36): Reasoning-Summary-Separation (Muster reasoning_summaries.py:37).
  * Verklebte Reasoning-Blöcke ("Reasoning:\n…\nSummary:\n…") trennen: der letzte substanzielle
  * Abschnitt nach dem letzten Marker ist der eigentliche Inhalt. Fail-open: ohne Marker
  * (oder wenn danach nichts Substanzielles folgt) bleibt der Text unverändert.
@@ -146,7 +146,7 @@ export function sanitizeFinalText(
   opts?: { enableThinkingScrub?: boolean }
 ): string {
   let cleaned = stripToolCallXml(text);
-  // Auftrag 025 Phase 4 (#34/#36): Thinking-Scrubber + Reasoning-Separation (Toggle-gesteuert)
+ // Phase 4 (#34/#36): Thinking-Scrubber + Reasoning-Separation (Toggle-gesteuert)
   if (opts?.enableThinkingScrub ?? true) {
     cleaned = stripThinkingBlocks(cleaned);
     cleaned = separateReasoningSummaries(cleaned);

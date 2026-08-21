@@ -74,7 +74,7 @@ export function validateProposalMathAndSchema(
     };
   }
 
-  // B3 (Auftrag 011): UPDATE-Vorschläge sind Partial-Updates — nur die ID ist
+ // B3 : UPDATE-Vorschläge sind Partial-Updates — nur die ID ist
   // Pflicht, KEINE Create-Pflichtfelder (last_name, note_text, etc.).
   if (action === 'UPDATE') {
     if (!proposedState.id && !proposedState.id_uuid) {
@@ -202,7 +202,7 @@ export async function executeCritiqueLoop(
          Never translate a ${language === 'de' ? 'German' : 'English'} draft into another language unless requested.
       5. EMAIL ADDRESS MATCHING RULE: Do NOT compare or cross-check recipient email address string against recipient's personal name. In real-world CRM data, email addresses belong to representatives or generic mailboxes.
       6. PLACEHOLDER / DRAFT RULE: If an email body contains placeholders like "[Datum einfügen]" or "[Datum]", replace them in "corrected_draft" with actual relative timeframes like "binnen 7 Tagen". Always set "approved": true and approval_score >= 80 for proposed email drafts unless there is a severe mathematical error.
-      7. FREIGABE-DRAFT-FLOW RULE (B3, Auftrag 011): Ein Draft-Vorschlag (proposedChanges mit action CREATE/UPDATE) ist ein ERFOLG, wenn alle vom Nutzer gewünschten Daten des ENTWURFS vollständig sind — auch wenn Folge-Entitäten (z.B. eine Notiz) im selben Prompt gewünscht, aber erst NACH Freigabe anlegbar sind. Ein fehlender Folge-Entwurf ist KEIN Fehler des aktuellen Entwurfs: Der Nutzer gibt zuerst frei, dann folgt der nächste Schritt. Setze approved=true und approval_score >= 80, wenn der Entwurf selbst konsistent ist (Pflichtfelder, Adresse, Opt-ins vorhanden). Kritisiere NICHT fehlende Folge-Entitäten oder "noch nicht in der Datenbank sichtbare" Drafts.
+      7. FREIGABE-DRAFT-FLOW RULE (B3): Ein Draft-Vorschlag (proposedChanges mit action CREATE/UPDATE) ist ein ERFOLG, wenn alle vom Nutzer gewünschten Daten des ENTWURFS vollständig sind — auch wenn Folge-Entitäten (z.B. eine Notiz) im selben Prompt gewünscht, aber erst NACH Freigabe anlegbar sind. Ein fehlender Folge-Entwurf ist KEIN Fehler des aktuellen Entwurfs: Der Nutzer gibt zuerst frei, dann folgt der nächste Schritt. Setze approved=true und approval_score >= 80, wenn der Entwurf selbst konsistent ist (Pflichtfelder, Adresse, Opt-ins vorhanden). Kritisiere NICHT fehlende Folge-Entitäten oder "noch nicht in der Datenbank sichtbare" Drafts.
 
       Respond with a single valid JSON object of structure:
       {

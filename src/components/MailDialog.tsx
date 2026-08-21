@@ -305,7 +305,7 @@ export const MailDialog = ({
     return replaced;
   };
 
-  // Auftrag 035 (Regel 2026-08-19): KEIN Signatur-Prefill im Mail-Editor.
+ // (Regel 2026-08-19): KEIN Signatur-Prefill im Mail-Editor.
   // Weder Text noch Dropdown-Vorauswahl — der User fügt die Signatur per Klick ein
   // (Signatur-Select → handleSignatureChange fügt sie in den Body ein).
   // (Prefill-UseEffect vollständig entfernt.)
@@ -460,7 +460,7 @@ export const MailDialog = ({
 
       setSubject(sub);
 
-      // Auftrag 035: Template lädt NUR den Template-Text — keine Signatur anhängen.
+ // : Template lädt NUR den Template-Text — keine Signatur anhängen.
       // Signatur kommt ausschließlich per Klick (Signatur-Select).
       setBody(bodyText);
       if (editorRef.current) {
@@ -718,7 +718,7 @@ export const MailDialog = ({
                 <button
                   type="button"
                   onClick={() => {
-                    // Auftrag 035: Editor ist nie mehr mit Signatur vorbelegt (kein Prefill) —
+ // : Editor ist nie mehr mit Signatur vorbelegt (kein Prefill) —
                     // der KI-Kontext ist daher immer reiner Mail-Text.
                     const currentText = editorRef.current ? editorRef.current.innerHTML : body;
                     setAiFieldId('email_body');

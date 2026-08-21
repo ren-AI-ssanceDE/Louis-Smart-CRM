@@ -72,7 +72,7 @@ export const McpSettingsForm = () => {
     }
   };
 
-  // Auftrag 016 P1-1: Sanftes Widerrufen (Key bleibt sichtbar als inaktiv) — Button „Widerrufen“ neben „Löschen“.
+ // P1-1: Sanftes Widerrufen (Key bleibt sichtbar als inaktiv) — Button „Widerrufen“ neben „Löschen“.
   // 2026-08-18 (Code-Regel): KEIN window.confirm — Bestätigung über das etablierte Modal (Browser-Dialoge blockierbar).
   const handleRevokeKey = async (idUuid: string) => {
     try {
@@ -250,7 +250,7 @@ export const McpSettingsForm = () => {
                     <span className="text-[10px] font-mono text-slate-400 bg-black/40 px-2 py-0.5 rounded border border-white/5">
                       {k.key_prefix}...
                     </span>
-                    {/* Auftrag 016 P1-1: Status-Badge für widerrufene (inaktive) Keys */}
+                    {/* P1-1: Status-Badge für widerrufene (inaktive) Keys */}
                     {!k.is_active && (
                       <span
                         data-testid="mcp-key-inactive-badge"
@@ -281,7 +281,7 @@ export const McpSettingsForm = () => {
                 </div>
 
                 <div className="flex items-center gap-2 self-start sm:self-auto">
-                  {/* Auftrag 016 P1-1: Sanftes Widerrufen — nur bei aktiven Keys; inaktive sind nicht widerrufbar */}
+                  {/* P1-1: Sanftes Widerrufen — nur bei aktiven Keys; inaktive sind nicht widerrufbar */}
                   {k.is_active && (
                     <button
                       type="button"

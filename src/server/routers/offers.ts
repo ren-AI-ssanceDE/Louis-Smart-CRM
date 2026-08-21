@@ -25,8 +25,8 @@ import { workflowEventBus } from "../ai/workflowEventBus.js";
 import { Offer, OfferTextTemplate, Company, Contact } from "../../types.js";
 import { buildOfferPDFBuffer, MyCompany } from "../pdfOfferHelper.js";
 
-// 021-B (V2-4): pg liefert für date/timestamp-Spalten Date-Objekte, die das
-// Zod-Output-Schema (z.string()) nicht akzeptiert -> "Output validation failed"
+// (V2-4): pg liefert für date/timestamp-Spalten Date-Objekte, die das
+// Zod-Output-Schema (z.string) nicht akzeptiert -> "Output validation failed"
 // in getOfferById (u. a. aus executeFinalizeAndSendOffer). ISO-Mapper wie im
 // Projektmuster (mapXDates) — angewendet auf ALLEN DB-Rückgabepfaden.
 const OFFER_DATE_KEYS = ["issue_date", "valid_until"] as const; // date-Spalten -> YYYY-MM-DD

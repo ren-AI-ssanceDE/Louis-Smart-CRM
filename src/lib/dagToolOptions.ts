@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 008 Option A: Tool-Picker-Optionen für den DAG-Editor.
+// Option A: Tool-Picker-Optionen für den DAG-Editor.
 // Die Tool-Auswahl für ACTION-Knoten wandert vom (entfernten) linearen Editor
 // in den Graph-Editor. i18n-Keys existieren unter admin.workflows_tab.tools.<id>.
 // ============================================================================
@@ -41,7 +41,7 @@ export const DAG_TOOL_OPTIONS: DagToolOption[] = [
   { value: "executeLearnWorkflow", i18nKey: "admin:workflows_tab.tools.learn_workflow", defaultValue: "Learn Workflow (Neues Workflow-Makro erlernen)" },
   { value: "executeAskUserQuestion", i18nKey: "admin:workflows_tab.tools.ask_user_question", defaultValue: "Ask User Question (Rückfrage — Workflow pausiert bis Antwort)" },
   { value: "executeDelegateSubtask", i18nKey: "admin:workflows_tab.tools.delegate_subtask", defaultValue: "Delegate Subtask (Teilaufgabe an Sub-Agent (max. 3 parallel))" },
-  // G2–G8 (Auftrag 009): Update-Tools, Notizen-Vollverwaltung, Kanban-Board, Mail-Drafts, Vault-Writes
+ // G2–G8 : Update-Tools, Notizen-Vollverwaltung, Kanban-Board, Mail-Drafts, Vault-Writes
   { value: "executeUpdateDraftCompany", i18nKey: "admin:workflows_tab.tools.update_company_draft", defaultValue: "Update Company (Firma aktualisieren — Partial-Update)" },
   { value: "executeUpdateDraftContact", i18nKey: "admin:workflows_tab.tools.update_contact_draft", defaultValue: "Update Contact (Kontakt aktualisieren — inkl. Opt-ins)" },
   { value: "executeUpdateDraftInvoice", i18nKey: "admin:workflows_tab.tools.update_invoice_draft", defaultValue: "Update Invoice (Rechnung aktualisieren — Status/Betrag)" },

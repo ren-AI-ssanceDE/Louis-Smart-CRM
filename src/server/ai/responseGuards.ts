@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit — Response-Guards
+// Phase 4 (Parität): Fehlerfestigkeit — Response-Guards
 // #31 Empty-Response-Guard (leer/zu kurz → Retry; deterministischer Streak + Kostenbudget → Abbruch)
 // #32 Repetition-Guard (60+-Zeichen-Fragment > 50 % der Antwort → abfangen)
 // #41 Turn-Finalizer (reine Tool-Call-Tails + Verifikations-Scaffolding aus finaler Antwort entfernen)

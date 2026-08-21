@@ -73,7 +73,7 @@ export const AiTextGeneratorDialog: React.FC<AiTextGeneratorDialogProps> = ({
         context,
         userInstructions: defaultInstruction,
         chatHistory: [],
-        // Auftrag 032: eingestellte CRM-Sprache durchreichen (kein Hardcoding)
+ // : eingestellte CRM-Sprache durchreichen (kein Hardcoding)
         language: i18n.language || 'de'
       });
     }
@@ -101,7 +101,7 @@ export const AiTextGeneratorDialog: React.FC<AiTextGeneratorDialogProps> = ({
       context,
       userInstructions: instruction,
       chatHistory: history,
-      // Auftrag 032: eingestellte CRM-Sprache durchreichen (kein Hardcoding)
+ // : eingestellte CRM-Sprache durchreichen (kein Hardcoding)
       language: i18n.language || 'de'
     });
   };

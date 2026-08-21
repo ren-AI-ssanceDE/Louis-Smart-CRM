@@ -125,7 +125,7 @@ export class WorkflowGraphExecutor {
         // Save the result inside global node_results context
         state.node_results[node.node_id] = actionResult;
 
-        // Auftrag 008 4B (Live-Bugfix 2): ask_user_question pausiert die DAG-Instanz
+ // 4B (Live-Bugfix 2): ask_user_question pausiert die DAG-Instanz
         // (PENDING_QUESTION) — analog WAIT/HUMAN_GATE; Resume im Scheduler-Tick.
         const isAskUser =
           node.tool_identifier === "AskUserQuestion" ||
@@ -442,7 +442,7 @@ Generiere einen kompakten Absatz für die Notiz (maximal 500 Zeichen).
       const commId = uuidv4();
       const noteContent = responseText.trim();
 
-      // 021-C/N3 (V2-2-Klasse): Die generierte Notiz wird WIRKLICH persistiert
+      // /N3 (V2-2-Klasse): Die generierte Notiz wird WIRKLICH persistiert
       // (executeCreateNoteDraft mit bypassApproval=true) — vorher nur Audit, kein DB-Eintrag.
       let persistedNoteId: string | null = null;
       if (associatedContactId || associatedCompanyId) {
@@ -614,7 +614,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
       node.tool_identifier === "DelegateSubtask" || node.tool_identifier === "delegate_subtask"
     ) {
       // ======================================================================
-      // Auftrag 008 4B (Live-Bugfix): Generischer Tool-Dispatch für ALLE
+ // 4B (Live-Bugfix): Generischer Tool-Dispatch für ALLE
       // executeX-Tools (Analyst, WebSearch, TextGenerator, Vault, Memory,
       // Templates, ask_user_question, delegate_subtask, …). Die DAG-Engine
       // kannte bisher nur SendEmail/CreateNote/TelegramNotify/Kanban — alle
@@ -669,7 +669,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
           const { executeApplyTemplate } = await import("./tools/templates.js");
           rawResult = await executeApplyTemplate(tenantId, instructions);
         } else if (toolName === "executeCreateNoteDraft" || toolName === "create_note_draft") {
-          // 021-C/N3 (V2-2-Klasse): Workflow-Schritt persistiert die Notiz WIRKLICH
+          // /N3 (V2-2-Klasse): Workflow-Schritt persistiert die Notiz WIRKLICH
           // (bypassApproval=true, wie alle Workflow-Schreib-Tools) — vorher No-Op.
           rawResult = await crmMod.executeCreateNoteDraft(tenantId, instructions, "ai_workflow_dag", true);
         } else if (toolName === "executeVaultSearch" || toolName === "vault_search") {
@@ -759,7 +759,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         } else if (toolName === "executeDeleteNote" || toolName === "delete_note") {
           rawResult = await crmMod.executeDeleteNote(tenantId, instructions, "ai_workflow_dag");
         } else if (toolName === "executeCreateKanbanBoard" || toolName === "create_kanban_board") {
-          // Auftrag 042: Workflow-Graph-Pfad schreibt direkt (bypassApproval=true)
+ // : Workflow-Graph-Pfad schreibt direkt (bypassApproval=true)
           rawResult = await crmMod.executeCreateKanbanBoard(tenantId, instructions, "ai_workflow_dag", true);
         } else if (toolName === "executeListMailDrafts" || toolName === "list_mail_drafts") {
           rawResult = await messagingMod.executeListMailDrafts(tenantId, instructions);
@@ -795,7 +795,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
     throw new Error(`Nicht unterstützter Werkzeugbezeichner: ${node.tool_identifier}`);
   }
 
-  /** Auftrag 008 4B: Tenant-Konfiguration für Sub-Agent-Delegation laden */
+  /** 4B: Tenant-Konfiguration für Sub-Agent-Delegation laden */
   private async getTenantConfig(tenantId: string) {
     try {
       const res = await pool.query(

@@ -7,7 +7,7 @@ import { AgentJobCreateSchema, AgentJobUpdateSchema, AgentJobFullSchema } from "
 import { AgentJob } from "../../types.js";
 import { runAgentJobNow } from "../ai/workflowEngine.js";
 
-// pg liefert DATE/TIMESTAMP-Spalten als Date-Objekte — Zod-Output (z.string()) verlangt ISO-Strings
+// pg liefert DATE/TIMESTAMP-Spalten als Date-Objekte — Zod-Output (z.string) verlangt ISO-Strings
 function mapAgentJobDates(row: Record<string, unknown>): Record<string, unknown> {
   for (const key of ["created_at_utc", "updated_at_utc", "last_run_at_utc"] as const) {
     if (row[key] !== undefined && row[key] !== null) {
@@ -208,7 +208,7 @@ export const agentJobsRouter = router({
       return { success: true };
     }),
 
-  // Auftrag 012 P1-3: runJobNow — Job sofort ausführen (Ad-hoc/Test), unabhängig vom Scheduler-Tick
+ // P1-3: runJobNow — Job sofort ausführen (Ad-hoc/Test), unabhängig vom Scheduler-Tick
   runJobNow: adminProcedure
     .input(z.object({ id_uuid: z.string().min(1) }))
     .output(z.object({ success: z.boolean(), message: z.string() }))

@@ -305,39 +305,39 @@ export interface LouisAiConfig {
   parallel_slots?: number;
   chunk_size?: number;
   chunk_overlap?: number;
-  // Auftrag 006 Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default, Admin-einstellbar — Regel 12)
+ // Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default, Admin-einstellbar — Regel 12)
   max_iterations?: number | null;
   max_history_tokens?: number | null;
   tool_result_truncate_chars?: number | null;
   react_keep_last_results?: number | null;
   react_compaction_from_iteration?: number | null;
   early_exit_after_tools?: number | null;
-  // Auftrag 006 B3: Prompt-Direktiven-Modus
+ // B3: Prompt-Direktiven-Modus
   prompt_directives_mode?: 'always' | 'intent';
-  // Auftrag 007: Tool-Call-Modus ('auto' | 'json' | 'native')
+ // : Tool-Call-Modus ('auto' | 'json' | 'native')
   react_tool_call_mode?: 'auto' | 'json' | 'native';
   // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ, true = Text-Fallback erlaubt)
   text_fallback_enabled?: boolean | null;
-  // Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
+ // P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
   memory_budget_tokens?: number | null;
-  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+ // Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
   prompt_parallel_tool_guidance?: boolean | null;
   prompt_tool_guidance_trim?: boolean | null;
   memory_frozen_snapshot?: boolean | null;
-  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+ // Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
   compression_enabled?: boolean | null;
   compression_threshold_percent?: number | null;
   compression_tail_token_budget?: number | null;
   compression_aux_model?: string | null;
   compression_persist_summary?: boolean | null;
   compression_model_context_map?: string | null;
-  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+ // Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
   memory_prefetch_enabled?: boolean | null;
   memory_prefetch_timeout_s?: number | null;
   memory_recall_status_enabled?: boolean | null;
   memory_auto_scan_enabled?: boolean | null;
   memory_consolidation_budget?: number | null;
-  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+ // Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
   tool_call_retry_max?: number | null;
   empty_retry_budget?: number | null;
   empty_retry_cost_threshold_usd?: number | null;
@@ -345,27 +345,27 @@ export interface LouisAiConfig {
   tool_guardrail_no_progress_block?: number | null;
   loop_deadline_s?: number | null;
   thinking_scrub_enabled?: boolean | null;
-  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+ // Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
   recall_fts_enabled?: boolean | null;
   recall_search_limit?: number | null;
-  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+ // Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
   skill_curator_enabled?: boolean | null;
   skill_inject_max_tokens?: number | null;
   skill_prune_inactive_after_days?: number | null;
   skill_inject_top_k?: number | null;
-  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+ // P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
   curator_interval_hours?: number | null;
   curator_archive_after_days?: number | null;
-  // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+ // P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
   subtask_max_depth?: number | null;
-  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   audit_retention_days?: number | null;
-  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   session_retention_days?: number | null;
   // C.4 (Plan 2026-08-19): MCP-Genehmigungs-Timeout (s) + stdio-Session-Limit (Regel 12)
   mcp_approval_timeout_s?: number | null;
   mcp_stdio_max_sessions?: number | null;
-  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+ // Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
   mcp_refresh_interval_s?: number | null;
   subtask_timeout_s?: number | null;
   subtask_max_parallel?: number | null;
@@ -442,7 +442,7 @@ export interface WorkflowExecutionLogEntry {
   label_error?: string;
   note_error?: string;
   note_success?: string;
-  // Auftrag 008 4A T1-Nachtrag (A1): Referenz auf persistierte Rückfrage
+ // 4A T1-Nachtrag (A1): Referenz auf persistierte Rückfrage
   question_id?: string;
   label_success?: string;
   [key: string]: unknown;
@@ -461,7 +461,7 @@ export interface WorkflowInstance {
   updated_at_utc?: string;
   current_node_id?: string;
   node_results?: Record<string, Record<string, unknown>>;
-  // Auftrag 008 4A T1-Nachtrag (A1): persistierte Rückfrage, auf deren Antwort der Workflow wartet
+ // 4A T1-Nachtrag (A1): persistierte Rückfrage, auf deren Antwort der Workflow wartet
   pending_question_id?: string | null;
 }
 
@@ -982,7 +982,7 @@ export interface SessionRecallHit {
   snippet: string;
   relevance: number;
   created_at_utc: string;
-  // Auftrag 012 P0-3: Kontext-Fenster (±3 Nachrichten um den Treffer) + Lineage (1 Vorgänger) — optional, abwärtskompatibel
+ // P0-3: Kontext-Fenster (±3 Nachrichten um den Treffer) + Lineage (1 Vorgänger) — optional, abwärtskompatibel
   context_window?: Array<{ role: string; content: string; timestamp_utc?: string }>;
   parent_session?: {
     id_uuid: string;
@@ -1016,7 +1016,7 @@ export interface AgentJob {
   last_run_at_utc?: string | null;
   job_type?: 'agent' | 'script' | 'monitor';
   script_path?: string | null;
-  // Auftrag 012 P1-3: Tool-Domänen-Limit (NULL/[] = alle Domänen)
+ // P1-3: Tool-Domänen-Limit (NULL/[] = alle Domänen)
   allowed_domains?: ('CORE' | 'CRM_READ' | 'CRM_WRITE' | 'KNOWLEDGE' | 'KANBAN' | 'TEMPLATES' | 'WORKFLOWS')[] | null;
   monitor_hash?: string | null;
   monitor_last_output?: string | null;

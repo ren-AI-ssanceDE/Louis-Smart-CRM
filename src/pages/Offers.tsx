@@ -2950,7 +2950,7 @@ export const Offers = () => {
           } else if (aiFieldId === 'closing_text') {
             updateClosingText(newValue);
           } else if (aiFieldId === 'item_desc_single') {
-            // Auftrag 032: State UND DOM setzen (sonst überschreibt dangerouslySetInnerHTML
+ // : State UND DOM setzen (sonst überschreibt dangerouslySetInnerHTML
             // beim Re-Render die manuelle innerHTML-Zuweisung → „Übernahme übernimmt nichts")
             setInitialSingleHtml(newValue);
             if (singleEditorRef.current) singleEditorRef.current.innerHTML = newValue;

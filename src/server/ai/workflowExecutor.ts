@@ -690,7 +690,7 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
           step.tool === "learn_workflow" || step.tool === "executeLearnWorkflow" ||
           step.tool === "delegate_subtask" || step.tool === "executeDelegateSubtask" ||
           step.tool === "ask_user_question" || step.tool === "executeAskUserQuestion" ||
-          // G2–G8 (Auftrag 009): Update-Tools, Notizen-Vollverwaltung, Kanban-Board, Mail-Drafts, Vault-Writes
+ // G2–G8 : Update-Tools, Notizen-Vollverwaltung, Kanban-Board, Mail-Drafts, Vault-Writes
           step.tool === "update_company_draft" || step.tool === "executeUpdateDraftCompany" ||
           step.tool === "update_contact_draft" || step.tool === "executeUpdateDraftContact" ||
           step.tool === "update_invoice_draft" || step.tool === "executeUpdateDraftInvoice" ||
@@ -703,14 +703,14 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
           step.tool === "vault_write" || step.tool === "executeVaultWrite" ||
           step.tool === "vault_update" || step.tool === "executeVaultUpdate" ||
           step.tool === "vault_delete" || step.tool === "executeVaultDelete" ||
-          // Auftrag 036 P1: neue knowledge_*-Namen (Alias neben den vault_-Namen)
+ // P1: neue knowledge_*-Namen (Alias neben den vault_-Namen)
           step.tool === "knowledge_write" || step.tool === "executeKnowledgeWrite" ||
           step.tool === "knowledge_update" || step.tool === "executeKnowledgeUpdate" ||
           step.tool === "knowledge_delete" || step.tool === "executeKnowledgeDelete" ||
           step.tool === "knowledge_search" || step.tool === "executeKnowledgeSearch" ||
           step.tool === "list_knowledge_files" || step.tool === "executeListKnowledgeFiles"
         ) {
-          // Auftrag 008 4A: Zusätzliche Wissens-/Vault-/Memory-Tools als Workflow-Schritte
+ // 4A: Zusätzliche Wissens-/Vault-/Memory-Tools als Workflow-Schritte
           try {
             const knowledgeMod = await import("./tools/knowledge.js");
             const crmMod = await import("./tools/crm.js");
@@ -718,7 +718,7 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
             let rawResult: unknown = "";
 
             if (step.tool === "create_note_draft" || step.tool === "executeCreateNoteDraft") {
-              // 021-C/N3 (V2-2-Klasse): Workflow-Schritt persistiert die Notiz WIRKLICH
+              // /N3 (V2-2-Klasse): Workflow-Schritt persistiert die Notiz WIRKLICH
               // (bypassApproval=true, wie alle Workflow-Schreib-Tools) — vorher No-Op.
               const r = await crmMod.executeCreateNoteDraft(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
@@ -774,59 +774,59 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
               const r = await knowledgeMod.executeLearnWorkflow(tenantId, step.instruction || "");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "update_company_draft" || step.tool === "executeUpdateDraftCompany") {
-              // G2 (Auftrag 009) + B3 (Auftrag 011): Workflow schreibt direkt (bypass)
+ // G2 + B3 : Workflow schreibt direkt (bypass)
               const r = await crmMod.executeUpdateDraftCompany(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "update_contact_draft" || step.tool === "executeUpdateDraftContact") {
-              // G2 (Auftrag 009) + B3 (Auftrag 011): Workflow schreibt direkt (bypass)
+ // G2 + B3 : Workflow schreibt direkt (bypass)
               const r = await crmMod.executeUpdateDraftContact(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "update_invoice_draft" || step.tool === "executeUpdateDraftInvoice") {
-              // G5 (Auftrag 009) + B3 (Auftrag 011): Workflow schreibt direkt (bypass)
+ // G5 + B3 : Workflow schreibt direkt (bypass)
               const r = await crmMod.executeUpdateDraftInvoice(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "update_offer_draft" || step.tool === "executeUpdateDraftOffer") {
-              // G6 (Auftrag 009) + B3 (Auftrag 011): Workflow schreibt direkt (bypass)
+ // G6 + B3 : Workflow schreibt direkt (bypass)
               const r = await crmMod.executeUpdateDraftOffer(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "list_notes" || step.tool === "executeListNotes") {
-              // G4 (Auftrag 009)
+ // G4 
               const r = await crmMod.executeListNotes(tenantId, step.instruction || "{}");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "update_note" || step.tool === "executeUpdateNote") {
-              // G4 (Auftrag 009)
+ // G4 
               const r = await crmMod.executeUpdateNote(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "delete_note" || step.tool === "executeDeleteNote") {
-              // G4 (Auftrag 009)
+ // G4 
               const r = await crmMod.executeDeleteNote(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "create_kanban_board" || step.tool === "executeCreateKanbanBoard") {
-              // G3 (Auftrag 009) + Auftrag 042: Workflow-Pfad schreibt direkt (bypassApproval=true)
+ // G3: Workflow-Pfad schreibt direkt (bypassApproval=true)
               const r = await crmMod.executeCreateKanbanBoard(tenantId, step.instruction || "{}", "ai_workflow", true);
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "list_mail_drafts" || step.tool === "executeListMailDrafts") {
-              // G7 (Auftrag 009)
+ // G7 
               const messagingMod = await import("./tools/messaging.js");
               const r = await messagingMod.executeListMailDrafts(tenantId, step.instruction || "{}");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "vault_write" || step.tool === "executeVaultWrite"
               || step.tool === "knowledge_write" || step.tool === "executeKnowledgeWrite") {
-              // G8 (Auftrag 009)
+ // G8 
               const r = await knowledgeMod.executeVaultWrite(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "vault_update" || step.tool === "executeVaultUpdate"
               || step.tool === "knowledge_update" || step.tool === "executeKnowledgeUpdate") {
-              // G8 (Auftrag 009)
+ // G8 
               const r = await knowledgeMod.executeVaultUpdate(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "vault_delete" || step.tool === "executeVaultDelete"
               || step.tool === "knowledge_delete" || step.tool === "executeKnowledgeDelete") {
-              // G8 (Auftrag 009)
+ // G8 
               const r = await knowledgeMod.executeVaultDelete(tenantId, step.instruction || "{}", "ai_workflow");
               rawResult = typeof r === "string" ? r : JSON.stringify(r);
             } else if (step.tool === "delegate_subtask" || step.tool === "executeDelegateSubtask") {
-              // Auftrag 008 4A T1-Nachtrag (B1): Sub-Agent-Delegation über globalAgentRuntime
+ // 4A T1-Nachtrag (B1): Sub-Agent-Delegation über globalAgentRuntime
               const { runSubTasksStandalone } = await import("./agentRuntime.js");
               const results = await runSubTasksStandalone(tenantId, "ai_workflow", config, step.instruction || "{}", "de");
               rawResult = JSON.stringify(results.map((r) => ({
@@ -837,7 +837,7 @@ Antworte präzise, professionell und ohne Einleitungsfloskeln.
                 error: r.error
               })));
             } else if (step.tool === "ask_user_question" || step.tool === "executeAskUserQuestion") {
-              // Auftrag 008 4A T1-Nachtrag (A1): persistierte Rückfrage → Workflow pausiert
+ // 4A T1-Nachtrag (A1): persistierte Rückfrage → Workflow pausiert
               // (PENDING_QUESTION), Resume im Scheduler-Tick sobald die Frage beantwortet ist.
               // Idempotenz: Wenn diese Instanz bereits auf eine offene Frage wartet, KEINE neue
               // Frage anlegen — nur erneut pausieren (Schutz gegen Doppel-Anlage beim Resume).

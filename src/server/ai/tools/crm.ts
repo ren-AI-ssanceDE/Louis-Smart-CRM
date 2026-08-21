@@ -1275,7 +1275,7 @@ export async function executeCreateDraftInvoice(
       unit_code: item.unit_code || "PCE"
     }));
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad KEIN direkter
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad KEIN direkter
     // Write; vollständiges Invoice-Objekt zurückgeben (inkl. Pflichtfelder
     // issue_date/total_net, damit die Compliance-Validierung besteht).
     if (!bypassApproval) {
@@ -1487,7 +1487,7 @@ export async function executeCreateDraftCompany(
       updated_at_utc: new Date().toISOString()
     };
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad KEIN direkter Write
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Unternehmen-Entwurf erstellt (Freigabe erforderlich). Name: ${companyName}, Datenbank-ID: ${id}.`,
@@ -1561,7 +1561,7 @@ export async function executeCreateDraftCompany(
 }
 
 /**
- * Tool 9b (G2, Auftrag 009): Update Draft Company Tool
+ * Tool 9b (G2 ): Update Draft Company Tool
  * Partial-Update einer bestehenden Firma — nur bereitgestellte Felder werden geändert.
  * Draft-Charakter: is_verified_by_human = false (AI-Änderung), Audit-Log UPDATE_DRAFT.
  */
@@ -1630,7 +1630,7 @@ export async function executeUpdateDraftCompany(
       throw new Error("Keine änderbaren Felder angegeben.");
     }
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag,
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag,
     // Write erst nach Freigabe via approveProposal (action UPDATE)
     if (!bypassApproval) {
       return createToolSuccess({
@@ -1684,7 +1684,7 @@ export async function executeUpdateDraftCompany(
 }
 
 /**
- * Tool 11b (G2, Auftrag 009): Update Draft Contact Tool
+ * Tool 11b (G2 ): Update Draft Contact Tool
  * Partial-Update eines bestehenden Kontakts — inkl. Opt-in-Feldern (G1-Muster).
  * Draft-Charakter: is_verified_by_human = false (AI-Änderung), Audit-Log UPDATE_DRAFT.
  */
@@ -1764,7 +1764,7 @@ export async function executeUpdateDraftContact(
       throw new Error("Keine änderbaren Felder angegeben.");
     }
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kontakt-Update-Entwurf erstellt (Freigabe erforderlich, ID: ${contactId}). Geänderte Felder: ${Object.keys(updates).join(", ")}.`,
@@ -1872,7 +1872,7 @@ export async function executeCreateDraftContact(
       language: args.language || "de",
       labels: [],
       labels_json: "[]",
-      // G1 (Auftrag 009): Opt-ins aus Args (Default false), nicht mehr hart false
+ // G1 : Opt-ins aus Args (Default false), nicht mehr hart false
       opt_in_marketing: args.opt_in_marketing ?? false,
       opt_in_social_media: args.opt_in_social_media ?? false,
       opt_in_direct_message: args.opt_in_direct_message ?? false,
@@ -1892,7 +1892,7 @@ export async function executeCreateDraftContact(
       updated_at_utc: new Date().toISOString()
     };
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — im Chat-Pfad KEIN direkter
+ // B3 : einheitlicher Draft-Flow — im Chat-Pfad KEIN direkter
     // Write; der Datensatz wird nur als Vorschlag (proposedChanges) erzeugt
     // und erst nach menschlicher Freigabe via approveProposal persistiert.
     // Workflow-Pfad (bypassApproval=true) schreibt direkt (kein Freigabe-Button).
@@ -2012,7 +2012,7 @@ export async function executeCreateNoteDraft(
     }
 
     if (bypassApproval) {
-      // 021-C (V2-2): MCP-/Workflow-Pfad persistiert die Notiz WIRKLICH
+      // (V2-2): MCP-/Workflow-Pfad persistiert die Notiz WIRKLICH
       // (Muster approveProposal, louisAi.ts) — statt nur einen Draft zu melden.
       const noteId = uuidv4();
       const entityTypeVal = input.contact_id_uuid ? "contact" : "company";
@@ -2067,7 +2067,7 @@ export async function executeCreateNoteDraft(
 }
 
 /**
- * G4 (Auftrag 009): List Notes Tool — liest Notizen aus sys_louis_ai_notes.
+ * G4 : List Notes Tool — liest Notizen aus sys_louis_ai_notes.
  * Query JSON: { entity_type?: "contact"|"company"|"user", entity_id_uuid?: string, search?: string, limit?: number }
  * Ohne Filter: letzte 50 Notizen des Mandanten.
  */
@@ -2138,7 +2138,7 @@ export async function executeListNotes(
 }
 
 /**
- * G4 (Auftrag 009): Update Note Tool — ändert note_text/priority einer Notiz.
+ * G4 : Update Note Tool — ändert note_text/priority einer Notiz.
  * Query JSON: { id_uuid (oder note_id), note_text?, priority? } — mindestens ein Feld.
  * Draft-Charakter wie G2: Audit-Log UPDATE_NOTE, kein is_verified-Flag (Notes haben keins).
  */
@@ -2202,7 +2202,7 @@ export async function executeUpdateNote(
 }
 
 /**
- * G4 (Auftrag 009): Delete Note Tool — löscht eine Notiz.
+ * G4 : Delete Note Tool — löscht eine Notiz.
  * Query JSON: { id_uuid (oder note_id) } — Audit-Log DELETE_NOTE.
  */
 export async function executeDeleteNote(
@@ -2272,7 +2272,7 @@ export async function executeCreateDraftOffer(
     const args = parseResult.data;
     const id = uuidv4();
 
-    // Angebotsnummer: gewünschte Nummer (B4, Auftrag 010) bevorzugen, sonst System-Nummer AG-YYYY-XXXX
+ // Angebotsnummer: gewünschte Nummer (B4) bevorzugen, sonst System-Nummer AG-YYYY-XXXX
     const requestedOfferNumber = args.offer_number ? String(args.offer_number).trim() : "";
     let offerNumber = requestedOfferNumber;
 
@@ -2370,7 +2370,7 @@ export async function executeCreateDraftOffer(
       updated_at_utc: new Date().toISOString()
     };
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad KEIN direkter Write
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Angebotsentwurf erstellt (Freigabe erforderlich). Angebotsnummer: ${offerNumber}, Datenbank-ID: ${id}, Gesamtbetrag: ${totalGross.toFixed(2)} EUR.`,
@@ -2428,7 +2428,7 @@ export async function executeCreateDraftOffer(
 }
 
 /**
- * G5 (Auftrag 009): Update Draft Invoice Tool
+ * G5 : Update Draft Invoice Tool
  * Partial-Update einer bestehenden Rechnung (Betrag/Status/Text). Nur bereitgestellte Felder.
  * Draft-Charakter: Audit-Log UPDATE_DRAFT; is_verified_by_human = false.
  */
@@ -2478,7 +2478,7 @@ export async function executeUpdateDraftInvoice(
 
     if (Object.keys(updates).length === 0) throw new Error("Keine änderbaren Felder angegeben.");
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Rechnung-Update-Entwurf erstellt (Freigabe erforderlich, ID: ${invoiceId}). Geänderte Felder: ${Object.keys(updates).join(", ")}.`,
@@ -2526,7 +2526,7 @@ export async function executeUpdateDraftInvoice(
 }
 
 /**
- * G6 (Auftrag 009): Update Draft Offer Tool
+ * G6 : Update Draft Offer Tool
  * Partial-Update eines bestehenden Angebots. Nur bereitgestellte Felder.
  * Draft-Charakter: Audit-Log UPDATE_DRAFT; is_verified_by_human = false.
  */
@@ -2573,7 +2573,7 @@ export async function executeUpdateDraftOffer(
 
     if (Object.keys(updates).length === 0) throw new Error("Keine änderbaren Felder angegeben.");
 
-    // B3 (Auftrag 011): einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
+ // B3 : einheitlicher Draft-Flow — Chat-Pfad nur Vorschlag
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Angebot-Update-Entwurf erstellt (Freigabe erforderlich, ID: ${offerId}). Geänderte Felder: ${Object.keys(updates).join(", ")}.`,
@@ -2793,7 +2793,7 @@ export async function executeGetKanbanBoardDetails(
       boardIdUuid = argsStr;
     }
 
-    // B2 (Auftrag 010): ohne gültige ID keinen stillen Default-Fallback —
+ // B2 : ohne gültige ID keinen stillen Default-Fallback —
     // expliziter Fehler, sonst glaubt der Agent, es gäbe nur das Standard-Board
     if (!boardIdUuid || boardIdUuid === 'default') {
       return createToolError('Board-ID erforderlich (get_kanban_board_details): Bitte { board_id_uuid } angeben.');
@@ -2859,7 +2859,7 @@ export async function executeGetKanbanBoardDetails(
       [board.id_uuid, tenantId]
     );
 
-    // B2 (Auftrag 010): kompakte Ausgabe — nur relevante Felder, damit das
+ // B2 : kompakte Ausgabe — nur relevante Felder, damit das
     // Ergebnis nicht durch tool_result_truncate_chars (Default 2000) gekürzt
     // wird und der Agent Spalten/Karten tatsächlich sieht.
     const columns = columnsRes.rows.map(col => ({
@@ -2897,7 +2897,7 @@ export async function executeGetKanbanBoardDetails(
 }
 
 /**
- * G3 (Auftrag 009): Create Kanban Board Tool
+ * G3 : Create Kanban Board Tool
  * Legt ein neues Kanban-Board an (Name + optionale Spalten + optionale Beispielkarten).
  * Draft-Flow via propose_crm_changes? Nein — Boards werden direkt angelegt (wie
  * create_kanban_card), aber mit Audit-Log CREATE_BOARD.
@@ -2938,7 +2938,7 @@ export async function executeCreateKanbanBoard(
 
     const boardId = uuidv4();
 
-    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write (Muster executeCreateDraftOffer Z. 1174)
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write (Muster executeCreateDraftOffer Z. 1174)
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kanban-Board-Entwurf erstellt (Freigabe erforderlich). Titel: ${title}, Datenbank-ID: ${boardId}.`,
@@ -3163,7 +3163,7 @@ export async function executeCreateKanbanCard(
         updated_at_utc: now
       };
 
-      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
       if (!bypassApproval) {
         return createToolSuccess({
           message: `Kanban-Karten-Entwurf erstellt (Freigabe erforderlich). Titel: ${input.title}, Datenbank-ID: ${cardId}.`,
@@ -3246,7 +3246,7 @@ export async function executeCreateKanbanCard(
     const newPos = parseInt(posRes.rows[0]?.count || '0', 10);
     const cardId = uuidv4();
 
-    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kanban-Karten-Entwurf erstellt (Freigabe erforderlich). Titel: ${input.title}, Datenbank-ID: ${cardId}.`,
@@ -3362,7 +3362,7 @@ export async function executeMoveKanbanCard(
       card.position = input.new_position;
       card.updated_at_utc = new Date().toISOString();
 
-      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
       if (!bypassApproval) {
         return createToolSuccess({
           message: `Kanban-Karten-Verschiebung als Entwurf erstellt (Freigabe erforderlich). Karte: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
@@ -3424,7 +3424,7 @@ export async function executeMoveKanbanCard(
       throw new Error('Ziel-Spalte konnte nicht ermittelt werden.');
     }
 
-    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kanban-Karten-Verschiebung als Entwurf erstellt (Freigabe erforderlich). Karte: ${card.title}, Datenbank-ID: ${cardId}.`,
@@ -3514,7 +3514,7 @@ export async function executeUpdateKanbanCard(
       if (input.labels !== undefined) card.labels = input.labels;
       card.updated_at_utc = new Date().toISOString();
 
-      // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
       if (!bypassApproval) {
         return createToolSuccess({
           message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
@@ -3558,7 +3558,7 @@ export async function executeUpdateKanbanCard(
     const newDueDate = input.due_date !== undefined ? input.due_date : card.due_date;
     const newLabels = input.labels ?? card.labels;
 
-    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${newTitle}, Datenbank-ID: ${cardId}.`,
@@ -3630,7 +3630,7 @@ export async function executeDeleteKanbanCard(
     const cardId = input.card_id || input.card_id_uuid;
     if (!cardId) throw new Error("Fehler: Keine gültige card_id angegeben.");
 
-    // Auftrag 042 P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
       return createToolSuccess({
         message: `Kanban-Karten-Löschung als Entwurf erstellt (Freigabe erforderlich). Karten-ID: ${cardId}.`,

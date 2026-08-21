@@ -73,7 +73,7 @@ export const McpClientSettingsTab: React.FC = () => {
   }, [refetchServers, refetchTools]);
 
   // Mutations
-  // BUG-10 (Auftrag 015): onSuccess-Refetch — nach dem Anlegen muss die Server-Liste sofort aktualisieren
+ // onSuccess-Refetch — nach dem Anlegen muss die Server-Liste sofort aktualisieren
   // und der "Aktive Server"-Tab aktiv werden (vorher blieb die Karte unsichtbar bis zum Reload)
   const createServerMutation = trpc.createServer.useMutation({
     onSuccess: () => {
@@ -469,7 +469,7 @@ export const McpClientSettingsTab: React.FC = () => {
             </button>
           </div>
 
-          {/* BUG-9 (Auftrag 015): relative z-10 — ein <select> überlagerte den Button und fing Pointer-Events ab */}
+ {/* relative z-10 — ein <select> überlagerte den Button und fing Pointer-Events ab */}
           <button
             type="button"
             onClick={handleOpenCreateModal}

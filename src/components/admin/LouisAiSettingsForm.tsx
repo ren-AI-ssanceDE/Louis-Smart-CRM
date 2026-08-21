@@ -430,39 +430,39 @@ export const LouisAiSettingsForm = () => {
   const [chunkSize, setChunkSize] = useState(500);
   const [chunkOverlap, setChunkOverlap] = useState(50);
 
-  // Auftrag 006 Task 0: ReAct-Laufzeitparameter (Regel 12 — Admin-einstellbar, null = Backend-Default)
+ // Task 0: ReAct-Laufzeitparameter (Regel 12 — Admin-einstellbar, null = Backend-Default)
   const [maxIterations, setMaxIterations] = useState<string>("");
   const [maxHistoryTokens, setMaxHistoryTokens] = useState<string>("");
   const [toolResultTruncateChars, setToolResultTruncateChars] = useState<string>("");
   const [reactKeepLastResults, setReactKeepLastResults] = useState<string>("");
   const [reactCompactionFromIteration, setReactCompactionFromIteration] = useState<string>("");
   const [earlyExitAfterTools, setEarlyExitAfterTools] = useState<string>("");
-  // Auftrag 006 B3: Prompt-Direktiven-Modus ('always' = bisheriges Verhalten, 'intent' = Tokensparen)
+ // B3: Prompt-Direktiven-Modus ('always' = bisheriges Verhalten, 'intent' = Tokensparen)
   const [promptDirectivesMode, setPromptDirectivesMode] = useState<'always' | 'intent'>('always');
-  // Auftrag 007 T5: Tool-Call-Modus ('auto' = native mit JSON-Fallback, 'json' = JSON-Freitext, 'native' = erzwungen)
+ // T5: Tool-Call-Modus ('auto' = native mit JSON-Fallback, 'json' = JSON-Freitext, 'native' = erzwungen)
   const [reactToolCallMode, setReactToolCallMode] = useState<'auto' | 'json' | 'native'>('auto');
   // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ, true = Text-Fallback aktiv)
   const [textFallbackEnabled, setTextFallbackEnabled] = useState<boolean>(false);
-  // Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (leer = Backend-Default 800, Regel 12)
+ // P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (leer = Backend-Default 800, Regel 12)
   const [memoryBudgetTokens, setMemoryBudgetTokens] = useState<string>("");
-  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (leer/null = Backend-Default, Regel 12)
+ // Phase 1 (Parität): Cache-Tier-Toggles (leer/null = Backend-Default, Regel 12)
   const [promptParallelToolGuidance, setPromptParallelToolGuidance] = useState<boolean>(true);
   const [promptToolGuidanceTrim, setPromptToolGuidanceTrim] = useState<boolean>(true);
   const [memoryFrozenSnapshot, setMemoryFrozenSnapshot] = useState<boolean>(true);
-  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (leer/null = Backend-Default, Regel 12)
+ // Phase 2 (Parität): Kontext-Kompression (leer/null = Backend-Default, Regel 12)
   const [compressionEnabled, setCompressionEnabled] = useState<boolean>(true);
   const [compressionThresholdPercent, setCompressionThresholdPercent] = useState<string>("");
   const [compressionTailTokenBudget, setCompressionTailTokenBudget] = useState<string>("");
   const [compressionAuxModel, setCompressionAuxModel] = useState<string>("");
   const [compressionPersistSummary, setCompressionPersistSummary] = useState<boolean>(true);
   const [compressionModelContextMap, setCompressionModelContextMap] = useState<string>("");
-  // Auftrag 025 Phase 3 (Parität): Memory (leer/null = Backend-Default, Regel 12)
+ // Phase 3 (Parität): Memory (leer/null = Backend-Default, Regel 12)
   const [memoryPrefetchEnabled, setMemoryPrefetchEnabled] = useState<boolean>(true);
   const [memoryPrefetchTimeoutS, setMemoryPrefetchTimeoutS] = useState<string>("");
   const [memoryRecallStatusEnabled, setMemoryRecallStatusEnabled] = useState<boolean>(true);
   const [memoryAutoScanEnabled, setMemoryAutoScanEnabled] = useState<boolean>(true);
   const [memoryConsolidationBudget, setMemoryConsolidationBudget] = useState<string>("");
-  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (leer/null = Backend-Default, Regel 12)
+ // Phase 4 (Parität): Fehlerfestigkeit (leer/null = Backend-Default, Regel 12)
   const [toolCallRetryMax, setToolCallRetryMax] = useState<string>("");
   const [emptyRetryBudget, setEmptyRetryBudget] = useState<string>("");
   const [emptyRetryCostThresholdUsd, setEmptyRetryCostThresholdUsd] = useState<string>("");
@@ -470,26 +470,26 @@ export const LouisAiSettingsForm = () => {
   const [toolGuardrailNoProgressBlock, setToolGuardrailNoProgressBlock] = useState<string>("");
   const [loopDeadlineS, setLoopDeadlineS] = useState<string>("");
   const [thinkingScrubEnabled, setThinkingScrubEnabled] = useState<boolean>(true);
-  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (leer/null = Backend-Default, Regel 12)
+ // Phase 5 (Parität): Sessions & Recall (leer/null = Backend-Default, Regel 12)
   const [recallFtsEnabled, setRecallFtsEnabled] = useState<boolean>(true);
   const [recallSearchLimit, setRecallSearchLimit] = useState<string>("");
-  // Auftrag 025 Phase 6 (Parität): Curator & Skills (leer/null = Backend-Default, Regel 12)
+ // Phase 6 (Parität): Curator & Skills (leer/null = Backend-Default, Regel 12)
   const [skillCuratorEnabled, setSkillCuratorEnabled] = useState<boolean>(true);
   const [skillInjectMaxTokens, setSkillInjectMaxTokens] = useState<string>("");
   const [skillPruneInactiveAfterDays, setSkillPruneInactiveAfterDays] = useState<string>("");
   const [skillInjectTopK, setSkillInjectTopK] = useState<string>("");
-  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (leer/null = Backend-Default, Regel 12)
+ // P1-1 (Parität): Curator-Tick/Archiv (leer/null = Backend-Default, Regel 12)
   const [curatorIntervalHours, setCuratorIntervalHours] = useState<string>("");
   const [curatorArchiveAfterDays, setCuratorArchiveAfterDays] = useState<string>("");
-  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (leer/null = Backend-Default, Regel 12)
+ // Phase 7 (Parität): MCP-Registry & Subagent (leer/null = Backend-Default, Regel 12)
   const [mcpRefreshIntervalS, setMcpRefreshIntervalS] = useState<string>("");
   const [subtaskTimeoutS, setSubtaskTimeoutS] = useState<string>("");
   const [subtaskMaxParallel, setSubtaskMaxParallel] = useState<string>("");
-  // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (leer/null = Backend-Default, Regel 12)
+ // P1-3 (Parität): Subagent-Spawn-Depth (leer/null = Backend-Default, Regel 12)
   const [subtaskMaxDepth, setSubtaskMaxDepth] = useState<string>("");
-  // Auftrag 037 P1: Audit-Log-Retention in Tagen (leer/null = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention in Tagen (leer/null = kein Auto-Prune, Regel 12)
   const [auditRetentionDays, setAuditRetentionDays] = useState<string>("");
-  // Auftrag 038 P1: Session-Retention in Tagen (leer/null = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention in Tagen (leer/null = kein Auto-Prune, Regel 12)
   const [sessionRetentionDays, setSessionRetentionDays] = useState<string>("");
 
   const [shouldFetchModels, setShouldFetchModels] = useState(false);
@@ -547,24 +547,24 @@ export const LouisAiSettingsForm = () => {
       setReactToolCallMode(config.react_tool_call_mode || 'auto');
       setTextFallbackEnabled(config.text_fallback_enabled ?? false);
       setMemoryBudgetTokens(config.memory_budget_tokens != null ? String(config.memory_budget_tokens) : "");
-      // Auftrag 025 Phase 1: Cache-Tier-Toggles (null → Backend-Default true)
+ // Phase 1: Cache-Tier-Toggles (null → Backend-Default true)
       setPromptParallelToolGuidance(config.prompt_parallel_tool_guidance ?? true);
       setPromptToolGuidanceTrim(config.prompt_tool_guidance_trim ?? true);
       setMemoryFrozenSnapshot(config.memory_frozen_snapshot ?? true);
-      // Auftrag 025 Phase 2: Kontext-Kompression (leer = Backend-Default)
+ // Phase 2: Kontext-Kompression (leer = Backend-Default)
       setCompressionEnabled(config.compression_enabled ?? true);
       setCompressionThresholdPercent(config.compression_threshold_percent != null ? String(config.compression_threshold_percent) : "");
       setCompressionTailTokenBudget(config.compression_tail_token_budget != null ? String(config.compression_tail_token_budget) : "");
       setCompressionAuxModel(config.compression_aux_model || "");
       setCompressionPersistSummary(config.compression_persist_summary ?? true);
       setCompressionModelContextMap(config.compression_model_context_map || "");
-      // Auftrag 025 Phase 3: Memory (leer = Backend-Default)
+ // Phase 3: Memory (leer = Backend-Default)
       setMemoryPrefetchEnabled(config.memory_prefetch_enabled ?? true);
       setMemoryPrefetchTimeoutS(config.memory_prefetch_timeout_s != null ? String(config.memory_prefetch_timeout_s) : "");
       setMemoryRecallStatusEnabled(config.memory_recall_status_enabled ?? true);
       setMemoryAutoScanEnabled(config.memory_auto_scan_enabled ?? true);
       setMemoryConsolidationBudget(config.memory_consolidation_budget != null ? String(config.memory_consolidation_budget) : "");
-      // Auftrag 025 Phase 4: Fehlerfestigkeit (leer = Backend-Default)
+ // Phase 4: Fehlerfestigkeit (leer = Backend-Default)
       setToolCallRetryMax(config.tool_call_retry_max != null ? String(config.tool_call_retry_max) : "");
       setEmptyRetryBudget(config.empty_retry_budget != null ? String(config.empty_retry_budget) : "");
       setEmptyRetryCostThresholdUsd(config.empty_retry_cost_threshold_usd != null ? String(config.empty_retry_cost_threshold_usd) : "");
@@ -572,24 +572,24 @@ export const LouisAiSettingsForm = () => {
       setToolGuardrailNoProgressBlock(config.tool_guardrail_no_progress_block != null ? String(config.tool_guardrail_no_progress_block) : "");
       setLoopDeadlineS(config.loop_deadline_s != null ? String(config.loop_deadline_s) : "");
       setThinkingScrubEnabled(config.thinking_scrub_enabled ?? true);
-      // Auftrag 025 Phase 5: Sessions & Recall (leer = Backend-Default)
+ // Phase 5: Sessions & Recall (leer = Backend-Default)
       setRecallFtsEnabled(config.recall_fts_enabled ?? true);
       setRecallSearchLimit(config.recall_search_limit != null ? String(config.recall_search_limit) : "");
-      // Auftrag 025 Phase 6: Curator & Skills (leer = Backend-Default)
+ // Phase 6: Curator & Skills (leer = Backend-Default)
       setSkillCuratorEnabled(config.skill_curator_enabled ?? true);
       setSkillInjectMaxTokens(config.skill_inject_max_tokens != null ? String(config.skill_inject_max_tokens) : "");
       setSkillPruneInactiveAfterDays(config.skill_prune_inactive_after_days != null ? String(config.skill_prune_inactive_after_days) : "");
       setSkillInjectTopK(config.skill_inject_top_k != null ? String(config.skill_inject_top_k) : "");
       setCuratorIntervalHours(config.curator_interval_hours != null ? String(config.curator_interval_hours) : "");
       setCuratorArchiveAfterDays(config.curator_archive_after_days != null ? String(config.curator_archive_after_days) : "");
-      // Auftrag 025 Phase 7: MCP & Subagent (leer = Backend-Default)
+ // Phase 7: MCP & Subagent (leer = Backend-Default)
       setMcpRefreshIntervalS(config.mcp_refresh_interval_s != null ? String(config.mcp_refresh_interval_s) : "");
       setSubtaskTimeoutS(config.subtask_timeout_s != null ? String(config.subtask_timeout_s) : "");
       setSubtaskMaxParallel(config.subtask_max_parallel != null ? String(config.subtask_max_parallel) : "");
       setSubtaskMaxDepth(config.subtask_max_depth != null ? String(config.subtask_max_depth) : "");
-      // Auftrag 037 P1: Audit-Log-Retention (leer = kein Auto-Prune)
+ // P1: Audit-Log-Retention (leer = kein Auto-Prune)
       setAuditRetentionDays(config.audit_retention_days != null ? String(config.audit_retention_days) : "");
-      // Auftrag 038 P1: Session-Retention (leer = kein Auto-Prune)
+ // P1: Session-Retention (leer = kein Auto-Prune)
       setSessionRetentionDays(config.session_retention_days != null ? String(config.session_retention_days) : "");
       setIsSubmitAttempted(false);
     }
@@ -636,24 +636,24 @@ export const LouisAiSettingsForm = () => {
       react_tool_call_mode: reactToolCallMode,
       text_fallback_enabled: textFallbackEnabled,
       memory_budget_tokens: numOrNull(memoryBudgetTokens),
-      // Auftrag 025 Phase 1: Cache-Tier-Toggles (null = Backend-Default)
+ // Phase 1: Cache-Tier-Toggles (null = Backend-Default)
       prompt_parallel_tool_guidance: promptParallelToolGuidance,
       prompt_tool_guidance_trim: promptToolGuidanceTrim,
       memory_frozen_snapshot: memoryFrozenSnapshot,
-      // Auftrag 025 Phase 2: Kontext-Kompression (leer = Backend-Default)
+ // Phase 2: Kontext-Kompression (leer = Backend-Default)
       compression_enabled: compressionEnabled,
       compression_threshold_percent: numOrNull(compressionThresholdPercent),
       compression_tail_token_budget: numOrNull(compressionTailTokenBudget),
       compression_aux_model: compressionAuxModel.trim() === "" ? null : compressionAuxModel,
       compression_persist_summary: compressionPersistSummary,
       compression_model_context_map: compressionModelContextMap.trim() === "" ? null : compressionModelContextMap,
-      // Auftrag 025 Phase 3: Memory (leer = Backend-Default)
+ // Phase 3: Memory (leer = Backend-Default)
       memory_prefetch_enabled: memoryPrefetchEnabled,
       memory_prefetch_timeout_s: numOrNull(memoryPrefetchTimeoutS),
       memory_recall_status_enabled: memoryRecallStatusEnabled,
       memory_auto_scan_enabled: memoryAutoScanEnabled,
       memory_consolidation_budget: numOrNull(memoryConsolidationBudget),
-      // Auftrag 025 Phase 4: Fehlerfestigkeit (leer = Backend-Default)
+ // Phase 4: Fehlerfestigkeit (leer = Backend-Default)
       tool_call_retry_max: numOrNull(toolCallRetryMax),
       empty_retry_budget: numOrNull(emptyRetryBudget),
       empty_retry_cost_threshold_usd: emptyRetryCostThresholdUsd.trim() === "" ? null : Number(emptyRetryCostThresholdUsd),
@@ -661,24 +661,24 @@ export const LouisAiSettingsForm = () => {
       tool_guardrail_no_progress_block: numOrNull(toolGuardrailNoProgressBlock),
       loop_deadline_s: numOrNull(loopDeadlineS),
       thinking_scrub_enabled: thinkingScrubEnabled,
-      // Auftrag 025 Phase 5: Sessions & Recall (leer = Backend-Default)
+ // Phase 5: Sessions & Recall (leer = Backend-Default)
       recall_fts_enabled: recallFtsEnabled,
       recall_search_limit: numOrNull(recallSearchLimit),
-      // Auftrag 025 Phase 6: Curator & Skills (leer = Backend-Default)
+ // Phase 6: Curator & Skills (leer = Backend-Default)
       skill_curator_enabled: skillCuratorEnabled,
       skill_inject_max_tokens: numOrNull(skillInjectMaxTokens),
       skill_prune_inactive_after_days: numOrNull(skillPruneInactiveAfterDays),
       skill_inject_top_k: numOrNull(skillInjectTopK),
       curator_interval_hours: numOrNull(curatorIntervalHours),
       curator_archive_after_days: numOrNull(curatorArchiveAfterDays),
-      // Auftrag 025 Phase 7: MCP & Subagent (leer = Backend-Default)
+ // Phase 7: MCP & Subagent (leer = Backend-Default)
       mcp_refresh_interval_s: numOrNull(mcpRefreshIntervalS),
       subtask_timeout_s: numOrNull(subtaskTimeoutS),
       subtask_max_parallel: numOrNull(subtaskMaxParallel),
       subtask_max_depth: numOrNull(subtaskMaxDepth),
-      // Auftrag 037 P1: Audit-Log-Retention (leer = kein Auto-Prune)
+ // P1: Audit-Log-Retention (leer = kein Auto-Prune)
       audit_retention_days: numOrNull(auditRetentionDays),
-      // Auftrag 038 P1: Session-Retention (leer = kein Auto-Prune)
+ // P1: Session-Retention (leer = kein Auto-Prune)
       session_retention_days: numOrNull(sessionRetentionDays)
     }, {
       onSuccess: () => {
@@ -728,24 +728,24 @@ export const LouisAiSettingsForm = () => {
       react_tool_call_mode: reactToolCallMode,
       text_fallback_enabled: textFallbackEnabled,
       memory_budget_tokens: numOrNull(memoryBudgetTokens),
-      // Auftrag 025 Phase 1: Cache-Tier-Toggles (null = Backend-Default)
+ // Phase 1: Cache-Tier-Toggles (null = Backend-Default)
       prompt_parallel_tool_guidance: promptParallelToolGuidance,
       prompt_tool_guidance_trim: promptToolGuidanceTrim,
       memory_frozen_snapshot: memoryFrozenSnapshot,
-      // Auftrag 025 Phase 2: Kontext-Kompression (leer = Backend-Default)
+ // Phase 2: Kontext-Kompression (leer = Backend-Default)
       compression_enabled: compressionEnabled,
       compression_threshold_percent: numOrNull(compressionThresholdPercent),
       compression_tail_token_budget: numOrNull(compressionTailTokenBudget),
       compression_aux_model: compressionAuxModel.trim() === "" ? null : compressionAuxModel,
       compression_persist_summary: compressionPersistSummary,
       compression_model_context_map: compressionModelContextMap.trim() === "" ? null : compressionModelContextMap,
-      // Auftrag 025 Phase 3: Memory (leer = Backend-Default)
+ // Phase 3: Memory (leer = Backend-Default)
       memory_prefetch_enabled: memoryPrefetchEnabled,
       memory_prefetch_timeout_s: numOrNull(memoryPrefetchTimeoutS),
       memory_recall_status_enabled: memoryRecallStatusEnabled,
       memory_auto_scan_enabled: memoryAutoScanEnabled,
       memory_consolidation_budget: numOrNull(memoryConsolidationBudget),
-      // Auftrag 025 Phase 4: Fehlerfestigkeit (leer = Backend-Default)
+ // Phase 4: Fehlerfestigkeit (leer = Backend-Default)
       tool_call_retry_max: numOrNull(toolCallRetryMax),
       empty_retry_budget: numOrNull(emptyRetryBudget),
       empty_retry_cost_threshold_usd: emptyRetryCostThresholdUsd.trim() === "" ? null : Number(emptyRetryCostThresholdUsd),
@@ -753,24 +753,24 @@ export const LouisAiSettingsForm = () => {
       tool_guardrail_no_progress_block: numOrNull(toolGuardrailNoProgressBlock),
       loop_deadline_s: numOrNull(loopDeadlineS),
       thinking_scrub_enabled: thinkingScrubEnabled,
-      // Auftrag 025 Phase 5: Sessions & Recall (leer = Backend-Default)
+ // Phase 5: Sessions & Recall (leer = Backend-Default)
       recall_fts_enabled: recallFtsEnabled,
       recall_search_limit: numOrNull(recallSearchLimit),
-      // Auftrag 025 Phase 6: Curator & Skills (leer = Backend-Default)
+ // Phase 6: Curator & Skills (leer = Backend-Default)
       skill_curator_enabled: skillCuratorEnabled,
       skill_inject_max_tokens: numOrNull(skillInjectMaxTokens),
       skill_prune_inactive_after_days: numOrNull(skillPruneInactiveAfterDays),
       skill_inject_top_k: numOrNull(skillInjectTopK),
       curator_interval_hours: numOrNull(curatorIntervalHours),
       curator_archive_after_days: numOrNull(curatorArchiveAfterDays),
-      // Auftrag 025 Phase 7: MCP & Subagent (leer = Backend-Default)
+ // Phase 7: MCP & Subagent (leer = Backend-Default)
       mcp_refresh_interval_s: numOrNull(mcpRefreshIntervalS),
       subtask_timeout_s: numOrNull(subtaskTimeoutS),
       subtask_max_parallel: numOrNull(subtaskMaxParallel),
       subtask_max_depth: numOrNull(subtaskMaxDepth),
-      // Auftrag 037 P1: Audit-Log-Retention (leer = kein Auto-Prune)
+ // P1: Audit-Log-Retention (leer = kein Auto-Prune)
       audit_retention_days: numOrNull(auditRetentionDays),
-      // Auftrag 038 P1: Session-Retention (leer = kein Auto-Prune)
+ // P1: Session-Retention (leer = kein Auto-Prune)
       session_retention_days: numOrNull(sessionRetentionDays)
     }, {
       onSuccess: () => {
@@ -1268,7 +1268,7 @@ export const LouisAiSettingsForm = () => {
         </div>
       </div>
 
-      {/* Auftrag 006 Task 0: Agenten-Laufzeit (ReAct-Parameter, Regel 12 — Admin-einstellbar) */}
+      {/* Task 0: Agenten-Laufzeit (ReAct-Parameter, Regel 12 — Admin-einstellbar) */}
       <div data-testid="react-runtime-settings" className="bg-primary-light/10 border border-white/5 rounded-3xl p-6 mb-8 space-y-6">
         <div className="flex items-center gap-4 border-b border-white/5 pb-3">
           <div className="p-3 bg-accent-blue/10 rounded-xl border border-accent-blue/20 text-accent-blue">
@@ -1433,7 +1433,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-2 md:col-span-2">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.cache_tier_section_label', { defaultValue: 'Cache-Tier-Architektur (Prompt-Stabilität)' })}
@@ -1499,7 +1499,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1569,7 +1569,7 @@ export const LouisAiSettingsForm = () => {
                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
                   {t('admin:ai_settings.compression_aux_label', { defaultValue: 'Aux-Modell für Zusammenfassungen' })}
                 </label>
-                {/* Auftrag 040: Dropdown aus der abgerufenen Modellliste (Hauptbereich) statt Freitext */}
+                {/*: Dropdown aus der abgerufenen Modellliste (Hauptbereich) statt Freitext */}
                 <select
                   value={compressionAuxModel}
                   onChange={(e) => setCompressionAuxModel(e.target.value)}
@@ -1580,8 +1580,7 @@ export const LouisAiSettingsForm = () => {
                   <option value="">
                     {t('admin:ai_settings.compression_aux_empty_option', { defaultValue: '— Leer = Hauptmodell —' })}
                   </option>
-                  {/* Auftrag 040 P1: gespeicherte ID, die nicht (mehr) in der Liste steht, trotzdem anzeigen —
-                      sonst würde das Select beim Speichern still auf „leer" zurückfallen */}
+                  {/* P1: gespeicherte ID, die nicht (mehr) in der Liste steht, trotzdem anzeigen — sonst würde das Select beim Speichern still auf „leer" zurückfallen */}
                   {compressionAuxModel && !modelsData?.models?.some((m: { id: string }) => m.id === compressionAuxModel) && (
                     <option value={compressionAuxModel}>
                       {compressionAuxModel} {t('admin:ai_settings.compression_aux_saved_suffix', { defaultValue: '(gespeichert)' })}
@@ -1645,7 +1644,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.memory_section_label', { defaultValue: 'Memory (Gedächtnis & Recall)' })}
@@ -1750,7 +1749,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1893,7 +1892,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.recall_section_label', { defaultValue: 'Sessions & Recall' })}
@@ -1939,7 +1938,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -2066,7 +2065,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12) */}
+          {/* Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12) */}
           <div className="space-y-4 md:col-span-2 border-t border-white/5 pt-4">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.mcp_subagent_section_label', { defaultValue: 'MCP & Sub-Agenten' })}
@@ -2152,7 +2151,7 @@ export const LouisAiSettingsForm = () => {
             </div>
           </div>
 
-          {/* Auftrag 037 P1: Audit-Log-Retention (leer = kein Auto-Prune, Regel 12) */}
+          {/* P1: Audit-Log-Retention (leer = kein Auto-Prune, Regel 12) */}
           <div className="space-y-2">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.audit_retention_label', { defaultValue: 'Audit-Log Aufbewahrung (Tage)' })}
@@ -2172,7 +2171,7 @@ export const LouisAiSettingsForm = () => {
             </p>
           </div>
 
-          {/* Auftrag 038 P1: Session-Retention (leer = kein Auto-Prune, Regel 12) */}
+          {/* P1: Session-Retention (leer = kein Auto-Prune, Regel 12) */}
           <div className="space-y-2">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-display">
               {t('admin:ai_settings.session_retention_label', { defaultValue: 'Chat-Verlauf Aufbewahrung (Tage)' })}

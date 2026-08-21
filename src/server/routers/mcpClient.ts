@@ -213,7 +213,7 @@ export const mcpClientRouter = router({
         env_vars: input.env_vars || {},
         headers: input.headers || {},
         auth_type: input.auth_type || "none",
-        //  2026-08-17: "Bearer " / "Basic "-Präfix beim Persistieren entfernen
+        // 2026-08-17: "Bearer " / "Basic "-Präfix beim Persistieren entfernen
         // C.3: auth_token + neue Secret-Felder verschlüsselt speichern (echte AES-256-GCM)
         auth_token_encrypted: encryptSecret(normalizeAuthToken(input.auth_token_encrypted)),
         is_active: input.is_active ?? true,
@@ -325,7 +325,7 @@ export const mcpClientRouter = router({
             updateFields.push(`${key} = $${paramIdx}`);
             values.push(JSON.stringify(val));
           } else if (key === "auth_token_encrypted") {
-            //  2026-08-17: "Bearer " / "Basic "-Präfix auch beim Update entfernen; C.3: verschlüsseln
+            // 2026-08-17: "Bearer " / "Basic "-Präfix auch beim Update entfernen; C.3: verschlüsseln
             updateFields.push(`${key} = $${paramIdx}`);
             values.push(typeof val === "string" ? encryptSecret(normalizeAuthToken(val)) : val);
           } else if (["client_cert", "client_key", "custom_headers"].includes(key)) {
@@ -633,7 +633,7 @@ export const mcpClientRouter = router({
     .input(z.object({ session_id: z.string().uuid(), profile_id: z.string().uuid() }))
     .output(z.object({ success: z.boolean(), error: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
-      //  2026-08-19: Nach Session-Rotation (Kompression) kennt die UI nur die ELTERN-ID —
+      // 2026-08-19: Nach Session-Rotation (Kompression) kennt die UI nur die ELTERN-ID —
       // ohne Auflösung findet der Server die Session nicht → stiller Fehler → „Switch geht nicht"
       const resolved = await resolveRotatedSessionId(ctx.tenantId, input.session_id);
       return switchSessionProfile(ctx.tenantId, resolved ?? input.session_id, input.profile_id);
@@ -643,7 +643,7 @@ export const mcpClientRouter = router({
     .input(z.object({ session_id: z.string().uuid(), tools: z.array(z.string()).nullable() }))
     .output(z.object({ success: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
-      //  2026-08-19: Session-Rotation auflösen (siehe switchSessionProfile)
+      // 2026-08-19: Session-Rotation auflösen (siehe switchSessionProfile)
       const resolved = await resolveRotatedSessionId(ctx.tenantId, input.session_id);
       return { success: await setSessionToolOverride(ctx.tenantId, resolved ?? input.session_id, input.tools) };
     }),
@@ -698,7 +698,7 @@ export const mcpClientRouter = router({
         env_vars: envVarsWithPreset,
         headers: {},
         auth_type: preset.authType === "oauth2" ? "oauth2" : (preset.authType === "api_key" || preset.authType === "bearer" || preset.authType === "basic") ? preset.authType : "none",
-        //  2026-08-17: "Bearer " / "Basic "-Präfix auch beim Preset-Install entfernen
+        // 2026-08-17: "Bearer " / "Basic "-Präfix auch beim Preset-Install entfernen
         auth_token_encrypted: normalizeAuthToken(authToken),
         is_active: true,
         health_status: "unknown",
@@ -770,7 +770,7 @@ export const mcpClientRouter = router({
         }
       }
 
-      // 046-C1 (2026-08-20): requiredScopes des Presets an den OAuth-Flow
+      // (2026-08-20): requiredScopes des Presets an den OAuth-Flow
       // durchreichen — vorher fiel buildOAuthAuthUrl auf die readonly-Defaults
       // zurück (kein gmail.send/gmail.modify → Senden/Labels unmöglich).
       // Abwärtskompatibel: kein Preset/keine Scopes → bisheriges Verhalten.

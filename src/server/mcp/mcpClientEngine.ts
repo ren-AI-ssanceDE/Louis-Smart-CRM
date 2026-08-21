@@ -6,7 +6,7 @@ import { Agent as UndiciAgent } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, cleanDbRow, cleanLigatureHacksFromValue } from "../db.js";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
-// Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung (doppelt gewrappte inputSchema unwrappen)
+// Phase 7 (#54): MCP-Schema-Normalisierung (doppelt gewrappte inputSchema unwrappen)
 import { unwrapWrappedSchema } from "../ai/toolSchemas.js";
 import { getMcpOAuthToken } from "./oauthHandler.js";
 import { normalizeAuthToken } from "./authTokenNormalize.js";
@@ -54,7 +54,7 @@ export function normalizeToolArguments(
     ? (normalized.event as Record<string, unknown>)
     : null;
 
-  // Auftrag 046 Schritt 3 (C2+C5, Go 2026-08-20): Schema-Respekt statt Raten.
+ // Schritt 3 (C2+C5, Go 2026-08-20): Schema-Respekt statt Raten.
   // Das inputSchema ist die einzige verlässliche Typ-Quelle — ist es leer (keine
   // properties, z. B. mcp-google-calendar), werden Argumente TYP-ERHALTEND
   // durchgereicht (String bleibt String, Objekt bleibt Objekt). Vorher baute die
@@ -844,7 +844,7 @@ function mcpFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, { ...init, headers } as RequestInit) as Promise<Response>;
 }
 
-// Auftrag 025 Phase 7 (#55): MCP-Timeout pro Aufruf — hängende MCP-Server dürfen den
+// Phase 7 (#55): MCP-Timeout pro Aufruf — hängende MCP-Server dürfen den
 // Agent-Loop nie blockieren (Muster mcp.py:186). AbortController statt globalem Hängen.
 function mcpFetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController();
@@ -859,7 +859,7 @@ function mcpFetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 30000)
 
 function getAuthHeaders(server: McpExternalServer): Record<string, string> {
   const headers: Record<string, string> = { ...server.headers };
-  //  2026-08-17: "Bearer "-Präfix defensiv entfernen — Nutzer kopieren oft den
+  // 2026-08-17: "Bearer "-Präfix defensiv entfernen — Nutzer kopieren oft den
   // Plugin-Anzeige-Text ("Bearer <hex>") statt des Hex-Keys → sonst "Bearer Bearer …" → 401.
   // C.3: auth_token_encrypted kann verschlüsselt sein (lv1:) — vor Nutzung entschlüsseln.
   const token = normalizeAuthToken(decryptSecret(server.auth_token_encrypted));
@@ -888,13 +888,13 @@ function getAuthHeaders(server: McpExternalServer): Record<string, string> {
   return headers;
 }
 
-// Auftrag 025 Phase 7 (#43): Discovery-In-Progress-Lock (Server-Refresh) — parallele
+// Phase 7 (#43): Discovery-In-Progress-Lock (Server-Refresh) — parallele
 // Discovery-Aufrufe für denselben Server werden übersprungen statt doppelt ausgeführt.
 const discoveryInProgress: Set<string> = new Set();
 // TTL-Cache für listToolsForLouis (Pro-Tenant, Muster mcp.py discovery_cached)
 const mcpToolsCache: Map<string, { tools: McpDiscoveredTool[]; fetchedAt: number }> = new Map();
 
-// Auftrag 026 P1-2 (#45): mcp-2.0-ServerNotification-Union robust verarbeiten.
+// P1-2 (#45): mcp-2.0-ServerNotification-Union robust verarbeiten.
 // Eine Server-Notification hat KEIN id/result/error, aber method — sie ist keine
 // Antwort auf unseren Request und darf nie als Fehler gewertet werden.
 export function isServerNotification(msg: unknown): msg is { method: string; params?: unknown } {
@@ -1014,7 +1014,7 @@ export class McpClientEngine {
         writeFresh(tokenFilePath, JSON.stringify(tokenData, null, 2));
         writeFresh(gcalTokenFilePath, JSON.stringify(tokenData, null, 2));
 
-        // Also write in process.cwd() as fallbacks
+        // Also write in process.cwd as fallbacks
         try {
           fs.writeFileSync(path.join(process.cwd(), "gcp-oauth.keys.json"), JSON.stringify(clientSecretsData, null, 2), "utf8");
           fs.writeFileSync(path.join(process.cwd(), "credentials.json"), JSON.stringify(clientSecretsData, null, 2), "utf8");
@@ -1142,7 +1142,7 @@ export class McpClientEngine {
         childEnv.NPM_CONFIG_CACHE = "/tmp/.npm";
       }
       const child = spawn(
-        // BUG-13 (Auftrag 015): Auf Windows ist npx eine .cmd-Datei — spawn braucht cmd /c als Wrapper,
+ // Auf Windows ist npx eine .cmd-Datei — spawn braucht cmd /c als Wrapper,
         // sonst schlägt der stdio-Spawn fehl (offizielle MCP-Empfehlung für Windows)
         process.platform === "win32" && command === "npx" ? "cmd" : command,
         process.platform === "win32" && command === "npx" ? ["/c", "npx", ...args] : args,
@@ -1260,7 +1260,7 @@ export class McpClientEngine {
    * Discover available tools from an external MCP server
    */
   static async discoverTools(serverId: string, tenantId: string = "1"): Promise<McpDiscoveredTool[]> {
-    // Auftrag 025 Phase 7 (#43): Discovery-In-Progress-Lock — parallele Discovery-Aufrufe
+ // Phase 7 (#43): Discovery-In-Progress-Lock — parallele Discovery-Aufrufe
     // für denselben Server werden übersprungen statt doppelt ausgeführt (MCP-Refresh-Lock).
     const lockKey = `${tenantId}:${serverId}`;
     if (discoveryInProgress.has(lockKey)) {
@@ -1322,7 +1322,7 @@ export class McpClientEngine {
       const normalizedName = `mcp_${serverCleanName}_${normalizeName(origName)}`;
       const toolId = uuidv4();
 
-      // Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung — doppelt gewrappte
+ // Phase 7 (#54): MCP-Schema-Normalisierung — doppelt gewrappte
       // inputSchema unwrappen, bevor sie an den Agent-Katalog gehen (wie #8).
       const normalizedSchema = unwrapWrappedSchema(tool.inputSchema || {});
 
@@ -1602,7 +1602,7 @@ export class McpClientEngine {
   }
 
   /**
-   * Auftrag 025 Phase 7 (#43): MCP-Tools mit TTL-Cache (Refresh-Intervall, NULL = 300 s) —
+   * Phase 7 (#43): MCP-Tools mit TTL-Cache (Refresh-Intervall, NULL = 300 s) —
    * der DB-Read läuft nicht bei jedem Agent-Request, sondern höchstens alle
    * refreshIntervalS Sekunden pro Tenant (Muster mcp.py discovery_cached).
    */
@@ -1677,7 +1677,7 @@ export class McpClientEngine {
       const list = (fallbackStore.mcp_discovered_tools || []).filter(
         (t) => t.tenant_id === tenantId || t.tenant_id === "1"
       );
-      // Phase B (2026-08-19,  E6): EXAKTE Auflösung zuerst — der lose Suffix-Fallback
+      // Phase B (2026-08-19, E6): EXAKTE Auflösung zuerst — der lose Suffix-Fallback
       // (endsWith) matchte bei mehreren Servern mit gleichen Tool-Namen das ERSTE (falsche) Tool.
       const normOf = (t: McpDiscoveredTool) => (t.normalized_tool_name || "").toLowerCase();
       const origOf = (t: McpDiscoveredTool) => (t.original_tool_name || "").toLowerCase();

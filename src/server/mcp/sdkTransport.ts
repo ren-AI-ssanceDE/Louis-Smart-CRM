@@ -1,6 +1,6 @@
 // MCP-SDK-Transport-Schicht (Task B.1, Plan 2026-08-19)
 // Kapselt @modelcontextprotocol/sdk (v1.30.0, Subpath-Exports) + Stateless-Raw-Fallback
-// für 2026-07-28-Server (server/discover — das SDK hat KEIN discover()/request()).
+// für 2026-07-28-Server (server/discover — das SDK hat KEIN discover/request).
 // Referenz-Muster: Protokoll-Negotiation (auto/stateless/legacy) + Fehler-Sanitizer (bewährtes Client-Verhalten).
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -277,7 +277,7 @@ export type McpSessionHandle =
       timeoutMs: number;
       // Kompatibilitäts-Fallback: Server, deren tools/list- oder tools/call-Antworten das
       // SDK-Zod-Schema nicht erfüllen (z. B. Google-Pakete mit inputSchema={"$schema": …}),
-      // laufen über den rohen JSON-RPC-Client weiter (Bestandsverhalten;  2026-08-19).
+      // laufen über den rohen JSON-RPC-Client weiter (Bestandsverhalten; 2026-08-19).
       cfg: SessionConfig;
       rawFallback?: StatelessMcpClient;
     }
@@ -310,7 +310,7 @@ function buildSdkTransport(server: ServerWithConfig, headers: Record<string, str
       command: isWinNpx ? "cmd" : server.endpoint_or_command,
       args: isWinNpx ? ["/c", "npx", ...(server.command_args || [])] : server.command_args || [],
       env,
-      // stderr: "pipe" OHNE Konsument = Deadlock (Puffer voll → Prozess hängt,  Live-Check 2026-08-19)
+      // stderr: "pipe" OHNE Konsument = Deadlock (Puffer voll → Prozess hängt, Live-Check 2026-08-19)
       stderr: "inherit"
     });
   }

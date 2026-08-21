@@ -117,9 +117,9 @@ chatUploadRouter.post("/upload", upload.single("file"), async (req: Request, res
     fs.writeFileSync(textFilePath, extractedText, "utf8");
 
     // 2. Optionally index permanently into the RAG knowledge base.
-    //    Die Datei muss dafür im kanonischen Wissensdatenbank-Vault liegen
-    //    (knowledge_data_vault/<tenantId>/), sonst erscheint sie in der
-    //    Wissensdatenbank-Ansicht (getKnowledgeFiles ist filesystem-basiert) nicht.
+    // Die Datei muss dafür im kanonischen Wissensdatenbank-Vault liegen
+    // (knowledge_data_vault/<tenantId>/), sonst erscheint sie in der
+    // Wissensdatenbank-Ansicht (getKnowledgeFiles ist filesystem-basiert) nicht.
     let isIndexed = false;
     if (indexInKnowledgeBase) {
       try {

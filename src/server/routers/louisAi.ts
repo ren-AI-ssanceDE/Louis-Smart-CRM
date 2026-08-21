@@ -40,12 +40,12 @@ import { runLouisAiFlow, getTenantAiConfig } from "../ai/orchestrator.js";
 import { scheduleBackgroundCompression, supportsNativeCompaction, waitForCompressionLock, resolveRotatedSessionId, forgetSessionRotationByChild } from "../ai/contextCompressor.js";
 // C.7 (Plan 2026-08-19): Chatprofile — Wechsel-Sperre + Default-Profil für neue Sessions
 import { markChatTaskActive, getDefaultProfileId } from "../mcp/chatProfiles.js";
-// Auftrag 025 Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung
+// Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung
 import { scheduleBackgroundMemorySync, scheduleMemoryConsolidation } from "../ai/memoryManager.js";
 import { AgentAttachmentContext } from "../ai/agentTypes.js";
 import { extractTextFromBuffer } from "./chatUpload.js";
 
-// Auftrag 013 P2-D: Extrahiert verwendete Vault-Skills aus der Thought-Log-Zeile „[S10] Verwendete Skills: X, Y“
+// P2-D: Extrahiert verwendete Vault-Skills aus der Thought-Log-Zeile „[S10] Verwendete Skills: X, Y“
 function extractUsedSkills(thoughtLog: string[] | undefined): string[] {
   if (!thoughtLog || !Array.isArray(thoughtLog)) return [];
   for (const line of thoughtLog) {
@@ -286,24 +286,24 @@ export const louisAiRouter = router({
       // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ, true = Text-Fallback erlaubt)
       text_fallback_enabled: z.boolean().nullable().optional(),
       memory_budget_tokens: z.number().nullable().optional(),
-      // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default)
+ // Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default)
       prompt_parallel_tool_guidance: z.boolean().nullable().optional(),
       prompt_tool_guidance_trim: z.boolean().nullable().optional(),
       memory_frozen_snapshot: z.boolean().nullable().optional(),
-      // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default)
+ // Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default)
       compression_enabled: z.boolean().nullable().optional(),
       compression_threshold_percent: z.number().nullable().optional(),
       compression_tail_token_budget: z.number().nullable().optional(),
       compression_aux_model: z.string().nullable().optional(),
       compression_persist_summary: z.boolean().nullable().optional(),
       compression_model_context_map: z.string().nullable().optional(),
-      // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default)
+ // Phase 3 (Parität): Memory (NULL = Backend-Default)
       memory_prefetch_enabled: z.boolean().nullable().optional(),
       memory_prefetch_timeout_s: z.number().nullable().optional(),
       memory_recall_status_enabled: z.boolean().nullable().optional(),
       memory_auto_scan_enabled: z.boolean().nullable().optional(),
       memory_consolidation_budget: z.number().nullable().optional(),
-      // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default)
+ // Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default)
       tool_call_retry_max: z.number().nullable().optional(),
       empty_retry_budget: z.number().nullable().optional(),
       empty_retry_cost_threshold_usd: z.number().nullable().optional(),
@@ -311,10 +311,10 @@ export const louisAiRouter = router({
       tool_guardrail_no_progress_block: z.number().nullable().optional(),
       loop_deadline_s: z.number().nullable().optional(),
       thinking_scrub_enabled: z.boolean().nullable().optional(),
-      // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default)
+ // Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default)
       recall_fts_enabled: z.boolean().nullable().optional(),
       recall_search_limit: z.number().nullable().optional(),
-      // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default)
+ // Phase 6 (Parität): Curator & Skills (NULL = Backend-Default)
       skill_curator_enabled: z.boolean().nullable().optional(),
       skill_inject_max_tokens: z.number().nullable().optional(),
       skill_prune_inactive_after_days: z.number().nullable().optional(),
@@ -322,11 +322,11 @@ export const louisAiRouter = router({
       curator_interval_hours: z.number().nullable().optional(),
       curator_archive_after_days: z.number().nullable().optional(),
       subtask_max_depth: z.number().nullable().optional(),
-      // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
       audit_retention_days: z.number().nullable().optional(),
-      // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
       session_retention_days: z.number().nullable().optional(),
-      // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default)
+ // Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default)
       mcp_refresh_interval_s: z.number().nullable().optional(),
       subtask_timeout_s: z.number().nullable().optional(),
       subtask_max_parallel: z.number().nullable().optional(),
@@ -397,9 +397,9 @@ export const louisAiRouter = router({
             curator_interval_hours: found.curator_interval_hours ?? null,
             curator_archive_after_days: found.curator_archive_after_days ?? null,
             subtask_max_depth: found.subtask_max_depth ?? null,
-            // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+ // P1: Audit-Log-Retention (NULL = kein Auto-Prune)
             audit_retention_days: found.audit_retention_days ?? null,
-            // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+ // P1: Session-Retention (NULL = kein Auto-Prune)
             session_retention_days: found.session_retention_days ?? null,
             mcp_refresh_interval_s: found.mcp_refresh_interval_s ?? null,
             subtask_timeout_s: found.subtask_timeout_s ?? null,
@@ -477,9 +477,9 @@ export const louisAiRouter = router({
             curator_interval_hours: row.curator_interval_hours ?? null,
             curator_archive_after_days: row.curator_archive_after_days ?? null,
             subtask_max_depth: row.subtask_max_depth ?? null,
-            // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+ // P1: Audit-Log-Retention (NULL = kein Auto-Prune)
             audit_retention_days: row.audit_retention_days ?? null,
-            // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+ // P1: Session-Retention (NULL = kein Auto-Prune)
             session_retention_days: row.session_retention_days ?? null,
             mcp_refresh_interval_s: row.mcp_refresh_interval_s ?? null,
             subtask_timeout_s: row.subtask_timeout_s ?? null,
@@ -545,9 +545,9 @@ export const louisAiRouter = router({
         curator_interval_hours: null,
         curator_archive_after_days: null,
         subtask_max_depth: null,
-        // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+ // P1: Audit-Log-Retention (NULL = kein Auto-Prune)
         audit_retention_days: null,
-        // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+ // P1: Session-Retention (NULL = kein Auto-Prune)
         session_retention_days: null,
         mcp_refresh_interval_s: null,
         subtask_timeout_s: null,
@@ -715,9 +715,9 @@ export const louisAiRouter = router({
           input.curator_interval_hours ?? null,
           input.curator_archive_after_days ?? null,
           input.subtask_max_depth ?? null,
-          // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune)
+   // P1: Audit-Log-Retention (NULL = kein Auto-Prune)
           input.audit_retention_days ?? null,
-          // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune)
+   // P1: Session-Retention (NULL = kein Auto-Prune)
           input.session_retention_days ?? null
         ]);
       }
@@ -733,7 +733,7 @@ export const louisAiRouter = router({
       return { success: true };
     }),
 
-  // Auftrag 006 Task 7 (B2): Token-Metriken-Statistik (Admin-Ansicht „Token-Verbrauch")
+ // Task 7 (B2): Token-Metriken-Statistik (Admin-Ansicht „Token-Verbrauch")
   getTokenUsageStats: protectedProcedure
     .input(z.object({ days: z.number().int().min(1).max(90).default(14) }).optional())
     .output(z.object({
@@ -996,7 +996,7 @@ export const louisAiRouter = router({
       sessionId: z.string().uuid().optional(),
       language: z.string().default('de'),
       attachments: z.array(ChatAttachmentInputSchema).max(5).optional(),
-      // Auftrag 012 P0-3: Optionale Session-Verkettung (Lineage) — Client setzt es bei „beziehe dich auf unser letztes Gespräch“
+ // P0-3: Optionale Session-Verkettung (Lineage) — Client setzt es bei „beziehe dich auf unser letztes Gespräch“
       parentSessionId: z.string().uuid().optional(),
       // 2026-08-20: Das im Chat gewählte Chatprofil — die NEUE Session wird daran
       // gebunden (nicht ans Default!): Profilwechsel = neuer Chat-Kontext, keine Umbindung.
@@ -1007,11 +1007,11 @@ export const louisAiRouter = router({
       thoughtLog: z.array(z.string()).optional(),
       proposedChanges: ProposedDiffSchema.or(z.array(z.record(z.string(), z.unknown()))).or(z.record(z.string(), z.unknown())).optional().nullable(),
       sessionId: z.string(),
-      // Auftrag 013 P2-D: verwendete Vault-Skills (aus Thought-Log-Zeile, optional)
+ // P2-D: verwendete Vault-Skills (aus Thought-Log-Zeile, optional)
       usedSkills: z.array(z.string()).optional(),
-      // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
+ // Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
       memoryRecallCount: z.number().optional(),
-      // Auftrag 038 P0-B: Louis komprimiert gerade den Verlauf — Nachricht NICHT verarbeitet
+ // P0-B: Louis komprimiert gerade den Verlauf — Nachricht NICHT verarbeitet
       compressionInProgress: z.boolean().optional(),
       metrics: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
     }))
@@ -1022,7 +1022,7 @@ export const louisAiRouter = router({
       let history: ChatMessage[] = [];
       let currentSummary = "";
 
-      // Auftrag 038 P0-B (Plan-Review): Kompressions-Guard VOR der Session-Verarbeitung.
+ // P0-B (Plan-Review): Kompressions-Guard VOR der Session-Verarbeitung.
       // bewährtes Lock-Muster (compression_locks + BUSY_WAIT) — kurz warten (max 5s,
       // Polling 250ms), dann sauberes Refuse statt parallelem Schreiben in die Session
       // (sonst gingen Nachrichten verloren, die während der Rotation in die alte Session
@@ -1035,10 +1035,10 @@ export const louisAiRouter = router({
         };
       }
 
-      // Auftrag 038 P0: Rotation-Registry — der Client sendet evtl. noch mit der alten
+ // P0: Rotation-Registry — der Client sendet evtl. noch mit der alten
       // SessionId (die Kompression rotierte die Session im Hintergrund). Auf die
       // Kind-Session umleiten, damit die Nachricht im aktiven Kontext landet.
-      // Auftrag 039 P1 (B2): Umleitung ist IDEMPOTENT — der Eintrag wird NICHT sofort
+ // P1 (B2): Umleitung ist IDEMPOTENT — der Eintrag wird NICHT sofort
       // gelöscht (früher: Race — bei LLM-Fehler nach der Umleitung lief der Chat in der
       // falschen Session weiter). Cleanup passiert erst, wenn der Client nachweislich
       // mit der Kind-SessionId sendet (forgetSessionRotationByChild) oder der TTL verfällt.
@@ -1119,7 +1119,7 @@ export const louisAiRouter = router({
         ? await resolveChatAttachmentContexts(input.attachments)
         : [];
 
-      // Auftrag 025 Phase 2 (#13): Kontext-Kompression NIE auf dem Antwort-Pfad.
+ // Phase 2 (#13): Kontext-Kompression NIE auf dem Antwort-Pfad.
       // Früher: synchroner LLM-Call mit 4s-Timeout-Race (Ergebnis wurde still verworfen).
       // Jetzt: Background-Worker persistiert Summary + trimmt die Session-History;
       // der laufende Request nutzt den bisherigen Summary, der NÄCHSTE den neuen.
@@ -1140,7 +1140,7 @@ export const louisAiRouter = router({
           tailTokenBudget: compressionAiConfig.compression_tail_token_budget ?? null,
           persistSummary: compressionAiConfig.compression_persist_summary ?? true,
           auxModel: compressionAiConfig.compression_aux_model ?? null
-        }).catch((err) => console.warn("[025-P2 #13] Background-Kompression fehlgeschlagen (ignoriert):", err));
+        }).catch((err) => console.warn("[Kompression] Background-Kompression fehlgeschlagen (ignoriert):", err));
       }
 
       // Retrieve Tenant specific language configuration
@@ -1194,7 +1194,7 @@ export const louisAiRouter = router({
         `, [JSON.stringify(history), updatedSummary, sessionId, tenantId]);
       }
 
-      // Auftrag 025 Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung — nie auf dem
+      // Phase 3 (#19/#22): Background-Memory-Sync + Konsolidierung — nie auf dem
       // Antwort-Pfad (fire-and-forget, Fehler non-fatal; Muster sync_all: seriell, nie inline).
       try {
         scheduleBackgroundMemorySync({
@@ -1206,16 +1206,16 @@ export const louisAiRouter = router({
           autoScanEnabled: compressionAiConfig.memory_auto_scan_enabled ?? true,
           modelName: compressionAiConfig.model_name || "llama3",
           rawContextMap: compressionAiConfig.compression_model_context_map ?? null
-        }).catch((err) => console.warn("[025-P3 #19] Background-Memory-Sync fehlgeschlagen (ignoriert):", err));
+        }).catch((err) => console.warn("[Memory-Sync] Background-Memory-Sync fehlgeschlagen (ignoriert):", err));
         scheduleMemoryConsolidation({
           tenantId,
           userId,
           language: tenantLang,
           budgetTokens: compressionAiConfig.memory_consolidation_budget ?? 800,
           modelName: compressionAiConfig.model_name || "llama3"
-        }).catch((err) => console.warn("[025-P3 #22] Memory-Konsolidierung fehlgeschlagen (ignoriert):", err));
+        }).catch((err) => console.warn("[Memory-Sync] Memory-Konsolidierung fehlgeschlagen (ignoriert):", err));
       } catch (err) {
-        console.warn("[025-P3] Memory-Background-Jobs nicht gestartet (ignoriert):", err);
+        console.warn("[Memory-Sync] Memory-Background-Jobs nicht gestartet (ignoriert):", err);
       }
 
       // 3. Dual-Storage Logging in ai_chat_logs
@@ -1265,9 +1265,9 @@ export const louisAiRouter = router({
         thoughtLog: result.thoughtLog,
         proposedChanges: result.proposedChanges,
         sessionId,
-        // Auftrag 013 P2-D: Skill-Badges — aus „[S10] Verwendete Skills: X, Y“ extrahieren
+ // P2-D: Skill-Badges — aus „[S10] Verwendete Skills: X, Y“ extrahieren
         usedSkills: extractUsedSkills(result.thoughtLog),
-        // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
+   // Phase 3 (#20): Recall-Status-Feedback (🧠-Hinweis in der Chat-UI)
         memoryRecallCount: result.memoryRecallCount ?? 0,
         metrics: result.metrics
       };
@@ -1988,7 +1988,7 @@ export const louisAiRouter = router({
                 updated_at_utc: new Date().toISOString()
               });
             });
-            // Auftrag 042 P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
+ // P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
             const sampleCards = (pState.sample_cards && Array.isArray(pState.sample_cards))
               ? (pState.sample_cards as string[])
               : [];
@@ -2096,7 +2096,7 @@ export const louisAiRouter = router({
         }
         saveFallbackStore();
       } else {
-        // PostgreSQL operations 
+        // PostgreSQL operations
         if (entityType === "companies") {
           if (action === "DELETE") {
             await pool.query("DELETE FROM core_registry_companies WHERE id_uuid = $1 AND tenant_id = $2", [appliedId, tenantId]);
@@ -2167,7 +2167,7 @@ export const louisAiRouter = router({
             await pool.query("DELETE FROM core_registry_contacts WHERE id_uuid = $1 AND tenant_id = $2", [appliedId, tenantId]);
           } else if (action === "UPDATE") {
             const pState = input.proposed_state;
-            // B3 (Auftrag 011): alle Felder übernehmen (Adresse, Opt-ins, Sprache …)
+ // B3 : alle Felder übernehmen (Adresse, Opt-ins, Sprache …)
             await pool.query(`
               UPDATE core_registry_contacts
               SET first_name = $1, last_name = $2, full_legal_name = $3, email_address = $4, phone_number = $5,
@@ -2416,7 +2416,7 @@ export const louisAiRouter = router({
                 [uuidv4(), tenantId, appliedId, colTitle, idx, colHex]
               );
             }
-            // Auftrag 042 P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
+ // P2: Beispielkarten aus dem Board-Entwurf mit anlegen (falls vorhanden)
             const sampleCards = (pState.sample_cards && Array.isArray(pState.sample_cards))
               ? (pState.sample_cards as string[])
               : [];
@@ -2494,12 +2494,12 @@ export const louisAiRouter = router({
           const skillName = String(pState.name || "Unbenannter-Skill").replace(/[^a-zA-Z0-9_]/g, "_");
           const skillPath = `_louis/skills/${skillName}.md`;
           if (action === "DELETE") {
-            // Auftrag 012 P0-1: Skill löschen (nur _louis/skills/, Path-Sanitierung via vaultDeleteText)
+ // P0-1: Skill löschen (nur _louis/skills/, Path-Sanitierung via vaultDeleteText)
             const { vaultDeleteText } = await import("../ai/vaultStore.js");
             await vaultDeleteText(tenantId, skillPath);
             workflowEventBus.emitEvent(tenantId, "vault.skill_deleted", { path: skillPath, name: pState.name });
           } else {
-            // CREATE (S10) und UPDATE (Auftrag 012 P0-1): Version bei Update inkrementieren (analog Workflow-Versionierung)
+ // CREATE (S10) und UPDATE : Version bei Update inkrementieren (analog Workflow-Versionierung)
             let version = 1;
             if (action === "UPDATE") {
               try {
@@ -2675,7 +2675,7 @@ export const louisAiRouter = router({
           initial_payload: typeof row.initial_payload === 'string' ? JSON.parse(row.initial_payload) : row.initial_payload,
           execution_log: typeof row.execution_log === 'string' ? JSON.parse(row.execution_log) : row.execution_log,
           node_results: typeof row.node_results === 'string' ? JSON.parse(row.node_results) : row.node_results,
-          // pg liefert bei WAIT-Instanzen ein Date-Objekt für execute_at_utc -> Zod-Output (z.string()) verlangt ISO
+          // pg liefert bei WAIT-Instanzen ein Date-Objekt für execute_at_utc -> Zod-Output (z.string) verlangt ISO
           execute_at_utc: row.execute_at_utc instanceof Date ? (row.execute_at_utc as Date).toISOString() : (row.execute_at_utc || null)
         }));
       } catch (err) {
@@ -2978,7 +2978,7 @@ export const louisAiRouter = router({
       return { success: true };
     }),
 
-  // Auftrag 008 4C (T8b): Dry-Run/Simulation — deterministische Workflow-Analyse
+ // 4C (T8b): Dry-Run/Simulation — deterministische Workflow-Analyse
   // (Validierung + Pfad-Simulation + Seiteneffekt-Warnungen, ohne LLM/Ausführung)
   dryRunWorkflow: protectedProcedure
     .input(z.object({
@@ -3517,7 +3517,7 @@ ${input.content.trim()}
         role: z.enum(['user', 'assistant']),
         content: z.string()
       })).default([]),
-      // Auftrag 032: Sprache des CRM durchreichen (kein Hardcoding) — für Sanitizer-/Fallback-Sprache
+ // : Sprache des CRM durchreichen (kein Hardcoding) — für Sanitizer-/Fallback-Sprache
       language: z.string().default('de')
     }))
     .output(z.object({ text: z.string() }))
@@ -3617,7 +3617,7 @@ ${input.content.trim()}
       }
 
       // Construct a tailored prompt enclosing context, current element value & user instructions
-      // Auftrag 032: Feld-Typ aus fieldId ableiten — ALLE Zielfelder sind contentEditable-HTML-Editoren
+ // : Feld-Typ aus fieldId ableiten — ALLE Zielfelder sind contentEditable-HTML-Editoren
       // (Offers/Invoices/Templates/Mail). Der alte Prompt ließ das LLM plain text liefern, der ohne
       // Konvertierung als innerHTML gesetzt wurde → Formatierungsverlust / rohes HTML-Markdown im Editor.
       const HTML_EDITOR_FIELDS = new Set([
@@ -3631,7 +3631,7 @@ ${input.content.trim()}
         : `- Output ONLY the newly drafted or refined text content. No conversational introduction ("Hier ist dein Entwurf..."), no markdown code blocks, no HTML tags — plain text only. Preserve CRM placeholders like {{invoice_number}} exactly.`;
 
       // Construct chat structures and contents
-      // Auftrag 034: currentValue VOR dem Prompt von HTML auf reinen Text normalisieren —
+ // : currentValue VOR dem Prompt von HTML auf reinen Text normalisieren —
       // der rohe HTML-Body (mit Signatur/Tags) blähte den Input auf und verlangsamte den
       // Call massiv („braucht sehr lange — wahrscheinlich wegen des ganzen HTML").
       const stripHtmlToPlain = (html: string): string =>
@@ -3693,11 +3693,11 @@ ${input.content.trim()}
         });
 
         const textOutput = aiResponse.text || "Fehler: Antwort konnte nicht generiert werden.";
-        // Auftrag 032: Antwort-Pfad sanitizen (Auftrag-010-Lektion: „Bei neuen Antwort-Pfaden
+ // : Antwort-Pfad sanitizen (Lektion: „Bei neuen Antwort-Pfaden
         // IMMER sanitizen") — XML-Leaks/Thinking-Blöcke strippen, dann für HTML-Editoren den
         // reinen Text (falls das Modell keinen HTML lieferte) zu Absätzen normalisieren.
         const cleaned = sanitizeFinalText(textOutput, input.language === 'en' ? 'en' : 'de', { enableThinkingScrub: true });
-        // Auftrag 034 (Probe-Fund): DeepSeek liefert trotz „NO code fences" Markdown-Fences
+ // (Probe-Fund): DeepSeek liefert trotz „NO code fences" Markdown-Fences
         // (```html … ```) — sanitizeFinalText strippt nur XML/Thinking, keine Fences.
         // Fence-Marker entfernen, Inhalt (HTML-Fragment) behalten.
         let cleanedNoFence = cleaned
@@ -4794,7 +4794,7 @@ ${input.content.trim()}
       }
     }),
 
-  // Auftrag 012 P0-1: Vault-Skills auflisten (Admin-UI „Skills“) — read-only, kein Schreibzugriff
+ // P0-1: Vault-Skills auflisten (Admin-UI „Skills“) — read-only, kein Schreibzugriff
   listVaultSkills: adminProcedure
     .output(z.array(z.object({
       path: z.string(),
@@ -4804,7 +4804,7 @@ ${input.content.trim()}
       tags: z.array(z.string()),
       version: z.number(),
       pinned: z.boolean().optional(),
-      // Auftrag 026 P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
+ // P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
       useCount: z.number().optional(),
       viewCount: z.number().optional(),
       patchCount: z.number().optional(),
@@ -4830,7 +4830,7 @@ ${input.content.trim()}
       }));
     }),
 
-  // Auftrag 026 P2 (#53-UI): Laufende Subtasks + „Subtask abbrechen" (Chat-UI-Button)
+ // P2 (#53-UI): Laufende Subtasks + „Subtask abbrechen" (Chat-UI-Button)
   listRunningSubtasks: protectedProcedure
     .output(z.object({ subtask_ids: z.array(z.string()) }))
     .query(async () => {
@@ -4850,7 +4850,7 @@ ${input.content.trim()}
       return { success: res.success, message: res.success ? (res.data?.message ?? "Abbruch ausgelöst.") : (res.error ?? "Abbruch fehlgeschlagen.") };
     }),
 
-  // Auftrag 013 P2-E: Skill pinnen/entpinnen — schreibt Frontmatter-Flag via vaultWriteText (nur _louis/skills/)
+ // P2-E: Skill pinnen/entpinnen — schreibt Frontmatter-Flag via vaultWriteText (nur _louis/skills/)
   toggleSkillPin: adminProcedure
     .input(z.object({ path: z.string().min(1).max(300), pinned: z.boolean() }))
     .output(z.object({ success: z.boolean(), message: z.string(), pinned: z.boolean() }))
@@ -4898,7 +4898,7 @@ ${input.content.trim()}
       return { success: true, message: input.pinned ? "Skill gepinnt." : "Skill entpinnt.", pinned: input.pinned };
     }),
 
-  // Auftrag 012 P0-1: Vault-Skill löschen (Admin-UI „Skills“) — nur _louis/skills/, Path-Sanitierung via vaultDeleteText
+ // P0-1: Vault-Skill löschen (Admin-UI „Skills“) — nur _louis/skills/, Path-Sanitierung via vaultDeleteText
   deleteVaultSkill: adminProcedure
     .input(z.object({ path: z.string().min(1).max(300) }))
     .output(z.object({ success: z.boolean(), message: z.string() }))
@@ -4915,7 +4915,7 @@ ${input.content.trim()}
       return { success: true, message: `Skill '${input.path}' gelöscht.` };
     }),
 
-  // Auftrag 013 P2-A: Skill-Suggestions — Liste der offenen Vorschläge (Chat-Karte)
+ // P2-A: Skill-Suggestions — Liste der offenen Vorschläge (Chat-Karte)
   listSkillSuggestions: protectedProcedure
     .input(z.object({ status: z.enum(["pending", "applied", "dismissed"]).default("pending") }).optional())
     .output(z.array(z.object({
@@ -4968,7 +4968,7 @@ ${input.content.trim()}
       }));
     }),
 
-  // Auftrag 013 P2-C: Offene Rückfragen für den Chat (nur OPEN, tenant-scoped) — Admin-Prozedur bleibt unangetastet
+ // P2-C: Offene Rückfragen für den Chat (nur OPEN, tenant-scoped) — Admin-Prozedur bleibt unangetastet
   listOpenQuestionsForChat: protectedProcedure
     .output(z.array(AgentQuestionFullSchema))
     .query(async ({ ctx }) => {
@@ -4987,13 +4987,13 @@ ${input.content.trim()}
         if (row.created_at_utc !== undefined) row.created_at_utc = row.created_at_utc instanceof Date ? (row.created_at_utc as Date).toISOString() : String(row.created_at_utc);
         if (row.answered_at_utc !== undefined && row.answered_at_utc !== null) row.answered_at_utc = row.answered_at_utc instanceof Date ? (row.answered_at_utc as Date).toISOString() : String(row.answered_at_utc);
         // 2026-08-18 (Multi-Turn-): choices_json ist JSONB → pg liefert ein Array,
-        // AgentQuestionFullSchema verlangt z.string() → Zod-Output-Validierung crashte
+        // AgentQuestionFullSchema verlangt z.string → Zod-Output-Validierung crashte
         // die Chat-UI nach 1-2 Nachrichten (Sobald eine OPEN-Rückfrage existierte).
         if (row.choices_json !== undefined && row.choices_json !== null && typeof row.choices_json !== 'string') {
           row.choices_json = JSON.stringify(row.choices_json);
         }
         // 2026-08-18 (Admin- „keine Rückfrage angezeigt“): cleanDbRow LÖSCHT NULL-Felder
-        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string() → crashte.
+        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string → crashte.
         if (row.answer === undefined || row.answer === null) {
           row.answer = "";
         }
@@ -5001,7 +5001,7 @@ ${input.content.trim()}
       });
     }),
 
-  // Auftrag 013 P2-C: Rückfrage beantworten (protected, nur eigene Tenant-Fragen) — Admin-Prozedur bleibt unangetastet
+ // P2-C: Rückfrage beantworten (protected, nur eigene Tenant-Fragen) — Admin-Prozedur bleibt unangetastet
   answerQuestionForChat: protectedProcedure
     .input(AnswerQuestionSchema)
     .output(z.object({ success: z.boolean() }))
@@ -5027,7 +5027,7 @@ ${input.content.trim()}
       return { success: true };
     }),
 
-  // Auftrag 013 P2-A: Skill-Suggestion verwerfen
+ // P2-A: Skill-Suggestion verwerfen
   dismissSkillSuggestion: protectedProcedure
     .input(z.object({ id_uuid: z.string().min(1) }))
     .output(z.object({ success: z.boolean() }))
@@ -5047,7 +5047,7 @@ ${input.content.trim()}
       return { success: res.rows.length > 0 };
     }),
 
-  // Auftrag 013 P2-A: Skill-Suggestion übernehmen → save_skill-Freigabe-Vorschlag (proposedChanges)
+ // P2-A: Skill-Suggestion übernehmen → save_skill-Freigabe-Vorschlag (proposedChanges)
   applySkillSuggestion: protectedProcedure
     .input(z.object({ id_uuid: z.string().min(1) }))
     .output(z.object({ success: z.boolean(), message: z.string(), proposedChanges: z.record(z.string(), z.unknown()).nullable().optional() }))
@@ -5095,7 +5095,7 @@ ${input.content.trim()}
           category: suggestion.skill_category || null,
           tags: suggestion.skill_tags || []
         } as Record<string, unknown>,
-        explanation_rational: "Skill-Suggestion aus Workflow-Ausführung (Auftrag 013 P2-A)"
+        explanation_rational: "Skill-Suggestion aus Workflow-Ausführung"
       };
 
       // Status → applied (Freigabe-Flow übernimmt den Rest)

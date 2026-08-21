@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// G1 (Auftrag 009): Boolesche Werte aus LLM-Antworten normalisieren
+// G1 : Boolesche Werte aus LLM-Antworten normalisieren
 // (true/false, "ja"/"nein", 1/0, "yes"/"no", "aktiv"/"inaktiv")
 export function coerceBool(v: unknown): boolean | undefined {
   if (v === undefined || v === null || v === "") return undefined;
@@ -133,7 +133,7 @@ export interface CreateContactArgs {
   payment_term?: string | null;
   price_list?: string | null;
   custom_documents?: string | null;
-  // G1 (Auftrag 009): Opt-in-Felder — optional, Default false
+ // G1 : Opt-in-Felder — optional, Default false
   opt_in_marketing?: boolean | null;
   opt_in_social_media?: boolean | null;
   opt_in_direct_message?: boolean | null;
@@ -193,7 +193,7 @@ export const CreateInvoiceArgsZodSchema = z.preprocess((val) => {
     const company_id = obj.company_id || obj.associated_company_id || obj.company_id_uuid;
     const contact_id = obj.contact_id || obj.associated_contact_id || obj.contact_id_uuid;
     const total_gross_amount = obj.total_gross_amount || obj.gross_amount;
-    // 021-C (V2-3): invoice_line_items = Katalog-Feldname des MCP-Tools crm_create_invoice
+    // (V2-3): invoice_line_items = Katalog-Feldname des MCP-Tools crm_create_invoice
     const items_list = obj.items_list || obj.items || obj.line_items || obj.positions || obj.invoice_line_items;
     return { ...obj, company_id, contact_id, total_gross_amount, items_list };
   }
@@ -268,7 +268,7 @@ export const CreateContactObjectSchema = z.object({
   payment_term: z.string().optional().nullable(),
   price_list: z.string().optional().nullable(),
   custom_documents: z.string().optional().nullable(),
-  // G1 (Auftrag 009): Opt-in-Felder — boolean, optional (Default false)
+ // G1 : Opt-in-Felder — boolean, optional (Default false)
   opt_in_marketing: z.boolean().optional().nullable(),
   opt_in_social_media: z.boolean().optional().nullable(),
   opt_in_direct_message: z.boolean().optional().nullable(),
@@ -324,7 +324,7 @@ export const CreateContactArgsZodSchema = z.preprocess((val) => {
       city,
       first_name,
       last_name,
-      // G1 (Auftrag 009): Opt-in-Aliase normalisieren (true/false, "ja"/"nein", 1/0, "yes"/"no")
+ // G1 : Opt-in-Aliase normalisieren (true/false, "ja"/"nein", 1/0, "yes"/"no")
       opt_in_marketing: coerceBool(obj.opt_in_marketing ?? obj.marketing_opt_in ?? obj.newsletter_opt_in),
       opt_in_social_media: coerceBool(obj.opt_in_social_media ?? obj.social_media_opt_in),
       opt_in_direct_message: coerceBool(obj.opt_in_direct_message ?? obj.direct_message_opt_in),
@@ -335,7 +335,7 @@ export const CreateContactArgsZodSchema = z.preprocess((val) => {
   return val;
 }, CreateContactObjectSchema);
 
-// G2 (Auftrag 009): Update-Schemas — preprocess (Aliase + coerceBool) + partial,
+// G2 : Update-Schemas — preprocess (Aliase + coerceBool) + partial,
 // damit nur bereitgestellte Felder geändert werden. id_uuid/id sind Pflicht fürs Update.
 export const UpdateCompanyArgsZodSchema = z.preprocess((val) => {
   if (typeof val === "object" && val !== null) {
@@ -520,7 +520,7 @@ export const UpdateEntityArgsZodSchema = z.union([
   CreateOfferObjectSchema.partial()
 ]);
 
-// G5/G6 (Auftrag 009): Update-Schemas für Rechnung + Angebot (partial, id-Pflicht)
+// G5/G6 : Update-Schemas für Rechnung + Angebot (partial, id-Pflicht)
 // Bewusst NACH allen Create-Schemas — Referenzen müssen vorher existieren (TDZ).
 export const UpdateInvoiceArgsZodSchema = z.preprocess((val) => {
   if (typeof val === "object" && val !== null) {

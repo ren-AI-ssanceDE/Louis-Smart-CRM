@@ -87,7 +87,7 @@ const sanitizeInputLigatures = <T>(obj: T): T => {
   return obj;
 };
 
-// pg liefert DATE/TIMESTAMP-Spalten als Date-Objekte — Zod-Output (z.string()) verlangt ISO-Strings
+// pg liefert DATE/TIMESTAMP-Spalten als Date-Objekte — Zod-Output (z.string) verlangt ISO-Strings
 function mapGovernanceRuleDates(row: Record<string, unknown>): Record<string, unknown> {
   for (const key of ["created_at_utc", "updated_at_utc"] as const) {
     if (row[key] !== undefined && row[key] !== null) {
@@ -2585,12 +2585,12 @@ export const settingsRouter = router({
         if (row.created_at_utc !== undefined) row.created_at_utc = row.created_at_utc instanceof Date ? (row.created_at_utc as Date).toISOString() : String(row.created_at_utc);
         if (row.answered_at_utc !== undefined && row.answered_at_utc !== null) row.answered_at_utc = row.answered_at_utc instanceof Date ? (row.answered_at_utc as Date).toISOString() : String(row.answered_at_utc);
         // 2026-08-18 (Multi-Turn-): choices_json ist JSONB → pg liefert ein Array,
-        // AgentQuestionFullSchema verlangt z.string() → Zod-Output-Validierung crashte.
+        // AgentQuestionFullSchema verlangt z.string → Zod-Output-Validierung crashte.
         if (row.choices_json !== undefined && row.choices_json !== null && typeof row.choices_json !== 'string') {
           row.choices_json = JSON.stringify(row.choices_json);
         }
         // 2026-08-18 (Admin- „keine Rückfrage angezeigt“): cleanDbRow LÖSCHT NULL-Felder
-        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string() → crashte.
+        // → answer fehlt bei OPEN-Fragen → AgentQuestionFullSchema verlangt z.string → crashte.
         if (row.answer === undefined || row.answer === null) {
           row.answer = "";
         }
@@ -2624,7 +2624,7 @@ export const settingsRouter = router({
       return { success: true };
     }),
 
-  // Auftrag 026 (2026-08-18,  „Rückfragen sollen löschbar sein“):
+ // (2026-08-18, „Rückfragen sollen löschbar sein“):
   // Rückfrage unwiderruflich löschen (nicht relevant für Memory/spätere Nutzung).
   deleteQuestion: adminProcedure
     .input(z.object({ question_id: z.string().uuid() }))

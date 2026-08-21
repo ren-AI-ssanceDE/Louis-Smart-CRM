@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 008 4C (T8b): Dry-Run/Simulation — deterministische Workflow-Analyse.
+// 4C (T8b): Dry-Run/Simulation — deterministische Workflow-Analyse.
 // Ohne LLM, ohne Seiteneffekte: DAG-Struktur validieren, alle Pfade vom
 // Startknoten traversieren, Seiteneffekt-Risiko je Knoten klassifizieren.
 // Reine Funktionen — in Unit-Tests ohne Server/DOM testbar. Kein any (Regel 4).

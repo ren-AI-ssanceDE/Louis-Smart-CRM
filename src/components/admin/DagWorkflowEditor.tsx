@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 008 4B (T5): Visueller DAG-Editor (React Flow / @xyflow).
+// 4B (T5): Visueller DAG-Editor (React Flow / @xyflow).
 // Knoten: ACTION/CONDITIONAL/WAIT/HUMAN_GATE/RAG/ASK_USER. Drag&Drop, Kanten,
 // Zyklen-Validierung, Linear→DAG-Konvertierung. i18n-Pflicht (Regel 10).
 // ============================================================================
@@ -111,7 +111,7 @@ export function DagWorkflowEditor({
 }: DagEditorProps) {
   const { t } = useTranslation(["admin", "common"]);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // Auftrag 008 UX-Fix: ReactFlow-Instanz über onInit (useReactFlow braucht
+ // UX-Fix: ReactFlow-Instanz über onInit (useReactFlow braucht
   // ReactFlowProvider als Ancestor — würde sonst Fehler #001 werfen)
   const [rfInstance, setRfInstance] = useState<{ zoomIn: (o?: { duration?: number }) => void; zoomOut: (o?: { duration?: number }) => void; fitView: (o?: { duration?: number }) => void } | null>(null);
 
@@ -175,7 +175,7 @@ export function DagWorkflowEditor({
       data: { label: nodeData.name, node: nodeData, nodeType: canvasType }
     };
     setNodes((nds) => [...nds, flowNode]);
-    // Auftrag 008 Option A: neuen Knoten automatisch selektieren → Tool-Select +
+ // Option A: neuen Knoten automatisch selektieren → Tool-Select +
     // Anweisungsfeld erscheinen sofort (bessere UX, deterministische Tests)
     setSelectedId(flowNode.id);
   }, [setNodes]);
@@ -191,7 +191,7 @@ export function DagWorkflowEditor({
     setNodes((nds) => nds.map((n) => (n.id === selectedId ? { ...n, data: { ...n.data, label } } : n)));
   }, [selectedId, setNodes]);
 
-  // Auftrag 008 Option A: Tool + Anweisung eines ausgewählten Knotens aktualisieren
+ // Option A: Tool + Anweisung eines ausgewählten Knotens aktualisieren
   const updateSelectedTool = useCallback((tool: string) => {
     const option = getToolOption(tool);
     setNodes((nds) => nds.map((n) => {
@@ -228,7 +228,7 @@ export function DagWorkflowEditor({
     }));
   }, [selectedId, setNodes]);
 
-  // Auftrag 008 UX-Fix: WAIT-Zeit (Anweisung als "5 Minuten"/"30 Sekunden" formatieren,
+ // UX-Fix: WAIT-Zeit (Anweisung als "5 Minuten"/"30 Sekunden" formatieren,
   // das versteht parseWaitDurationToSeconds in beiden Engines)
   const parseWaitValue = useCallback((instruction: string): { value: string; unit: string } => {
     const raw = (instruction || "").toLowerCase();
@@ -308,7 +308,7 @@ export function DagWorkflowEditor({
         )}
       </div>
 
-      {/* Selected-Node-Editor — Auftrag 008 UX-Fix: klare Labels + typ-spezifische Felder */}
+      {/* Selected-Node-Editor — UX-Fix: klare Labels + typ-spezifische Felder */}
       {selectedNode && (
         <div className="bg-primary-light/20 border border-white/5 rounded-xl px-4 py-3 space-y-3">
           {/* Knotenname */}
@@ -459,7 +459,7 @@ export function DagWorkflowEditor({
           <MiniMap pannable zoomable className="!bg-primary-dark/80" nodeColor="#0f172a" />
         </ReactFlow>
 
-        {/* Auftrag 008 UX-Fix: eigene Navigations-Controls (dunkles Theme, i18n-Tooltips) */}
+        {/* UX-Fix: eigene Navigations-Controls (dunkles Theme, i18n-Tooltips) */}
         <div className="absolute bottom-3 left-3 flex flex-col gap-1.5 z-10">
           <button
             type="button"

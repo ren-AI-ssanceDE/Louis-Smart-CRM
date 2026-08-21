@@ -42,7 +42,7 @@ interface Message {
   content: string;
   thought_log?: string[];
   used_skills?: string[];
-  // Auftrag 025 Phase 3 (#20): Anzahl der erinnerten Memory-Einträge (🧠-Feedback)
+ // Phase 3 (#20): Anzahl der erinnerten Memory-Einträge (🧠-Feedback)
   memory_recall_count?: number;
   proposed_changes?: {
     entity_type: 'companies' | 'contacts' | 'invoices' | 'vault_skill' | 'emails' | 'offers' | 'note' | 'kanban_board' | 'kanban_column' | 'kanban_card';
@@ -210,7 +210,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     }
   };
 
-  // Auftrag 013 P2-B: Session-Verkettung — „Als Verlauf fortsetzen“ setzt die bisherige Session als parent
+ // P2-B: Session-Verkettung — „Als Verlauf fortsetzen“ setzt die bisherige Session als parent
   const continueFromSession = async (targetSessionId: string) => {
     const previous = sessionId;
     await loadSession(targetSessionId);
@@ -267,14 +267,14 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, lastSessionQuery.data]);
-  // Auftrag 013 P2-B: bisherige Session als parent beim nächsten sendMessage (nur 1x)
+ // P2-B: bisherige Session als parent beim nächsten sendMessage (nur 1x)
   const [pendingParentSessionId, setPendingParentSessionId] = useState<string | undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showThoughts, setShowThoughts] = useState<Record<number, boolean>>({});
-  // Auftrag 038 P0-B: Kompressions-Anzeige (Louis komprimiert gerade den Verlauf)
+ // P0-B: Kompressions-Anzeige (Louis komprimiert gerade den Verlauf)
   const [compressionNotice, setCompressionNotice] = useState<'in_progress' | 'done' | null>(null);
 
-  // Auftrag 013 P2-A: Skill-Suggestions (Backend-Event → Chat-Karte)
+ // P2-A: Skill-Suggestions (Backend-Event → Chat-Karte)
   const skillSuggestionsQuery = trpc.listSkillSuggestions.useQuery(undefined, { enabled: true });
   const dismissSuggestionMutation = trpc.dismissSkillSuggestion.useMutation({
     onSuccess: () => skillSuggestionsQuery.refetch()
@@ -291,7 +291,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     }
   });
 
-  // Auftrag 013 P2-C: Offene Rückfragen (ask_user_question) inline im Chat
+ // P2-C: Offene Rückfragen (ask_user_question) inline im Chat
   const openQuestionsQuery = trpc.listOpenQuestionsForChat.useQuery(undefined, { enabled: true });
   const answerQuestionMutation = trpc.answerQuestionForChat.useMutation({
     onSuccess: () => openQuestionsQuery.refetch()
@@ -390,7 +390,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [isPending, setIsPending] = useState(false);
-  // Auftrag 026 P2 (#53-UI): laufende Subtasks im Thought-Log abbrechen (Polling nur während einer Antwort)
+ // P2 (#53-UI): laufende Subtasks im Thought-Log abbrechen (Polling nur während einer Antwort)
   const runningSubtasksQuery = trpc.listRunningSubtasks.useQuery(undefined, { refetchInterval: isPending ? 5000 : false });
   const abortSubtaskMutation = trpc.abortRunningSubtask.useMutation({
     onSuccess: () => { void runningSubtasksQuery.refetch(); }
@@ -615,7 +615,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     }));
 
     // Add user message to state (with attachment chips).
-    // Auftrag 039 P0 (B1): Timestamp-Marker für die Bubble — bei compressionInProgress
+ // P0 (B1): Timestamp-Marker für die Bubble — bei compressionInProgress
     // wird genau DIESE Bubble wieder entfernt (nicht slice(0,-1), das wäre bei
     // parallelen State-Updates unsicher).
     const userBubbleTimestamp = new Date().toISOString();
@@ -643,7 +643,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         sessionId,
         language: i18n.language,
         attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
-        // Auftrag 013 P2-B: Lineage — beim ersten sendMessage nach „Als Verlauf fortsetzen“
+ // P2-B: Lineage — beim ersten sendMessage nach „Als Verlauf fortsetzen“
         parentSessionId: pendingParentSessionId,
         // 2026-08-20: Das im Chat gewählte Profil — die NEUE Session wird daran gebunden
         chat_profile_id: selectedProfileId
@@ -651,7 +651,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         signal: controller.signal
       });
 
-      // Auftrag 013 P2-B: parent nur einmal setzen
+ // P2-B: parent nur einmal setzen
       if (pendingParentSessionId) {
         setPendingParentSessionId(undefined);
       }
@@ -660,9 +660,9 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         setSessionId(resultObj.sessionId);
       }
 
-      // Auftrag 038 P0-B: Louis komprimiert gerade den Verlauf → Hinweis anzeigen,
+ // P0-B: Louis komprimiert gerade den Verlauf → Hinweis anzeigen,
       // Nachricht NICHT als Antwort hängen (Server hat sie nicht verarbeitet).
-      // Auftrag 039 P0 (B1): die eben hinzugefügte User-Bubble wieder entfernen,
+ // P0 (B1): die eben hinzugefügte User-Bubble wieder entfernen,
       // sonst steht die Nachricht doppelt (Bubble + Eingabefeld) beim erneuten Senden.
       if (resultObj.compressionInProgress) {
         setMessages(prev => prev.filter(m => !(m.role === 'user' && m.timestamp_utc === userBubbleTimestamp)));
@@ -832,7 +832,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                   </div>
                 </button>
                 <button
-                  // Auftrag 013 P2-B: Session-Verkettung (Lineage) — nur bei einer anderen Session als der aktiven sinnvoll
+ // P2-B: Session-Verkettung (Lineage) — nur bei einer anderen Session als der aktiven sinnvoll
                   onClick={() => continueFromSession(s.id_uuid)}
                   className="opacity-40 group-hover:opacity-100 text-slate-400 hover:text-accent-blue transition-all p-1"
                   title={t('louis_copilot:session_continue', { defaultValue: "Als Verlauf fortsetzen (verknüpft mit vorheriger Session)" })}
@@ -857,7 +857,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar bg-primary-dark/30">
-        {/* Auftrag 013 P2-C: Offene Rückfragen mit klickbaren Chips */}
+        {/* P2-C: Offene Rückfragen mit klickbaren Chips */}
         {(openQuestionsQuery.data ?? []).length > 0 && (
           <div className="space-y-3">
             {(openQuestionsQuery.data ?? []).map((q) => {
@@ -911,7 +911,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
           </div>
         )}
 
-        {/* Auftrag 013 P2-A: Skill-Suggestion-Karten (offene Vorschläge) */}
+        {/* P2-A: Skill-Suggestion-Karten (offene Vorschläge) */}
         {(skillSuggestionsQuery.data ?? []).length > 0 && (
           <div className="space-y-3">
             {(skillSuggestionsQuery.data ?? []).map((sug) => (
@@ -1066,7 +1066,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                   </div>
                 )}
 
-                {/* Auftrag 025 Phase 3 (#20): Recall-Status — sichtbares Memory-Feedback */}
+                {/* Phase 3 (#20): Recall-Status — sichtbares Memory-Feedback */}
                 {msg.role === 'assistant' && (msg.memory_recall_count ?? 0) > 0 && (
                   <div className="flex items-center gap-1 text-[9px] font-mono text-slate-400 bg-accent-blue/5 border border-accent-blue/10 px-2 py-0.5 rounded-full select-none">
                     <span>🧠</span>
@@ -1116,7 +1116,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
                           <Database className="w-3.5 h-3.5 text-accent-blue" />
                           <span className="text-xs uppercase font-black text-slate-400 tracking-wider">{t('louis_copilot:multi_agent_log', { defaultValue: 'Multi-Agent State Log' })}</span>
                         </div>
-                        {/* Auftrag 026 P2 (#53-UI): laufende Sub-Agenten abbrechen */}
+                        {/* P2 (#53-UI): laufende Sub-Agenten abbrechen */}
                         {(runningSubtasksQuery.data?.subtask_ids ?? []).length > 0 && (
                           <div className="flex flex-wrap items-center gap-2 pb-2 mb-2 border-b border-white/5">
                             <span className="text-[10px] uppercase font-black text-amber-400 tracking-wider">
@@ -1239,7 +1239,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Auftrag 038 P0-B: Kompressions-Hinweis (Louis komprimiert den Verlauf) */}
+      {/* P0-B: Kompressions-Hinweis (Louis komprimiert den Verlauf) */}
       {compressionNotice !== null && (
         <div className="px-4 py-2 bg-primary-dark/60 border-t border-white/5">
           <div className="flex items-center gap-2 text-xs">

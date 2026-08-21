@@ -2344,7 +2344,7 @@ export const TemplatesTab = ({ initialSection }: TemplatesTabProps = {}) => {
               editorRef.current.innerHTML = newValue;
             }
           } else if (aiFieldId === 'invoice_text_body') {
-            // Auftrag 032: State UND DOM setzen (contentEditable braucht beides, sonst
+ // : State UND DOM setzen (contentEditable braucht beides, sonst
             // überschreibt dangerouslySetInnerHTML die Übernahme beim Re-Render)
             setInvoiceTextBody(newValue);
             if (editorRef.current) editorRef.current.innerHTML = newValue;

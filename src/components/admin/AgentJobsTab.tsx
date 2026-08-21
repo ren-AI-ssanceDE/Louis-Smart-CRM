@@ -68,7 +68,7 @@ export function AgentJobsTab() {
   const [scheduleWeekday, setScheduleWeekday] = useState("1");
   const [deliverTo, setDeliverTo] = useState<"session" | "mail_draft" | "telegram">("session");
   const [deliverTarget, setDeliverTarget] = useState("");
-  // Auftrag 012 P1-3: optionale Tool-Domänen-Einschränkung (leer = alle Domänen)
+ // P1-3: optionale Tool-Domänen-Einschränkung (leer = alle Domänen)
   type DomainOption = "CORE" | "CRM_READ" | "CRM_WRITE" | "KNOWLEDGE" | "KANBAN" | "TEMPLATES" | "WORKFLOWS";
   const [allowedDomains, setAllowedDomains] = useState<DomainOption[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -219,7 +219,7 @@ export function AgentJobsTab() {
             <input value={deliverTarget} onChange={(e) => setDeliverTarget(e.target.value)} placeholder={t("admin:agent_jobs.recipient_email_placeholder", { defaultValue: "Empfänger-E-Mail" })}
               className="bg-primary-light border border-white/10 rounded-xl px-3 py-2 text-sm text-white" />
           )}
-          {/* Auftrag 012 P1-3: optionale Tool-Domänen-Einschränkung (nur für agent-Jobs sinnvoll) */}
+          {/* P1-3: optionale Tool-Domänen-Einschränkung (nur für agent-Jobs sinnvoll) */}
           {jobType === "agent" && (
             <div className="col-span-2 space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -313,7 +313,7 @@ export function AgentJobsTab() {
                     title={t("admin:agent_jobs.edit_tooltip", { defaultValue: "Job bearbeiten" })}>
                     {t("common:edit", { defaultValue: "Bearbeiten" })}
                   </button>
-                  {/* Auftrag 012 P1-3: Jetzt ausführen (Ad-hoc/Test) */}
+                  {/* P1-3: Jetzt ausführen (Ad-hoc/Test) */}
                   <button
                     data-testid="agent-job-run-now"
                     onClick={() => {

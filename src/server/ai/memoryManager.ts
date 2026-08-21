@@ -1,14 +1,14 @@
 // ============================================================================
-// Auftrag 025 Phase 3 (Parität): Memory-Mechanismen
+// Phase 3 (Parität): Memory-Mechanismen
 // #18 Query-abhängiges Prefetch pro Turn (relevante Notizen zuerst, Budget-gesteuert)
 // #19 Background-Sync nach Turn (fakten extrahieren → direkt persistieren, Dedupe 24h,
-//     Audit-Event — nie auf dem Antwort-Pfad; Muster memory_manager.py sync_all)
+// Audit-Event — nie auf dem Antwort-Pfad; Muster memory_manager.py sync_all)
 // #22 Konsolidierung bei Überlauf (älteste Notizen per LLM zusammenfassen statt droppen,
-//     Budget-gesteuert; Muster memory_tool.py Konsolidierungs-Loop)
+// Budget-gesteuert; Muster memory_tool.py Konsolidierungs-Loop)
 // #23 Terminal-Success-Response (update_memory antwortet terminal — kein Modell-Thrash)
 // #24 Skill-Scaffolding-Stripping (Skill-/Workflow-Turns verschmutzen Memory nicht)
 // #26 Auto-Memory-Scan (ADDITIV: PII-/Credential-/Zeichen-Muster → flagged; bei 0 Treffern
-//     greifen die bestehenden Louis-Bedingungen unverändert — kein Fallback-Ersatz)
+// greifen die bestehenden Louis-Bedingungen unverändert — kein Fallback-Ersatz)
 // Reine Kernlogik (testbar) + Background-Orchestrierung mit Dual-Store. Kein any (Regel 4).
 // ============================================================================
 
@@ -229,7 +229,7 @@ async function persistMemoryFact(tenantId: string, userId: string, fact: string)
       );
     }
   } catch (err) {
-    console.warn("[025-P3 #19] DB-Spiegel fehlgeschlagen (Vault bleibt Quelle):", err);
+    console.warn("[Memory-Sync] DB-Spiegel fehlgeschlagen (Vault bleibt Quelle):", err);
   }
   await logAuditEvent({
     tenantId,
@@ -284,15 +284,15 @@ export async function scheduleBackgroundMemorySync(opts: BackgroundMemorySyncOpt
       if (opts.autoScanEnabled) {
         const scan = scanMemoryContent(fact);
         if (scan.flagged) {
-          console.warn(`[025-P3 #26] Auto-Scan blockt Fakt (${scan.reasons.join(",")}): ${fact.slice(0, 80)}`);
+          console.warn(`[Memory-Scan] Auto-Scan blockt Fakt (${scan.reasons.join(",")}): ${fact.slice(0, 80)}`);
           continue;
         }
       }
       await persistMemoryFact(opts.tenantId, opts.userId, fact);
     }
-    console.log(`[025-P3 #19] Background-Sync: ${facts.length} Fakt(en) persistiert (Session ${opts.userId}).`);
+    console.log(`[Memory-Sync] Background-Sync: ${facts.length} Fakt(en) persistiert (Session ${opts.userId}).`);
   } catch (err) {
-    console.warn(`[025-P3 #19] Background-Sync fehlgeschlagen (ignoriert): ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[Memory-Sync] Background-Sync fehlgeschlagen (ignoriert): ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     memoryJobsInFlight.delete(lockKey);
   }
@@ -355,9 +355,9 @@ export async function scheduleMemoryConsolidation(opts: {
       { id_uuid: `consolidated-${Date.now()}`, content: consolidated, created_at_utc: new Date().toISOString() }
     ];
     await writeUserMemoryVault(opts.tenantId, opts.userId, current);
-    console.log(`[025-P3 #22] Konsolidierung: ${overflow.length} alte Notizen → 1 zusammengefasste (${consolidated.length} Zeichen).`);
+    console.log(`[Memory-Sync] Konsolidierung: ${overflow.length} alte Notizen → 1 zusammengefasste (${consolidated.length} Zeichen).`);
   } catch (err) {
-    console.warn(`[025-P3 #22] Konsolidierung fehlgeschlagen (ignoriert): ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[Memory-Sync] Konsolidierung fehlgeschlagen (ignoriert): ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     memoryJobsInFlight.delete(lockKey);
   }

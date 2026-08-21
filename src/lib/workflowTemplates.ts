@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 008 4C (T7): Workflow-Vorlagen-Bibliothek.
+// 4C (T7): Workflow-Vorlagen-Bibliothek.
 // 1-Klick-Starter: Zahlungserinnerung, Angebot nachfassen, Onboarding,
 // Overdue-Report. Reine Daten (kein any, Regel 4) — Labels via i18n in der UI.
 // ============================================================================

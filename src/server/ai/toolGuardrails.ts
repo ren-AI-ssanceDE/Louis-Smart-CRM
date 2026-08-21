@@ -1,7 +1,7 @@
 // ============================================================================
-// Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit — Tool-Guardrails
+// Phase 4 (Parität): Fehlerfestigkeit — Tool-Guardrails
 // #40 Gleicher Tool-Call mit gleichen Args > N× fehlgeschlagen → blocken mit
-//     Strategie-Hinweis; No-Progress-Detection; pro-Turn-Caps.
+// Strategie-Hinweis; No-Progress-Detection; pro-Turn-Caps.
 // Muster: fail-open — nie legitime Antworten blocken).
 // Reine Zustandslogik, kein any (Regel 4), testbar.
 // ============================================================================

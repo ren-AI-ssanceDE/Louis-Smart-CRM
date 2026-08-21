@@ -216,7 +216,7 @@ export async function deleteChatProfile(tenantId: string, profileId: string, use
 
 /** Sticky Default pro Tenant (Admin setzt; Entscheid 2026-08-19). */
 export async function setDefaultChatProfile(tenantId: string, profileId: string): Promise<boolean> {
-  //  2026-08-19: Main (is_system) muss als Default setzbar sein — sonst fällt
+  // 2026-08-19: Main (is_system) muss als Default setzbar sein — sonst fällt
   // die Main-Konfiguration bei ungebundenen Sessions auf andere Profile zurück. is_system
   // blockt nur LÖSCHEN, nicht die Default-Rolle.
   if (isUsingFallback) {
@@ -264,7 +264,7 @@ export interface SessionProfileInfo {
 }
 
 export async function getSessionProfile(tenantId: string, sessionId: string): Promise<SessionProfileInfo | null> {
-  //  2026-08-19: Ungebundene Bestandssessions (vor C.7 angelegt, kein
+  // 2026-08-19: Ungebundene Bestandssessions (vor C.7 angelegt, kein
   // active_chat_profile_id) fielen auf "alle Tools" zurück — die Main-Konfiguration griff nicht.
   // Fix: leere Bindung → Default-Profil (bzw. Main) → Main-Tool-Auswahl wirkt überall.
   const resolveProfile = async (bound: string | null | undefined): Promise<string> => {

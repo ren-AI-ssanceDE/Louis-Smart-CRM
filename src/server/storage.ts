@@ -44,7 +44,7 @@ export function getEntityStoragePath(type: string, id: string, name: string, ten
   if (existingDirName) {
     const existingFullPath = path.join(tenantRoot, existingDirName);
     if (existingDirName !== newDirName && !fs.existsSync(newFullPath)) {
-      // 021-B (V2-4): Rename nur, wenn das Ziel fehlt — vermeidet unnötige
+      // (V2-4): Rename nur, wenn das Ziel fehlt — vermeidet unnötige
       // EACCES-Versuche auf Windows-Volumes (bind mount). Fehlschlag ist
       // kosmetisch: bestehender Ordner wird weiterverwendet.
       try {

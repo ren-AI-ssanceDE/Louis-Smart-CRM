@@ -2,7 +2,7 @@
 // ============================================================================
 // GUARD: Öffentliches Live-Repo (E:\Github Live) — nur Produktiv-Stand
 // ----------------------------------------------------------------------------
-// HARTE REGEL (Stefan 2026-08-21): Test-Artefakte/Testergebnisse gehören NICHT
+// HARTE REGEL (2026-08-21): Test-Artefakte/Testergebnisse gehören NICHT
 // ins öffentliche Live-Repo. Dieses Skript prüft den Index vor dem Commit und
 // blockt, wenn verbotene Pfade gestaged sind.
 //
@@ -59,7 +59,7 @@ const violations = check(files);
 if (violations.length > 0) {
   console.error("❌ GUARD: Verbotene Dateien im öffentlichen Live-Repo gefunden:");
   for (const v of violations) console.error(`   ⛔ ${v}`);
-  console.error("   Regel (Stefan 2026-08-21): Test-Artefakte/Interne Dateien gehören NICHT ins Live-Repo.");
+  console.error("   Regel (2026-08-21): Test-Artefakte/Interne Dateien gehören NICHT ins Live-Repo.");
   console.error("   Diese Dateien entfernen (git rm --cached + rm) und Commit wiederholen.");
   process.exit(1);
 }

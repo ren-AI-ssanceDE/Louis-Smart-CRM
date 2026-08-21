@@ -1,6 +1,6 @@
 // ============================================================================
-// Auftrag 025 Phase 2 (Parität): Kontext-Kompression
-// #9  Threshold-basiert (Anteil des Kontextfensters statt fester Nachrichtenzahl)
+// hase 2 (Parität): Kontext-Kompression
+// #9 Threshold-basiert (Anteil des Kontextfensters statt fester Nachrichtenzahl)
 // #9a Modell→Kontextfenster-Map (Config-Feld compression_model_context_map, NULL = Backend-Default)
 // #10 Per-Modell-Threshold-Override (in der Map, Muster context_compressor.py resolve_model_threshold)
 // #11 Head/Tail-Schutz (Kopf + letzte ~20K Tokens bleiben voll; nur die Mitte wird komprimiert)
@@ -8,7 +8,7 @@
 // #13 Kein 4s-Timeout-Race — Kompression läuft im Background, NIE auf dem Antwort-Pfad
 // #14 Feasibility-Probe (Aux-Modell-Fenster → effektiven Threshold ableiten)
 // #15 Native-Compaction-Pfad (provider-agnostisch — Modelle mit eigenem Context-Management
-//     werden durchgereicht, NIE auf DeepSeek optimiert — Regel 11)
+// werden durchgereicht, NIE auf DeepSeek optimiert — Regel 11)
 // Reine, deterministische Kernlogik (testbar) + Background-Orchestrierung mit Dual-Store.
 // Kein any (Regel 4).
 // ============================================================================
@@ -20,8 +20,8 @@ import { getTenantAiConfig } from "./orchestrator.js";
 import { v4 as uuidv4 } from "uuid";
 
 // ── #9a Backend-Default-Fenster-Map (Regel 12: NULL = Default; Admin-Overwrite via
-//    compression_model_context_map als JSON { "regex-pattern": { "window_tokens": N, "threshold_percent": P } })
-//    Modell-Familien pro Regex — provider-agnostisch (ollama/openai/anthropic/gemini/deepseek). ──
+// compression_model_context_map als JSON { "regex-pattern": { "window_tokens": N, "threshold_percent": P } })
+// Modell-Familien pro Regex — provider-agnostisch (ollama/openai/anthropic/gemini/deepseek). ──
 interface ModelWindowEntry {
   window_tokens: number;
   threshold_percent?: number;
@@ -311,9 +311,9 @@ Antworte mit der neuen, konsolidierten und aktualisierten Zusammenfassung auf De
 // Muster: synchroner Background-Worker (Background-Worker, seriell, nie inline).
 // - Entscheidung rein über die Kernlogik (Threshold/Fenster/Native).
 // - LLM-Call mit großzügigem Timeout (30s) — bei Fehler wird NICHTS persistiert
-//   (kein stilles Weiterverwenden des alten Summary, kein stiller Fallback).
+// (kein stilles Weiterverwenden des alten Summary, kein stiller Fallback).
 // - Persistenz: short_term_summary_text + Session-History-Trim (Kopf + Schwanz +
-//   Summary-Marker bleiben; Mitte wandert in den Summary). Dual-Store (Regel 3).
+// Summary-Marker bleiben; Mitte wandert in den Summary). Dual-Store (Regel 3).
 // - Modul-Lock pro Session: keine parallelen Doppel-Läufe auf derselben Session.
 // ============================================================================
 
@@ -321,7 +321,7 @@ const compressionInFlight = new Set<string>();
 const BACKGROUND_TIMEOUT_MS = 30_000;
 
 // ============================================================================
-// Auftrag 038 P0-B: Kompressions-Lock (bewährtes Muster compression_locks +
+// P0-B: Kompressions-Lock (bewährtes Muster compression_locks +
 // BUSY_WAIT — TTL als Crash-Sicherheitsnetz)
 // ----------------------------------------------------------------------------
 // Während scheduleBackgroundCompression läuft (LLM-Summarisierung), hält die
@@ -378,7 +378,7 @@ export async function waitForCompressionLock(sessionId: string, waitMs: number =
 }
 
 // ============================================================================
-// Auftrag 038 P0: Session-Rotation-Registry (bewährtes Rotations-Muster)
+// P0: Session-Rotation-Registry (bewährtes Rotations-Muster)
 // ----------------------------------------------------------------------------
 // Wenn die Background-Kompression eine Session rotiert (Eltern-Session bleibt mit
 // Voll-History stehen, Kind-Session übernimmt die getrimmte History), merkt sich
@@ -391,7 +391,7 @@ export async function waitForCompressionLock(sessionId: string, waitMs: number =
 
 const sessionRotationRegistry = new Map<string, { childId: string; expiresAt: number }>();
 
-// Auftrag 039 P1 (B2): TTL für Registry-Einträge — verhindert unbegrenztes Map-Wachstum,
+// P1 (B2): TTL für Registry-Einträge — verhindert unbegrenztes Map-Wachstum,
 // wenn ein Client nie wieder mit der alten SessionId sendet. Die Umleitung selbst ist
 // IDEMPOTENT: jeder Request mit der alten SessionId wird umgeleitet, bis der Client
 // nachweislich auf der Kind-Session ist (oder der Eintrag verfällt).
@@ -422,7 +422,7 @@ export function forgetSessionRotation(tenantId: string, sessionId: string): void
 }
 
 /**
- * Auftrag 039 P1 (B2): Einträge entfernen, deren Kind-SessionId übergeben wird —
+ * P1 (B2): Einträge entfernen, deren Kind-SessionId übergeben wird —
  * der Client hat nachweislich die neue SessionId übernommen (er sendet direkt mit ihr),
  * die Umleitung für die alte ID ist damit überflüssig. O(n)-Scan, Map ist klein (TTL 24h).
  */
@@ -450,7 +450,7 @@ export interface BackgroundCompressionOptions {
 
 /**
  * Persistiert Summary + getrimmte History (Dual-Store, Regel 3) MIT Session-Rotation
- * (Auftrag 038 P0): Die bisherige Session wird zur abgeschlossenen ELTERN-Session
+ * (P0): Die bisherige Session wird zur abgeschlossenen ELTERN-Session
  * (Voll-History bleibt erhalten!), eine neue KIND-Session übernimmt die getrimmte
  * History + Summary und verlinkt via parent_session_id. Wirft bei Fehlern.
  * Rückgabe: childSessionId (die neue aktive Session) — oder undefined, wenn die
@@ -554,7 +554,7 @@ export async function scheduleBackgroundCompression(opts: BackgroundCompressionO
     const { head, middle, tail } = splitHeadTail(opts.history, decision2.tailTokenBudget);
     if (middle.length === 0) return;
 
-    // Auftrag 038 P0-B: Lock akquirieren VOR dem LLM-Call — sendMessage wartet dann
+ // P0-B: Lock akquirieren VOR dem LLM-Call — sendMessage wartet dann
     // kurz und schreibt nicht parallel in die Session (sonst Nachrichtenverlust).
     if (!tryAcquireCompressionLock(opts.sessionId)) {
       console.warn(`[038 P0-B] Kompressions-Lock für Session ${opts.sessionId} war bereits vergeben — Lauf übersprungen.`);
@@ -584,19 +584,19 @@ export async function scheduleBackgroundCompression(opts: BackgroundCompressionO
       if (!newSummary) {
         // Timeout/leere Antwort: NICHTS persistieren — der alte Summary bleibt stehen,
         // wird aber nicht stillschweigend als "komprimiert" ausgegeben.
-        console.warn(`[025-P2 #13] Background-Kompression lieferte keine Zusammenfassung (Session ${opts.sessionId}) — nichts persistiert.`);
+        console.warn(`[Kompressions-Warnung] Background-Kompression lieferte keine Zusammenfassung (Session ${opts.sessionId}) — nichts persistiert.`);
         return;
       }
 
       if (opts.persistSummary === false) return;
       const trimmedHistory = [buildSummaryContextBlock(newSummary), ...head, ...tail];
       await persistCompressionResult(opts.tenantId, opts.sessionId, newSummary, trimmedHistory);
-      console.log(`[025-P2 #13] Background-Kompression ok (Session ${opts.sessionId}): ${opts.history.length} → ${trimmedHistory.length} Nachrichten, Summary ${newSummary.length} Zeichen.`);
+      console.log(`[Kompression] Background-Kompression ok (Session ${opts.sessionId}): ${opts.history.length} → ${trimmedHistory.length} Nachrichten, Summary ${newSummary.length} Zeichen.`);
     } finally {
       releaseCompressionLock(opts.sessionId);
     }
   } catch (err) {
-    console.warn(`[025-P2 #13] Background-Kompression fehlgeschlagen (nichts persistiert): ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[Kompression] Background-Kompression fehlgeschlagen (nichts persistiert): ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     compressionInFlight.delete(lockKey);
   }

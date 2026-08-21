@@ -23,7 +23,7 @@ export const VAULT_READ_TOOL_SUFFIXES = [
   "tag_list",
   "command_list",
   "active_file_get_path",
-  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*) — Read/Search
+ // P1: interne Wissensvault-Familie (knowledge_*) — Read/Search
   "knowledge_read",
   "knowledge_search"
 ];
@@ -35,7 +35,7 @@ export const VAULT_WRITE_TOOL_SUFFIXES = [
   "vault_delete",
   "vault_move",
   "vault_copy",
-  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*) — Write/Update/Delete
+ // P1: interne Wissensvault-Familie (knowledge_*) — Write/Update/Delete
   "knowledge_write",
   "knowledge_update",
   "knowledge_delete"
@@ -63,7 +63,7 @@ export const VAULT_WRITE_ACTION_MAP: Record<string, { entity: string; action: Go
   vault_delete: { entity: "vault_file", action: "DELETE" },
   vault_move: { entity: "vault_file", action: "MOVE" },
   vault_copy: { entity: "vault_file", action: "CREATE" },
-  // Auftrag 036 P1: interne Wissensvault-Familie (knowledge_*)
+ // P1: interne Wissensvault-Familie (knowledge_*)
   knowledge_write: { entity: "vault_file", action: "CREATE" },
   knowledge_update: { entity: "vault_file", action: "UPDATE" },
   knowledge_delete: { entity: "vault_file", action: "DELETE" }

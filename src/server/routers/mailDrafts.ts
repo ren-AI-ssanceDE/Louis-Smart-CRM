@@ -39,7 +39,7 @@ export const mailDraftsRouter = router({
           "SELECT * FROM sys_louis_mail_drafts WHERE tenant_id = $1 AND status = 'PENDING' ORDER BY created_at_utc DESC",
           [tenantId]
         );
-        // pg liefert Date-Objekte -> Zod-Output (z.string()) verlangt ISO-Strings
+        // pg liefert Date-Objekte -> Zod-Output (z.string) verlangt ISO-Strings
         return res.rows.map((row) => {
           const r = { ...row } as Record<string, unknown>;
           for (const key of ["created_at_utc", "updated_at_utc"] as const) {

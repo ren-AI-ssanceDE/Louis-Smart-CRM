@@ -234,7 +234,7 @@ export interface DatabaseStore {
   contacts: z.infer<typeof ContactFullSchema>[];
   invoices: z.infer<typeof InvoiceFullSchema>[];
   smtpSettings: z.infer<typeof SmtpSettingsSchema> | null;
-  // 021-F (V2-6-Folge): Auth-Secret für den Fallback-Modus (stabil über Neustarts)
+  // (V2-6-Folge): Auth-Secret für den Fallback-Modus (stabil über Neustarts)
   authSecret?: string;
   offers?: Offer[];
   offerTextTemplates?: z.infer<typeof OfferTextTemplateFullSchema>[];
@@ -261,7 +261,7 @@ export interface DatabaseStore {
   workflowInstances?: WorkflowInstance[];
   agentJobs?: AgentJob[];
   governanceRules?: GovernanceRule[];
-  // Auftrag 006 Task 7 (B2): Token-Metriken pro Agent-Lauf
+ // Task 7 (B2): Token-Metriken pro Agent-Lauf
   agentRuns?: Array<{
     id_uuid: string;
     tenant_id: string;
@@ -314,7 +314,7 @@ export interface DatabaseStore {
     session_title: string;
     conversation_history_json: ChatMessage[];
     short_term_summary_text?: string;
-    parent_session_id?: string | null; // Auftrag 012 P0-3: Lineage (optional)
+    parent_session_id?: string | null; // P0-3: Lineage (optional)
     // C.7 (Plan 2026-08-19): aktives Chatprofil + Session-Override (Tool-Panel)
     active_chat_profile_id?: string | null;
     active_mcp_tools_json?: string[] | null;
@@ -325,7 +325,7 @@ export interface DatabaseStore {
   louisAiKnowledgeChunks?: LouisAiKnowledgeChunk[];
   louisAiReembeddingQueue?: ReembeddingQueueItem[];
   louisAiUserMemory?: LouisAiUserMemory[];
-  // Auftrag 013 P2-A: Skill-Suggestions (Fallback-Store)
+ // P2-A: Skill-Suggestions (Fallback-Store)
   skillSuggestions?: Array<{
     id_uuid: string;
     tenant_id: string;
@@ -932,7 +932,7 @@ export async function initDatabase() {
         created_at_utc TIMESTAMPTZ DEFAULT now(),
         updated_at_utc TIMESTAMPTZ DEFAULT now()
       );
-      -- 021-F: App-weites Auth-Secret in der DB (Regel: keine Einstellungen in Dateien;
+      -- App-weites Auth-Secret in der DB (Regel: keine Einstellungen in Dateien;
       -- NULL = beim ersten Start generiert). Singleton-Zeile, Races via ON CONFLICT abgesichert.
       INSERT INTO sys_app_security (auth_secret)
       SELECT gen_random_uuid()::text || gen_random_uuid()::text
@@ -1630,7 +1630,7 @@ export async function initDatabase() {
       );
       CREATE INDEX IF NOT EXISTS idx_agent_jobs_tenant_active ON sys_louis_ai_agent_jobs(tenant_id, is_active);
       ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS last_run_at_utc TIMESTAMPTZ;
-      -- Auftrag 008 4C (T8): Versionierung — Changelog-Historie (JSONB-Array von Versionseinträgen)
+      --4C (T8): Versionierung — Changelog-Historie (JSONB-Array von Versionseinträgen)
       ALTER TABLE sys_louis_ai_custom_workflows ADD COLUMN IF NOT EXISTS version_history JSONB DEFAULT '[]'::jsonb;
 
       -- S8: Governance-Rules-Engine (Regeln pro Tenant, Priorität BLOCK > ASK > REQUIRE_APPROVAL > ALLOW)
@@ -1682,7 +1682,7 @@ export async function initDatabase() {
 
       -- S11 Teil B: Watchdog-Cron (job_type/script_path/monitor_* an sys_louis_ai_agent_jobs; Default 'agent' → S7-Altbestand unverändert)
       ALTER TABLE sys_louis_ai_agent_jobs ADD COLUMN IF NOT EXISTS job_type TEXT NOT NULL DEFAULT 'agent';
-      -- Auftrag 012 P1-3: Tool-Domänen-Limit pro Job (NULL = alle Domänen, additiv/abwärtskompatibel)
+      --P1-3: Tool-Domänen-Limit pro Job (NULL = alle Domänen, additiv/abwärtskompatibel)
       ALTER TABLE sys_louis_ai_agent_jobs ADD COLUMN IF NOT EXISTS allowed_domains JSONB;
       ALTER TABLE sys_louis_ai_agent_jobs ADD COLUMN IF NOT EXISTS script_path TEXT;
       ALTER TABLE sys_louis_ai_agent_jobs ADD COLUMN IF NOT EXISTS monitor_hash TEXT;
@@ -1717,7 +1717,7 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_ai_notes_entity ON sys_louis_ai_notes(tenant_id, entity_type, entity_id_uuid);
 
       -- Standard-Vorlagen (Bestand war fast leer, keine 'Standard'-Vorlage)
-      -- BUG-003 (2026-08-20): created_by_identity='seed' ist schema-ungültig
+      -- created_by_identity='seed' ist schema-ungültig
       -- (nur human|ai_assistant|system erlaubt) → getEmailTemplates-Antwort
       -- wird von Zod verworfen → UI zeigt keine Vorlagen. Fix: 'system'.
       INSERT INTO sys_comms_email_templates (id_uuid, tenant_id, template_name_text, email_subject_text, email_body_content, created_by_identity)
@@ -1738,14 +1738,14 @@ export async function initDatabase() {
 
       ALTER TABLE sys_louis_ai_workflow_instances ADD COLUMN IF NOT EXISTS current_node_id TEXT DEFAULT NULL;
       ALTER TABLE sys_louis_ai_workflow_instances ADD COLUMN IF NOT EXISTS node_results JSONB DEFAULT '{}'::jsonb;
-      -- Auftrag 008 4A T1-Nachtrag (A1): Referenz auf persistierte Rückfrage (PENDING_QUESTION-Resume)
+      --4A T1-Nachtrag (A1): Referenz auf persistierte Rückfrage (PENDING_QUESTION-Resume)
       ALTER TABLE sys_louis_ai_workflow_instances ADD COLUMN IF NOT EXISTS pending_question_id UUID DEFAULT NULL;
 
       ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS short_term_summary_text TEXT DEFAULT '';
-      -- Auftrag 012 P0-3: Session-Lineage (additiv, optional — alte Daten bleiben unverändert)
+      --P0-3: Session-Lineage (additiv, optional — alte Daten bleiben unverändert)
       ALTER TABLE sys_louis_ai_sessions ADD COLUMN IF NOT EXISTS parent_session_id UUID;
 
-      -- Auftrag 013 P2-A: Skill-Suggestions (Backend-Event → persistiert → Chat-Karte)
+      --P2-A: Skill-Suggestions (Backend-Event → persistiert → Chat-Karte)
       CREATE TABLE IF NOT EXISTS sys_louis_ai_skill_suggestions (
         id_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id TEXT NOT NULL DEFAULT '1',
@@ -1760,10 +1760,10 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_skill_suggestions_tenant_status ON sys_louis_ai_skill_suggestions(tenant_id, status);
 
       -- S1: Volltext-Index für Session-Recall (inkl. Summary — COALESCE wegen NULL-Spalte)
-      -- Auftrag 041: alter Index (JSON::text-Rauschen) wird durch v2 (history_searchable_text) ersetzt.
+      --: alter Index (JSON::text-Rauschen) wird durch v2 (history_searchable_text) ersetzt.
       DROP INDEX IF EXISTS idx_sys_louis_ai_sessions_fts;
 
-      -- Auftrag 041 P0 (Option B): Recall ohne JSON-Rauschen — IMMUTABLE-Helper extrahiert
+      --P0 (Option B): Recall ohne JSON-Rauschen — IMMUTABLE-Helper extrahiert
       -- NUR die content-Felder aus conversation_history_json; generierte Spalte wird von PG
       -- automatisch gepflegt (kein Schreibpfad-Change). Alte FTS bleibt bis zur Verifikation,
       -- neuer Index (v2) ersetzt sie danach (DROP im Abschluss nach Live-Check).
@@ -1925,39 +1925,39 @@ export async function initDatabase() {
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS parallel_slots INTEGER DEFAULT 1;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS chunk_size INTEGER DEFAULT 500;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS chunk_overlap INTEGER DEFAULT 50;
-      -- Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default, Regel 12)
+      --P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_budget_tokens INTEGER;
-      -- Auftrag 006 Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default → Admin-einstellbar, Regel 12)
+      --Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default → Admin-einstellbar, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS max_iterations INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS max_history_tokens INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_result_truncate_chars INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS react_keep_last_results INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS react_compaction_from_iteration INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS early_exit_after_tools INTEGER DEFAULT NULL;
-      -- Auftrag 006 B3: Prompt-Direktiven-Modus ('always' = bisheriges Verhalten, 'intent' = nur bei E-Mail-Bezug)
+      --B3: Prompt-Direktiven-Modus ('always' = bisheriges Verhalten, 'intent' = nur bei E-Mail-Bezug)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_directives_mode TEXT DEFAULT 'always';
-      -- Auftrag 007 T5: Tool-Call-Modus ('auto' = native mit JSON-Fallback, 'json' = bisheriges Verhalten, 'native' = erzwungen)
+      --T5: Tool-Call-Modus ('auto' = native mit JSON-Fallback, 'json' = bisheriges Verhalten, 'native' = erzwungen)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS react_tool_call_mode TEXT DEFAULT 'auto';
       -- 2026-08-18: Text-Fallback-Kanal (false = strikt: NUR native Tool-Calls; true = XML/JSON-Text-Fallback erlaubt; NULL = Backend-Default false)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS text_fallback_enabled BOOLEAN DEFAULT NULL;
-      -- Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+      --Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_parallel_tool_guidance BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS prompt_tool_guidance_trim BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_frozen_snapshot BOOLEAN DEFAULT NULL;
-      -- Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+      --Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_threshold_percent INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_tail_token_budget INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_aux_model TEXT DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_persist_summary BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS compression_model_context_map TEXT DEFAULT NULL;
-      -- Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+      --Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_prefetch_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_prefetch_timeout_s INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_recall_status_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_auto_scan_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS memory_consolidation_budget INTEGER DEFAULT NULL;
-      -- Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+      --Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_call_retry_max INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS empty_retry_budget INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS empty_retry_cost_threshold_usd NUMERIC DEFAULT NULL;
@@ -1965,29 +1965,29 @@ export async function initDatabase() {
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS tool_guardrail_no_progress_block INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS loop_deadline_s INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS thinking_scrub_enabled BOOLEAN DEFAULT NULL;
-      -- Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+      --Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS recall_fts_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS recall_search_limit INTEGER DEFAULT NULL;
-      -- Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+      --Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_curator_enabled BOOLEAN DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_inject_max_tokens INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_prune_inactive_after_days INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS skill_inject_top_k INTEGER DEFAULT NULL;
-      -- Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+      --P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS curator_interval_hours INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS curator_archive_after_days INTEGER DEFAULT NULL;
-      -- Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+      --P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_max_depth INTEGER DEFAULT NULL;
-      -- Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      --P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS audit_retention_days INTEGER DEFAULT NULL;
-      -- Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+      --P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS session_retention_days INTEGER DEFAULT NULL;
-      -- Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+      --Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS mcp_refresh_interval_s INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_timeout_s INTEGER DEFAULT NULL;
       ALTER TABLE sys_integrations_louis_ai_config ADD COLUMN IF NOT EXISTS subtask_max_parallel INTEGER DEFAULT NULL;
 
-      -- Auftrag 006 Task 7 (B2): Token-Metriken pro Agent-Lauf (Admin-Ansicht „Token-Verbrauch")
+      --Task 7 (B2): Token-Metriken pro Agent-Lauf (Admin-Ansicht „Token-Verbrauch")
       CREATE TABLE IF NOT EXISTS sys_louis_ai_agent_runs (
         id_uuid UUID PRIMARY KEY,
         tenant_id TEXT NOT NULL DEFAULT '1',
@@ -2659,9 +2659,9 @@ export async function logAuditEvent(event: {
   eventDetails?: string;
   actorIdentity: string;
 }) {
-  // Auftrag 037 P0: Telemetrie-/System-Events nicht ins Compliance-Audit schreiben.
+ // P0: Telemetrie-/System-Events nicht ins Compliance-Audit schreiben.
   if (!isAuditWorthyEvent(event.eventType)) {
-    console.debug(`[Audit] Event '${event.eventType}' übersprungen (nicht audit-würdig, Auftrag 037): ${event.eventDetails || ""}`);
+    console.debug(`[Audit] Event '${event.eventType}' übersprungen (nicht audit-würdig): ${event.eventDetails || ""}`);
     return;
   }
   if (isUsingFallback) {
@@ -2697,7 +2697,7 @@ export async function logAuditEvent(event: {
 }
 
 // ============================================================================
-// Auftrag 037 P2: Audit-Log-Prune (Scheduler, opt-in über audit_retention_days)
+// P2: Audit-Log-Prune (Scheduler, opt-in über audit_retention_days)
 // ----------------------------------------------------------------------------
 // Löscht Audit-Einträge älter als retentionDays in Batches (DELETE mit LIMIT
 // ist in PG nicht direkt möglich → CTE über ctid). Idempotent (DELETE ist
@@ -2764,7 +2764,7 @@ export async function pruneAuditLogs(
         tenantId,
         eventType: "DELETE",
         entityType: "audit_log",
-        eventDetails: `Prune-Job (Auftrag 037): ${result.pruned} Einträge älter als ${retentionDays} Tage gelöscht (${result.batches} Batches)`,
+        eventDetails: `Prune-Job: ${result.pruned} Einträge älter als ${retentionDays} Tage gelöschtt (${result.batches} Batches)`,
         actorIdentity: "scheduler"
       });
     }
@@ -2776,7 +2776,7 @@ export async function pruneAuditLogs(
 }
 
 // ============================================================================
-// Auftrag 038 P2: Session-Prune (Scheduler, opt-in über session_retention_days)
+// P2: Session-Prune (Scheduler, opt-in über session_retention_days)
 // ----------------------------------------------------------------------------
 // Kriterium (Plan-Review 038): Aktivität — sys_louis_ai_sessions hat KEINEN
 // Ende-Marker (kein ended_at/end_reason). Es werden Sessions gelöscht, deren
@@ -2859,7 +2859,7 @@ export async function pruneSessions(
         tenantId,
         eventType: "DELETE",
         entityType: "session",
-        eventDetails: `Session-Prune (Auftrag 038): ${result.pruned} inaktive Sessions (aelter als ${retentionDays} Tage) geloescht, ${result.orphaned} Kinder verwaist (${result.batches} Batches)`,
+        eventDetails: `Session-Prune: ${result.pruned} inaktive Sessions (aelter als ${retentionDays} Tage) geloescht, ${result.orphaned} Kinder verwaist (${result.batches} Batches)`,
         actorIdentity: "scheduler"
       });
     }
@@ -2870,7 +2870,7 @@ export async function pruneSessions(
   }
 }
 
-// Auftrag 006 Task 7 (B2): Token-Metriken pro Agent-Lauf persistieren (Admin-Ansicht „Token-Verbrauch")
+// Task 7 (B2): Token-Metriken pro Agent-Lauf persistieren (Admin-Ansicht „Token-Verbrauch")
 export async function recordAgentRun(run: {
   tenantId: string;
   userId: string;

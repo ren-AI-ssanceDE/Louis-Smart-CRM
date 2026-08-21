@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 007 Task 1 (5C-A): JSON-Schema-Basis für native Tool-Calls.
+// Task 1 (5C-A): JSON-Schema-Basis für native Tool-Calls.
 // TOOL_PARAMETERS: exakte Parameter-Schemas je Katalog-Tool — spiegeln die
 // Erwartung von executeSingleTool (query-String bzw. strukturierte Args, die
 // als JSON-String weitergereicht werden). Fehlende Schemas fallen auf
@@ -32,7 +32,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   list_contacts: queryOnly("Suchbegriff (Name, E-Mail, Firma) als Freitext, optional mit limit/offset als JSON: { search, limit, offset }"),
   list_invoices: queryOnly("Filter als JSON: { search, limit, offset, payment_status } oder Suchbegriff"),
   crm_data_analyst: queryOnly("Analyse-Auftrag als Freitext (z. B. 'Angebotslage: wie viele angenommen?')"),
-  // Auftrag 016 P1-2: Alias sichtbar im Katalog — gleiche Parameter wie crm_data_analyst
+ // P1-2: Alias sichtbar im Katalog — gleiche Parameter wie crm_data_analyst
   data_architect: queryOnly("Analyse-Auftrag als Freitext (z. B. 'Angebotslage: wie viele angenommen?')"),
   text_generator: queryOnly("Text-/Branding-Auftrag als Freitext"),
 
@@ -52,17 +52,17 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
     required: ["note_text"],
     additionalProperties: false
   },
-  // G2 (Auftrag 009): Update-Tools
+ // G2 : Update-Tools
   update_company_draft: queryOnly("Firmen-ID + zu ändernde Felder als JSON: { id_uuid, full_legal_name?, street?, house_number?, postal_code?, city?, email_address?, phone_number?, iban?, bic_swift?, payment_term?, language? }"),
   update_contact_draft: queryOnly("Kontakt-ID + zu ändernde Felder als JSON: { id_uuid, first_name?, last_name?, email_address?, phone_number?, street?, city?, opt_in_marketing?, opt_in_social_media?, opt_in_direct_message?, opt_in_sms?, opt_in_phone? }"),
-  // G4 (Auftrag 009): Notizen-Vollverwaltung
+ // G4 : Notizen-Vollverwaltung
   list_notes: queryOnly("Filter als JSON: { entity_type?: 'contact'|'company', entity_id_uuid?, search?, limit? }"),
   update_note: queryOnly("Notiz-ID + Felder als JSON: { id_uuid, note_text?, priority? }"),
   delete_note: queryOnly("Notiz-ID als JSON: { id_uuid }"),
-  // G5/G6 (Auftrag 009): Update-Tools für Rechnung + Angebot
+ // G5/G6 : Update-Tools für Rechnung + Angebot
   update_invoice_draft: queryOnly("Rechnungs-ID + Felder als JSON: { id_uuid, payment_status?, due_date?, invoice_number?, total_gross_amount?, introductory_text?, closing_text? }"),
   update_offer_draft: queryOnly("Angebots-ID + Felder als JSON: { id_uuid, title?, valid_until?, payment_term?, currency_code?, total_gross_amount? }"),
-  // G7 (Auftrag 009): E-Mail-Entwürfe
+ // G7 : E-Mail-Entwürfe
   list_mail_drafts: queryOnly("Filter als JSON: { status?: 'PENDING'|'APPROVED'|'REJECTED', recipient?, limit? }"),
   finalize_and_send_offer: queryOnly("Angebots-ID als JSON: { offer_id_uuid } oder UUID-String"),
   send_smtp_email: {
@@ -81,7 +81,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
 
   // KNOWLEDGE / VAULT
   web_search: queryOnly("Suchbegriff (z. B. 'Mehrwertsteuersatz Dänemark 2026')"),
-  // Auftrag 036 P1: knowledge_*-Familie (interne Wissensvault-Tools) — Alias-Schemas
+ // P1: knowledge_*-Familie (interne Wissensvault-Tools) — Alias-Schemas
   knowledge_search: queryOnly("Suchbegriff oder Dateiname im Vault (INTERNER Wissensvault)"),
   list_knowledge_files: queryOnly("optional: Filter (Kategorie) oder leerer String"),
   knowledge_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv"),
@@ -89,7 +89,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   knowledge_delete: queryOnly("Dateiname als JSON: { file_name }"),
   local_knowledge: queryOnly("Suchbegriff oder Dateiname im Vault (Alias: knowledge_search)"),
   list_vault_files: queryOnly("optional: Filter (Kategorie) oder leerer String (Alias: list_knowledge_files)"),
-  // G8 (Auftrag 009): Vault-Vollverwaltung
+ // G8 : Vault-Vollverwaltung
   vault_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv (Alias: knowledge_write)"),
   vault_update: queryOnly("Datei-Daten als JSON: { file_name, content } (Alias: knowledge_update)"),
   vault_delete: queryOnly("Dateiname als JSON: { file_name } (Alias: knowledge_delete)"),
@@ -211,7 +211,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
     additionalProperties: false
   },
   verify_subtask: queryOnly("Subtask-Status als JSON: { subtask_id, evidence }"),
-  // Auftrag 026 P1-3 (#53): Subagent-Steering
+ // P1-3 (#53): Subagent-Steering
   steer_subtask: queryOnly("Steer-Nachricht als JSON: { subtask_id, message }"),
   abort_subtask: queryOnly("Abbruch als JSON: { subtask_id, reason? }"),
   ask_user_question: {
@@ -250,7 +250,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
 
 // ---------------------------------------------------------------------------
 // Baut das native Tools-Array (OpenAI-/Gemini-Format):
-//   [{ type: "function", function: { name, description, parameters } }]
+// [{ type: "function", function: { name, description, parameters } }]
 // Deterministisch sortiert nach Namen → stabiler Cache-Prefix (getDeterministicTools).
 // ---------------------------------------------------------------------------
 export function buildNativeTools(
@@ -269,7 +269,7 @@ export function buildNativeTools(
 }
 
 // ---------------------------------------------------------------------------
-// Auftrag 025 Phase 1 (#8): Tool-Schema-Normalisierung.
+// Phase 1 (#8): Tool-Schema-Normalisierung.
 // Doppelt gewrappte OpenAI-Tool-Schemas unwrappen, BEVOR sie an den Provider
 // gehen (DeepSeek-HTTP-400-Schutz; Muster normalize_tool_schema).
 // Erkennung: parameters.properties enthält GENAU EIN
@@ -296,7 +296,7 @@ function isNestedSchema(value: unknown): value is ToolJsonSchema {
   return true;
 }
 
-// Auftrag 025 Phase 7 (#54): MCP-Schema-Normalisierung — unwrappt doppelt gewrappte
+// Phase 7 (#54): MCP-Schema-Normalisierung — unwrappt doppelt gewrappte
 // inputSchema (genau EIN properties-Feld, dessen Wert ein vollständiges Schema ist).
 // Wird in der MCP-Discovery angewendet; normalizeToolSchemas (#8) nutzt dieselbe Logik.
 export function unwrapWrappedSchema(schema: unknown): ToolJsonSchema {

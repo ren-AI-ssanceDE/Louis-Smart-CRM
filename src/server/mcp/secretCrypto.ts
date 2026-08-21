@@ -1,5 +1,5 @@
 // Secret-Verschlüsselung (Task C.3, Plan 2026-08-19)
-// ⚠️  2026-08-19: auth_token_encrypted war KLARTEXT (Spaltenname suggerierte nur Verschlüsselung).
+// ⚠️ 2026-08-19: auth_token_encrypted war KLARTEXT (Spaltenname suggerierte nur Verschlüsselung).
 // Echte AES-256-GCM-Verschlüsselung mit Magic-Prefix "lv1:" für idempotente Migration (C.3b).
 // Schlüssel: Container-Env LOUIS_SECRET_KEY (Secret, NICHT User-konfigurierbar — kein Regel-12-Wert).
 // Dev-Fallback NUR für Fallback-Modus/Tests (stabiler Hash) — Produktion MUSS den Env-Key setzen.

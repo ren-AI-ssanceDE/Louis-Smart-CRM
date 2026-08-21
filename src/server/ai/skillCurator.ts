@@ -1,10 +1,10 @@
 // ============================================================================
-// Auftrag 025 Phase 6 + Auftrag 026 P1-1 (Parität): Curator & Skills
+// Phase 6 + P1-1 (Parität): Curator & Skills
 // #28 Skill-Pruning — inaktiv bis aktiviert, NIEMALS löschen (Muster skills_curator.py).
 // #29 Curator (Pflicht REIN) — Frontmatter pflegen (status/last_used),
-//     inaktive markieren, genutzte reaktivieren, überfällige archivieren. NIE automatisch löschen.
+// inaktive markieren, genutzte reaktivieren, überfällige archivieren. NIE automatisch löschen.
 // #30 Usage-Tracking — use_count/view_count/patch_count je Skill (Teil des Curators).
-//     Auftrag 026 P1-1: Zähler + Tick-Fälligkeit + Archiv-Stufe (_archive/, nie löschen).
+// P1-1: Zähler + Tick-Fälligkeit + Archiv-Stufe (_archive/, nie löschen).
 // Reine Funktionen (testbar, kein any) + Best-Effort-Persistenz via vaultWriteText.
 // ============================================================================
 

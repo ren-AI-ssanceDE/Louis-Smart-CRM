@@ -2,7 +2,7 @@
 // S10: Vault-Store — Obsidian-MCP-Gedächtnis & Wissens-Skills (2-Tier Hot-Switch)
 // ----------------------------------------------------------------------------
 // Tier 1: Obsidian-MCP (obsidian-mcp@2, direkt auf Vault-Dateien) — Konvention: obsidian_<op>
-// Tier 2: sys_louis_ai_user_memory (DB)   — NUR LESEN (Memory); Schreiben: Fehler+Audit (nie still)
+// Tier 2: sys_louis_ai_user_memory (DB) — NUR LESEN (Memory); Schreiben: Fehler+Audit (nie still)
 //
 // (Der frühere Tier-2-Markdown-Vault-Server wurde am 2026-08-16 entfernt — Obsidian ist die
 // einzige Wissensanbindung; knowledge_data_vault bleibt als interne KI-DB.)
@@ -208,7 +208,7 @@ export async function vaultWriteText(tenantId: string, relativePath: string, con
   throw new Error(`Vault-Schreibzugriff fehlgeschlagen (Tier 1 nicht verfügbar): ${clean}`);
 }
 
-// Auftrag 012 P0-1: vaultDeleteText — Datei aus dem Vault löschen (nur _louis/, .md, Governance wie Write)
+// vaultDeleteText — Datei aus dem Vault löschen (nur _louis/, .md, Governance wie Write)
 export async function vaultDeleteText(tenantId: string, relativePath: string): Promise<{ path: string; source: "tier1" | "tier2" }> {
   const clean = sanitizeVaultPath(relativePath, true);
   if (!clean) {
@@ -318,7 +318,7 @@ export async function writeUserMemoryVault(tenantId: string, userId: string, mem
 // Wissens-Skills (nur lesen/injizieren; Schreiben via save_skill → Freigabe-Flow)
 // ---------------------------------------------------------------------------
 
-// Auftrag 025 (2026-08-18): Eindeutiger Skill-Marker — wird von ALLEN
+// (2026-08-18): Eindeutiger Skill-Marker — wird von ALLEN
 // Schreibpfaden gesetzt (approveProposal louisAi.ts + SkillsTab.tsx: tags: [louis-skill]).
 // resolveSkillFiles löst Skills über diese Volltext-Markierung auf (bewährte Lösung:
 // deterministischer, funktionierender Pfad statt fragiler API-Ordner-Listung).
@@ -331,10 +331,10 @@ export interface VaultSkillFile {
   content: string;
   tags: string[];
   version: number;
-  // Auftrag 013 P2-E: Pinned-Skills werden immer injiziert (Prio vor Scoring)
+ // P2-E: Pinned-Skills werden immer injiziert (Prio vor Scoring)
   pinned?: boolean;
-  // Auftrag 025 Phase 6 (#28/#29): Curator-Status (active|inactive, inaktiv bis aktiviert, NIE löschen)
-  // Auftrag 026 P1-1: + archived (in _archive/ verschoben — nie gelöscht) + Usage-Zähler (#30)
+ // P1-1: + archived (in _archive/ verschoben — nie gelöscht) + Usage-Zähler (#30)
+  //: + archived (in _archive/ verschoben — nie gelöscht) + Usage-Zähler (#30)
   status?: "active" | "inactive" | "archived";
   lastUsedAtUtc?: string | null;
   useCount?: number;
@@ -355,8 +355,8 @@ export function parseSkillFile(filename: string, content: string): VaultSkillFil
         : [tagMatch[1].trim()] // Einzel-Tag ohne Komma (z.B. tags: [louis-skill])
     : [];
   const descMatch = content.match(/^description:\s*(.+)$/m);
-  // Auftrag 025 Phase 6 (#28/#29): Curator-Frontmatter (status/last_used_at_utc) parsen
-  // Auftrag 026 P1-1: + archived-Status + Usage-Zähler (#30)
+ // P1-1: + archived-Status + Usage-Zähler (#30)
+  //: + archived-Status + Usage-Zähler (#30)
   const statusMatch = content.match(/^status:\s*(active|inactive|archived)\s*$/m);
   const usedMatch = content.match(/^last_used_at_utc:\s*(.+)$/m);
   const counter = (name: string): number => {
@@ -379,7 +379,7 @@ export function parseSkillFile(filename: string, content: string): VaultSkillFil
 }
 
 export async function resolveSkillFiles(tenantId: string): Promise<VaultSkillFile[]> {
-  // Auftrag 025 (2026-08-18): Tier-1-`vault_list` kann KEINE Unterordner-Listungen
+ // (2026-08-18): Tier-1-`vault_list` kann KEINE Unterordner-Listungen
   // (liefert für "_louis/skills" immer [] — nur die Wurzel-Ebene funktioniert; verifiziert).
   // bewährte Lösung: Skills über die Volltext-Suche mit dem Skill-Marker auflösen (analog
   // Dateisystem-Scan des Skill-Ordners) — deterministisch, nutzt den funktionierenden Pfad.

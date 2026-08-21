@@ -50,7 +50,7 @@ import {
   ProposeCrmChangesArgs
 } from "./tools/types.js";
 import { ToolCall, InferenceResultPayload, InferenceMessage } from "../../types/inference.js";
-// Auftrag 025 Phase 3 (#18): Query-abhängiges Memory-Prefetch
+// Phase 3 (#18): Query-abhängiges Memory-Prefetch
 import { prefetchRelevantMemoryNotes } from "./memoryManager.js";
 
 
@@ -233,7 +233,7 @@ export interface ToolExecutionRecord {
   reasoning_content?: string;
 }
 
-// Auftrag 006 A1 (Regel 12): Default über Admin-Config steuerbar; 2000 als Backend-Fallback
+// A1 (Regel 12): Default über Admin-Config steuerbar; 2000 als Backend-Fallback
 export function truncateResult(result: unknown, maxLength = 2000): string {
   if (result === null || result === undefined) return "No result returned.";
   if (typeof result === 'string') {
@@ -341,9 +341,9 @@ export async function getTenantAiConfig(tenantId: string): Promise<TenantAiConfi
     curator_interval_hours: null,
     curator_archive_after_days: null,
     subtask_max_depth: null,
-    // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
     audit_retention_days: null,
-    // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
     session_retention_days: null,
     mcp_refresh_interval_s: null,
     subtask_timeout_s: null,
@@ -354,7 +354,7 @@ export async function getTenantAiConfig(tenantId: string): Promise<TenantAiConfi
 /**
  * S2: Lädt das User-Memory (sys_louis_ai_user_memory) für Injektion in den System-Prompt.
  * S10: Vault-first — readUserMemoryVault (Tier 1/2) zuerst, sonst DB (Tier 3).
- * Auftrag 025 Phase 3 (#25): Timeout-Gate — ein hängender Vault-/Provider-Call blockiert
+ * Phase 3 (#25): Timeout-Gate — ein hängender Vault-/Provider-Call blockiert
  * den Turn NIE (Default 8s, non-fatal; konfigurierbar via memory_prefetch_timeout_s).
  * Strikt fehlertolerant — Memory darf die Pipeline nie brechen (nie werfen).
  */
@@ -502,7 +502,7 @@ export async function runLouisAiFlow(
   language: string = 'de',
   shortTermSummaryText: string = '',
   attachments: AgentAttachmentContext[] = [],
-  // Auftrag 012 P1-3: optionale Tool-Domänen-Einschränkung (z. B. Agent-Jobs mit allowed_domains)
+ // P1-3: optionale Tool-Domänen-Einschränkung (z. B. Agent-Jobs mit allowed_domains)
   allowedDomains?: ToolDomain[],
   // C.7 (Plan 2026-08-19): aktive Chat-Session → Chatprofil-Filter für MCP-Tools
   sessionId?: string
@@ -511,7 +511,7 @@ export async function runLouisAiFlow(
   thoughtLog: string[];
   proposedChanges: ReActDecision['proposedChanges'] | null;
   sessionId: string;
-  // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
+ // Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
   memoryRecallCount?: number;
   metrics?: {
     durationMs: number;
@@ -522,11 +522,11 @@ export async function runLouisAiFlow(
   };
 }> {
   const aiConfig = await getTenantAiConfig(tenantId);
-  // Auftrag 025 Phase 3 (#25): Prefetch-Timeout konfigurierbar (memory_prefetch_timeout_s, NULL = 8s)
+ // Phase 3 (#25): Prefetch-Timeout konfigurierbar (memory_prefetch_timeout_s, NULL = 8s)
   const userMemory = await getTenantUserMemory(tenantId, userId, aiConfig.memory_prefetch_timeout_s ?? 8000);
   const agentLanguage = language.toLowerCase().startsWith('en') ? 'en' : 'de';
 
-  // Auftrag 025 Phase 3 (#18): Query-abhängiges Prefetch — relevante Memory-Einträge werden
+ // Phase 3 (#18): Query-abhängiges Prefetch — relevante Memory-Einträge werden
   // VOR dem Loop nach Relevanz sortiert und budgetiert (nicht nur Budget-Injektion).
   // Ergebnis: prefetchedUserMemory (budgetierte, relevanz-sortierte Notizen) + recallCount.
   let prefetchedUserMemory: AgentUserMemory | null = userMemory;
@@ -540,7 +540,7 @@ export async function runLouisAiFlow(
     }
   }
 
-  // Auftrag 025 Phase 2 (#13): KEINE Kompression mehr auf dem Antwort-Pfad.
+ // Phase 2 (#13): KEINE Kompression mehr auf dem Antwort-Pfad.
   // Der Summary kommt ausschließlich vom Background-Worker (sendMessage) —
   // nie ein synchroner LLM-Call im Request-Pfad, nie ein 4s-Timeout-Race.
   const activeSummary = shortTermSummaryText;
@@ -556,13 +556,13 @@ export async function runLouisAiFlow(
     history: conversationHistory,
     shortTermSummary: activeSummary,
     userMemory: prefetchedUserMemory,
-    // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
+   // Phase 3 (#20): Recall-Status-Feedback (Anzahl relevanter Prefetch-Treffer)
     memoryRecallCount,
     temporalAnchor: new Date().toISOString(),
     attachments,
     // C.7 (Plan 2026-08-19): Session-Kontext für den Chatprofil-Filter der MCP-Tools
     sessionId,
-    // Auftrag 006 A3: History-Budget 1200 (Admin-einstellbar über max_history_tokens)
+ // A3: History-Budget 1200 (Admin-einstellbar über max_history_tokens)
     maxHistoryTokens: aiConfig.max_history_tokens ?? 1200,
     isFastPath: complexity.isFastPath,
     isComplex: complexity.isComplex,
@@ -577,27 +577,27 @@ export async function runLouisAiFlow(
     earlyExitAfterTools: aiConfig.early_exit_after_tools ?? 4,
     promptDirectivesMode: (aiConfig.prompt_directives_mode as 'always' | 'intent') || 'always',
     toolCallMode: (aiConfig.react_tool_call_mode as 'auto' | 'json' | 'native') || 'auto',
-    // Auftrag 031 (Effekt-Test-Fund): text_fallback_enabled war nie verdrahtet —
+ // (Effekt-Test-Fund): text_fallback_enabled war nie verdrahtet —
     // fehlte im getTenantAiConfig-SELECT UND im Mapping → Admin-Einstellung wirkte nie.
     textFallbackEnabled: aiConfig.text_fallback_enabled ?? false,
-    // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
+ // Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
     promptParallelToolGuidance: aiConfig.prompt_parallel_tool_guidance ?? true,
     promptToolGuidanceTrim: aiConfig.prompt_tool_guidance_trim ?? true,
     memoryFrozenSnapshot: aiConfig.memory_frozen_snapshot ?? true,
-    // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+ // Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
     compressionEnabled: aiConfig.compression_enabled ?? true,
     compressionThresholdPercent: aiConfig.compression_threshold_percent ?? null,
     compressionTailTokenBudget: aiConfig.compression_tail_token_budget ?? null,
     compressionAuxModel: aiConfig.compression_aux_model ?? null,
     compressionPersistSummary: aiConfig.compression_persist_summary ?? true,
     compressionModelContextMap: aiConfig.compression_model_context_map ?? null,
-    // Auftrag 025 Phase 3 (Parität): Memory-Toggles (NULL = Backend-Default, Regel 12)
+ // Phase 3 (Parität): Memory-Toggles (NULL = Backend-Default, Regel 12)
     memoryPrefetchEnabled: aiConfig.memory_prefetch_enabled ?? true,
     memoryPrefetchTimeoutS: aiConfig.memory_prefetch_timeout_s ?? null,
     memoryRecallStatusEnabled: aiConfig.memory_recall_status_enabled ?? true,
     memoryAutoScanEnabled: aiConfig.memory_auto_scan_enabled ?? true,
     memoryConsolidationBudget: aiConfig.memory_consolidation_budget ?? null,
-    // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+ // Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
     toolCallRetryMax: aiConfig.tool_call_retry_max ?? null,
     emptyRetryBudget: aiConfig.empty_retry_budget ?? null,
     emptyRetryCostThresholdUsd: aiConfig.empty_retry_cost_threshold_usd ?? null,
@@ -605,28 +605,28 @@ export async function runLouisAiFlow(
     toolGuardrailNoProgressBlock: aiConfig.tool_guardrail_no_progress_block ?? null,
     loopDeadlineS: aiConfig.loop_deadline_s ?? null,
     thinkingScrubEnabled: aiConfig.thinking_scrub_enabled ?? true,
-    // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+ // Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
     recallFtsEnabled: aiConfig.recall_fts_enabled ?? true,
     recallSearchLimit: aiConfig.recall_search_limit ?? null,
-    // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+ // Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
     skillCuratorEnabled: aiConfig.skill_curator_enabled ?? true,
     skillInjectMaxTokens: aiConfig.skill_inject_max_tokens ?? null,
     skillPruneInactiveAfterDays: aiConfig.skill_prune_inactive_after_days ?? null,
     skillInjectTopK: aiConfig.skill_inject_top_k ?? null,
-    // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+ // P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
     curatorIntervalHours: aiConfig.curator_interval_hours ?? null,
     curatorArchiveAfterDays: aiConfig.curator_archive_after_days ?? null,
-    // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+ // P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
     subtaskMaxDepth: aiConfig.subtask_max_depth ?? null,
-    // Auftrag 037 P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention (NULL = kein Auto-Prune, Regel 12)
     auditRetentionDays: aiConfig.audit_retention_days ?? null,
-    // Auftrag 038 P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention (NULL = kein Auto-Prune, Regel 12)
     sessionRetentionDays: aiConfig.session_retention_days ?? null,
-    // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+ // Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
     mcpRefreshIntervalS: aiConfig.mcp_refresh_interval_s ?? null,
     subtaskTimeoutS: aiConfig.subtask_timeout_s ?? null,
     subtaskMaxParallel: aiConfig.subtask_max_parallel ?? null,
-    // Auftrag 012 P1-3: Domänen-Limit (nur wenn gesetzt — sonst alle Domänen wie bisher)
+ // P1-3: Domänen-Limit (nur wenn gesetzt — sonst alle Domänen wie bisher)
     ...(allowedDomains && allowedDomains.length > 0 ? { allowedDomains } : {}),
     inputTokens: 0,
     outputTokens: 0,
@@ -643,7 +643,7 @@ export async function runLouisAiFlow(
     thoughtLog: result.thoughtLog,
     proposedChanges: result.proposedChanges as ReActDecision['proposedChanges'] | null,
     sessionId: uuidv4(),
-    // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback an die Chat-UI
+ // Phase 3 (#20): Recall-Status-Feedback an die Chat-UI
     memoryRecallCount: result.memoryRecallCount ?? memoryRecallCount,
     metrics: {
       durationMs: result.executionTimeMs,
@@ -746,7 +746,7 @@ const autoType = (v: string): unknown => {
   return v;
 };
 
-// Auftrag 007 T6: XML-Tool-Call-Parser (Claude/DeepSeek-Format)
+// T6: XML-Tool-Call-Parser (Claude/DeepSeek-Format)
 // <invoke name="list_companies"><parameter name="search">Acme</parameter></invoke>
 // → UniversalToolCall-ähnliche ToolCall[] (querys als JSON/plain string).
 export function parseXmlToolCalls(text: string): ToolCall[] {
@@ -822,7 +822,7 @@ export function safeParseReActDecision(
     const thoughtMatch = res.text.match(/<think>([\s\S]*?)<\/think>/);
     const thought = thoughtMatch ? thoughtMatch[1].trim() : (res.text.trim() || "Native tool call invoked.");
 
-    // Auftrag 2026-08-15 (P3): Robustheit gegen malformed Tool-Calls. DeepSeek/andere
+ // 6-08-15 (P3): Robustheit gegen malformed Tool-Calls. DeepSeek/andere
     // Provider liefern gelegentlich Calls ohne 'function'-Objekt (oder ohne name/
     // arguments) — vorher crashte t.function.name mit "Cannot read properties of
     // undefined (reading 'id'/'name')" bei Löschversuchen. Jetzt: malformed Calls
@@ -941,7 +941,7 @@ export function safeParseReActDecision(
     };
   }
 
-  // Auftrag 007 T6: XML-Tool-Call-Format (Claude/DeepSeek: <invoke name="..."><parameter name="...">)
+ // T6: XML-Tool-Call-Format (Claude/DeepSeek: <invoke name="..."><parameter name="...">)
   // → in Tool-Calls konvertieren, BEVOR der JSON-Fallback greift. Einige Modelle (z. B. DeepSeek-V4)
   // antworten trotz tools-Parameter im XML-Text-Stil.
   const xmlToolCalls = parseXmlToolCalls(res.text || "");

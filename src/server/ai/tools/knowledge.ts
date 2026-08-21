@@ -167,7 +167,7 @@ function buildRecallSnippet(row: {
   return snippet.length > 500 ? snippet.slice(0, 500) + "…" : snippet;
 }
 
-// Auftrag 012 P0-3: Kontext-Fenster — findet die Nachricht mit dem Suchbegriff und liefert ±3 Nachrichten
+// P0-3: Kontext-Fenster — findet die Nachricht mit dem Suchbegriff und liefert ±3 Nachrichten
 function buildContextWindow(
   history: unknown,
   term: string
@@ -197,7 +197,7 @@ function buildContextWindow(
   }
 }
 
-// Auftrag 012 P0-3: Lineage — lädt die Vorgänger-Session (parent_session_id) mit Titel + Snippet
+// P0-3: Lineage — lädt die Vorgänger-Session (parent_session_id) mit Titel + Snippet
 async function resolveParentSession(tenantId: string, parentId: string | null | undefined): Promise<SessionRecallHit["parent_session"] | undefined> {
   if (!parentId) return undefined;
   try {
@@ -230,7 +230,7 @@ async function resolveParentSession(tenantId: string, parentId: string | null | 
   }
 }
 
-// Auftrag 025 Phase 5 (#48): Reines Recall-Scoring (Fallback-Store-Zweig) — Gewichte
+// Phase 5 (#48): Reines Recall-Scoring (Fallback-Store-Zweig) — Gewichte
 // identisch zur PG-ts_rank-Gewichtung (Titel > Summary > History). Testbar, kein any.
 export function scoreSessionForRecall(
   session: { session_title?: unknown; short_term_summary_text?: unknown; conversation_history_json?: unknown },
@@ -251,7 +251,7 @@ export function scoreSessionForRecall(
 export async function executeRecallSessions(
   tenantId: string,
   argsStr?: string,
-  // Auftrag 025 Phase 5 (#48): Admin-Config (NULL = Backend-Default, Regel 12)
+ // Phase 5 (#48): Admin-Config (NULL = Backend-Default, Regel 12)
   opts?: { ftsEnabled?: boolean; defaultLimit?: number }
 ): Promise<ToolResult<PaginatedToolResponse<SessionRecallHit>>> {
   try {
@@ -281,7 +281,7 @@ export async function executeRecallSessions(
     if (isUsingFallback || !pool) {
       const sessions = fallbackStore.louisAiSessions || [];
       const term = query.toLowerCase().trim();
-      // Auftrag 025 Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
+ // Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
       if (!ftsEnabled) {
         const newest = sessions
           .filter((s) => s.tenant_id === tenantId || s.tenant_id === "1")
@@ -308,7 +308,7 @@ export async function executeRecallSessions(
             (a, b) => b.score - a.score || String(b.s.created_at_utc).localeCompare(String(a.s.created_at_utc))
           );
         totalCount = scored.length;
-        // (Auftrag 010): Fallback bei 0 Treffern → neueste Sessions liefern
+ // : Fallback bei 0 Treffern → neueste Sessions liefern
         if (scored.length === 0) {
           usedFallback = true;
           const newest = sessions
@@ -322,7 +322,7 @@ export async function executeRecallSessions(
               snippet: buildRecallSnippet(x),
               relevance: 0,
               created_at_utc: String(x.created_at_utc || ""),
-              // Auftrag 012 P0-3: Kontext-Fenster + Lineage
+ // P0-3: Kontext-Fenster + Lineage
               context_window: buildContextWindow(x.conversation_history_json, query),
               parent_session: await resolveParentSession(tenantId, x.parent_session_id)
             });
@@ -342,7 +342,7 @@ export async function executeRecallSessions(
         }
       }
     } else {
-      // Auftrag 025 Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
+ // Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
       if (!ftsEnabled) {
         const fb = await pool.query(
           `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id
@@ -368,7 +368,7 @@ export async function executeRecallSessions(
       } else {
         // #48 Ranking-Verbesserung: gewichtete ts_rank (Titel A=1.0 > Summary B=0.4 > History C=0.3)
         // + Recency-Bonus (+15 % für Sessions aus den letzten 90 Tagen — neuere > ältere).
-        // Auftrag 041 (Option B): History via history_searchable_text (generierte Spalte, nur
+ // (Option B): History via history_searchable_text (generierte Spalte, nur
         // content-Felder — kein JSON-Rauschen mehr), Gewicht C 0.2 → 0.3.
         const res = await pool.query(
           `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id,
@@ -390,7 +390,7 @@ export async function executeRecallSessions(
           [query, tenantId, clampedLimit, clampedOffset]
         );
         totalCount = res.rows.length > 0 ? Number(res.rows[0].total_count || 0) : 0;
-        // (Auftrag 010): Fallback bei 0 Volltext-Treffern → neueste Sessions
+ // : Fallback bei 0 Volltext-Treffern → neueste Sessions
         if (res.rows.length === 0) {
           const fb = await pool.query(
             `SELECT id_uuid, session_title, conversation_history_json, short_term_summary_text, created_at_utc, parent_session_id
@@ -1072,7 +1072,7 @@ export async function learnWorkflow(
   if (!isUsingFallback) {
     // Postgres synchronization
     try {
-      // Auftrag 008 4C (T8): Versionierung — skill_version +1 bei Update statt fix 1,
+ // 4C (T8): Versionierung — skill_version +1 bei Update statt fix 1,
       // version_history (Changelog) mit letztem Stand führen.
       // Bestehenden Stand lesen (nur bei Update-Fall nötig)
       let prevVersion = 0;
@@ -1632,7 +1632,7 @@ async function validateWorkflowTools(tenantId: string, steps: Array<{ tool?: str
     // Dynamischer Import bricht den zirkulären Import (agentRuntime → tools.js → knowledge.ts)
     const { SYSTEM_TOOL_CATALOG, INTERNAL_VAULT_TOOL_ALIASES } = await import("../agentRuntime.js");
     for (const t of SYSTEM_TOOL_CATALOG) known.add(t.name);
-    // Auftrag 036 P1: alte vault_*-Alias-Namen aus dem Katalog sind nicht mehr primär,
+ // P1: alte vault_*-Alias-Namen aus dem Katalog sind nicht mehr primär,
     // bleiben aber als Workflow-Schritt-Tools gültig (Abwärtskompatibilität).
     if (INTERNAL_VAULT_TOOL_ALIASES) {
       for (const alias of INTERNAL_VAULT_TOOL_ALIASES) known.add(alias);
@@ -1851,7 +1851,7 @@ export async function executeWorkflowMacro(tenantId: string, toolName: string, a
 }
 
 // ============================================================================
-// G8 (Auftrag 009): Vault-Vollverwaltung — vault_write / vault_update / vault_delete
+// G8 : Vault-Vollverwaltung — vault_write / vault_update / vault_delete
 // Schreibt in knowledge_data_vault/<tenantId> (kanonischer Vault, wie list_vault_files).
 // Dateinamen werden gegen Path-Traversal sanitized (nur Basename erlaubt).
 // ============================================================================
@@ -1989,7 +1989,7 @@ export async function executeVaultDelete(
 }
 
 // ============================================================================
-// Auftrag 036 P1: knowledge_*-Familie — exportierte Alias-Funktionen (wrappbar)
+// P1: knowledge_*-Familie — exportierte Alias-Funktionen (wrappbar)
 // Die MCP-Exposition (mcpServer.ts) und Workflow-Executoren können die neuen
 // Namen aufrufen; die Implementierung bleibt in den vault_-Funktionen (DRY).
 // ============================================================================

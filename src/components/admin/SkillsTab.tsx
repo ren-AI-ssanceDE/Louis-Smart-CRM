@@ -1,5 +1,5 @@
-// Auftrag 012 P0-1: Admin-Tab „Skills“ — Vault-Skills auflisten, ansehen und löschen.
-// Auftrag 013 P2-E: + Export (Markdown-Download) + Pinning (Frontmatter-Flag).
+// P2-E: + Export (Markdown-Download) + Pinning (Frontmatter-Flag).
+//: + Export (Markdown-Download) + Pinning (Frontmatter-Flag).
 // Read-only-Liste (listVaultSkills) + Löschen (deleteVaultSkill, nur _louis/skills/).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,7 @@ interface VaultSkill {
   tags: string[];
   version: number;
   pinned?: boolean;
-  // Auftrag 026 P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
+ // P1-1 (Parität #30/#29): Usage-Zähler + Curator-Status
   useCount?: number;
   viewCount?: number;
   patchCount?: number;
@@ -40,7 +40,7 @@ export function SkillsTab() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
 
-  // Auftrag 013 P2-E: Export als Markdown-Download (Inhalt liegt bereits im Frontend vor)
+ // P2-E: Export als Markdown-Download (Inhalt liegt bereits im Frontend vor)
   const exportSkill = (skill: VaultSkill) => {
     const md = `---\ntags: [louis-skill]\nname: ${skill.name}\ndescription: ${skill.description}\nversion: ${skill.version}\n${skill.pinned ? "pinned: true\n" : ""}---\n\n${skill.content}\n`;
     const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
@@ -104,13 +104,13 @@ export function SkillsTab() {
                       <span className="text-[10px] font-mono bg-accent-orange/10 border border-accent-orange/20 text-accent-orange px-1.5 py-0.5 rounded-full">
                         v{skill.version}
                       </span>
-                      {/* Auftrag 013 P2-E: Pinned-Badge */}
+                      {/* P2-E: Pinned-Badge */}
                       {skill.pinned && (
                         <span className="text-[10px] font-mono bg-accent-blue/10 border border-accent-blue/30 text-accent-blue px-1.5 py-0.5 rounded-full">
                           {t('admin:skills.pinned', { defaultValue: '📌 gepinnt' })}
                         </span>
                       )}
-                      {/* Auftrag 026 P1-1 (#29): Curator-Status-Badge */}
+                      {/* P1-1 (#29): Curator-Status-Badge */}
                       {skill.status === "inactive" && (
                         <span className="text-[10px] font-mono bg-amber-500/10 border border-amber-500/30 text-amber-400 px-1.5 py-0.5 rounded-full">
                           {t('admin:skills.status_inactive', { defaultValue: '💤 inaktiv' })}
@@ -121,7 +121,7 @@ export function SkillsTab() {
                           {t('admin:skills.status_archived', { defaultValue: '🗄️ archiviert' })}
                         </span>
                       )}
-                      {/* Auftrag 026 P1-1 (#30): Usage-Zähler + letzte Aktivität */}
+                      {/* P1-1 (#30): Usage-Zähler + letzte Aktivität */}
                       <span className="text-[10px] font-mono bg-slate-500/10 border border-white/5 text-slate-400 px-1.5 py-0.5 rounded-full" title={t('admin:skills.usage_title', { defaultValue: 'view = Injektionen (24h-Cooldown), use = vault_read auf die Datei, patch = update_skill-Freigaben' })}>
                         👁 {skill.viewCount ?? 0} · 🔧 {skill.useCount ?? 0} · ✏️ {skill.patchCount ?? 0}
                       </span>
@@ -172,7 +172,7 @@ export function SkillsTab() {
                       </>
                     ) : (
                       <>
-                        {/* Auftrag 013 P2-E: Export (Markdown-Download) */}
+                        {/* P2-E: Export (Markdown-Download) */}
                         <button
                           type="button"
                           onClick={() => exportSkill(skill)}
@@ -181,7 +181,7 @@ export function SkillsTab() {
                         >
                           <Download size={13} />
                         </button>
-                        {/* Auftrag 013 P2-E: Pin/Unpin */}
+                        {/* P2-E: Pin/Unpin */}
                         <button
                           type="button"
                           onClick={() => togglePin.mutate({ path: skill.path, pinned: !skill.pinned })}

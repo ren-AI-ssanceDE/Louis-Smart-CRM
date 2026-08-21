@@ -56,7 +56,7 @@ interface Workflow {
   skill_category?: string;
   skill_version?: number;
   skill_pitfalls?: Array<string | Record<string, unknown>>;
-  // Auftrag 008 4B: DAG-Struktur (visueller Graph)
+ // 4B: DAG-Struktur (visueller Graph)
   dag_structure?: IWorkflowDAG | Record<string, unknown> | string | null;
 }
 
@@ -87,7 +87,7 @@ export const LouisAiWorkflowsTab = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [selectedWorkflowForDetails, setSelectedWorkflowForDetails] = useState<Workflow | null>(null);
   const [showVariablesHelp, setShowVariablesHelp] = useState(false);
-  // Auftrag 008 4B: DAG-Editor-Overlay
+ // 4B: DAG-Editor-Overlay
   const [dagEditorOpen, setDagEditorOpen] = useState(false);
   const [dagEditorWorkflow, setDagEditorWorkflow] = useState<Workflow | null>(null);
   // DAG ist der einzige Workflow-Pfad —
@@ -217,7 +217,7 @@ export const LouisAiWorkflowsTab = () => {
     }
   });
 
-  // Auftrag 008 4C (T8b): Dry-Run/Simulation — deterministische Analyse ohne Ausführung
+ // 4C (T8b): Dry-Run/Simulation — deterministische Analyse ohne Ausführung
   const [dryRunWorkflowId, setDryRunWorkflowId] = useState<string | null>(null);
   const [dryRunOpen, setDryRunOpen] = useState(false);
   const dryRunQuery = trpc.dryRunWorkflow.useQuery(
@@ -245,7 +245,7 @@ export const LouisAiWorkflowsTab = () => {
     setFormTriggerConfig({});
     setFormIsActive(true);
     setFormDirectSendEmail(false);
-    // Auftrag 008 Option A: Graph-State zurücksetzen
+ // Option A: Graph-State zurücksetzen
     setFormDag(null);
     setDagEditorFromForm(false);
   };
@@ -278,7 +278,7 @@ export const LouisAiWorkflowsTab = () => {
     setFormIsActive(workflow.is_active !== false);
     setFormDirectSendEmail(workflow.direct_send_email === true);
     setIsCreating(false);
-    // Auftrag 008 Option A: bestehenden Graph ins Formular laden
+ // Option A: bestehenden Graph ins Formular laden
     setFormDag((() => {
       const raw = workflow.dag_structure;
       if (!raw) return null;
@@ -344,7 +344,7 @@ export const LouisAiWorkflowsTab = () => {
       return;
     }
 
-    // Verify all tool steps have instructions — Auftrag 008 Option A: entfällt,
+ // Verify all tool steps have instructions — Option A: entfällt,
     // wenn der Workflow im Graph-Editor (formDag) definiert ist (die lineare
     // toolChain ist dann nur noch Legacy-Derivat und darf den Submit nicht blocken)
     if (!formDag) {
@@ -364,7 +364,7 @@ export const LouisAiWorkflowsTab = () => {
       trigger_config: formTriggerConfig,
       is_active: formIsActive,
       direct_send_email: formDirectSendEmail,
-      // Auftrag 008 Option A: DAG ist der einzige Workflow-Pfad — der bearbeitete
+ // Option A: DAG ist der einzige Workflow-Pfad — der bearbeitete
       // Graph wird mitgespeichert; ohne formDag erzeugt das Backend automatisch
       // eine lineare DAG-Kette aus tool_chain_sequence
       dag_structure: formDag || undefined
@@ -559,7 +559,7 @@ export const LouisAiWorkflowsTab = () => {
             </button>
           </div>
 
-          {/* Auftrag 008 4C (T7): Vorlagen-Bibliothek — 1-Klick-Starter (nur beim Anlegen) */}
+          {/* 4C (T7): Vorlagen-Bibliothek — 1-Klick-Starter (nur beim Anlegen) */}
           {!editingWorkflow && (
             <div className="space-y-2" data-testid="workflow-templates">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-display">
@@ -626,7 +626,7 @@ export const LouisAiWorkflowsTab = () => {
             </div>
           </div>
 
-          {/* Auftrag 008 Option A: Workflow-Graph (DAG ist der einzige Workflow-Pfad) */}
+          {/* Option A: Workflow-Graph (DAG ist der einzige Workflow-Pfad) */}
           <div className="border-t border-white/5 pt-6 space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <div className="flex items-center gap-2 flex-wrap">
@@ -791,7 +791,7 @@ export const LouisAiWorkflowsTab = () => {
                         <option value="contact.updated">{t('admin:workflows_tab.event_contact_updated_option', { defaultValue: 'Kontakt wurde aktualisiert' })}</option>
                         <option value="company.updated">{t('admin:workflows_tab.event_company_updated_option', { defaultValue: 'Unternehmen wurde aktualisiert' })}</option>
                         <option value="file.uploaded">{t('admin:workflows_tab.event_file_uploaded_option', { defaultValue: 'Datei wurde hochgeladen (Kontakt / Unternehmen)' })}</option>
-                        {/* Auftrag 008 4A T2: neue Trigger-Events */}
+                        {/* 4A T2: neue Trigger-Events */}
                         <option value="offer.created">{t('admin:workflows_tab.event_offer_created_option', { defaultValue: 'Angebot wurde erstellt' })}</option>
                         <option value="offer.finalized">{t('admin:workflows_tab.event_offer_finalized_option', { defaultValue: 'Angebot wurde finalisiert' })}</option>
                         <option value="offer.sent">{t('admin:workflows_tab.event_offer_sent_option', { defaultValue: 'Angebot wurde versendet' })}</option>
@@ -832,7 +832,7 @@ export const LouisAiWorkflowsTab = () => {
                       >
                         <option value="hourly">{t('admin:workflows_tab.frequency_hourly_option', { defaultValue: 'Stündlich ausführen' })}</option>
                         <option value="daily">{t('admin:workflows_tab.frequency_daily_option', { defaultValue: 'Täglich ausführen' })}</option>
-                        {/* Auftrag 008 4A T3: weekly + Cron-Expression */}
+                        {/* 4A T3: weekly + Cron-Expression */}
                         <option value="weekly">{t('admin:workflows_tab.frequency_weekly_option', { defaultValue: 'Wöchentlich ausführen (Wochentag + Uhrzeit)' })}</option>
                         <option value="cron">{t('admin:workflows_tab.frequency_cron_option', { defaultValue: 'Cron-Expression (5 Felder)' })}</option>
                       </select>
@@ -1021,7 +1021,7 @@ export const LouisAiWorkflowsTab = () => {
                                 : t('admin:workflows_tab.auto_mail_off', { defaultValue: 'Aus' })}
                             </span>
                           )}
-                          {/* Auftrag 008 4B: DAG-Editor öffnen */}
+                          {/* 4B: DAG-Editor öffnen */}
                           <button
                             type="button"
                             data-testid="open-dag-editor"
@@ -1160,7 +1160,7 @@ export const LouisAiWorkflowsTab = () => {
                       stepsList = sanitizeSteps(JSON.parse(wf.tool_chain_sequence));
                     } catch (_) {}
                   }
-                  // Auftrag 008 Option A: DAG-Struktur für die Graph-Ansicht auflösen
+ // Option A: DAG-Struktur für die Graph-Ansicht auflösen
                   let dagNodesForDisplay: IWorkflowDAG["nodes"] = [];
                   {
                     const raw = wf.dag_structure;
@@ -1189,7 +1189,7 @@ export const LouisAiWorkflowsTab = () => {
                         <p className="text-xs text-slate-300 leading-relaxed font-sans">{wf.workflow_description}</p>
                       </div>
 
-                      {/* Auftrag 008 Option A: DAG-Graph-Ansicht (ersetzt lineare Sequenz-Kette) */}
+                      {/* Option A: DAG-Graph-Ansicht (ersetzt lineare Sequenz-Kette) */}
                       <div className="space-y-4 pt-2">
                         <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest font-display">
                           {dagNodesForDisplay.length > 0
@@ -1341,7 +1341,7 @@ export const LouisAiWorkflowsTab = () => {
                                   <option value="contact.updated">{t('admin:workflows_tab.event_contact_updated_option', { defaultValue: 'Kontakt wurde aktualisiert' })}</option>
                                   <option value="company.updated">{t('admin:workflows_tab.event_company_updated_option', { defaultValue: 'Unternehmen wurde aktualisiert' })}</option>
                                   <option value="file.uploaded">{t('admin:workflows_tab.event_file_uploaded_option', { defaultValue: 'Datei wurde hochgeladen (Kontakt / Unternehmen)' })}</option>
-                                  {/* Auftrag 008 4A T2: neue Trigger-Events */}
+                                  {/* 4A T2: neue Trigger-Events */}
                                   <option value="offer.created">{t('admin:workflows_tab.event_offer_created_option', { defaultValue: 'Angebot wurde erstellt' })}</option>
                                   <option value="offer.finalized">{t('admin:workflows_tab.event_offer_finalized_option', { defaultValue: 'Angebot wurde finalisiert' })}</option>
                                   <option value="offer.sent">{t('admin:workflows_tab.event_offer_sent_option', { defaultValue: 'Angebot wurde versendet' })}</option>
@@ -1382,7 +1382,7 @@ export const LouisAiWorkflowsTab = () => {
                                 >
                                   <option value="hourly">{t('admin:workflows_tab.frequency_hourly_option', { defaultValue: 'Stündlich ausführen' })}</option>
                                   <option value="daily">{t('admin:workflows_tab.frequency_daily_option', { defaultValue: 'Täglich ausführen' })}</option>
-                                  {/* Auftrag 008 4A T3: weekly + Cron */}
+                                  {/* 4A T3: weekly + Cron */}
                                   <option value="weekly">{t('admin:workflows_tab.frequency_weekly_option', { defaultValue: 'Wöchentlich ausführen (Wochentag + Uhrzeit)' })}</option>
                                   <option value="cron">{t('admin:workflows_tab.frequency_cron_option', { defaultValue: 'Cron-Expression (5 Felder)' })}</option>
                                 </select>
@@ -1474,7 +1474,7 @@ export const LouisAiWorkflowsTab = () => {
                         </div>
                       </div>
 
-                      {/* Auftrag 008 4C (T8b): Dry-Run-Button */}
+                      {/* 4C (T8b): Dry-Run-Button */}
                       <button
                         type="button"
                         data-testid="dry-run-btn"
@@ -2104,7 +2104,7 @@ export const LouisAiWorkflowsTab = () => {
         </div>
       )}
 
-      {/* Auftrag 008 4B: DAG-Editor-Overlay */}
+      {/* 4B: DAG-Editor-Overlay */}
       {dagEditorOpen && dagEditorWorkflow && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" data-testid="dag-editor-overlay">
           <div className="bg-primary-dark border border-white/10 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-5">
@@ -2135,7 +2135,7 @@ export const LouisAiWorkflowsTab = () => {
               })()}
               workflowName={dagEditorWorkflow.workflow_name}
               onSave={(dag) => {
-                // Auftrag 008 Option A: Aus dem Formular → Graph nur in den Formular-State
+ // Option A: Aus dem Formular → Graph nur in den Formular-State
                 // übernehmen (Speichern passiert mit dem Formular-Submit zusammen);
                 // aus der Karten-Liste → direkt persistieren.
                 if (dagEditorFromForm) {
@@ -2183,7 +2183,7 @@ export const LouisAiWorkflowsTab = () => {
         </div>
       )}
 
-      {/* Auftrag 008 4C (T8b): Dry-Run-Ergebnis-Modal */}
+      {/* 4C (T8b): Dry-Run-Ergebnis-Modal */}
       {dryRunOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDryRunOpen(false)}>
           <div

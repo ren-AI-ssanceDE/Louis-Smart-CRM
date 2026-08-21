@@ -416,7 +416,7 @@ export const contactsRouter = router({
       if (isUsingFallback) {
         fallbackStore.contacts = fallbackStore.contacts.filter(c => c.id_uuid !== input.id_uuid);
         saveFallbackStore();
-        // Auftrag 008 4A T2: sauberes Delete-Event statt updated mit deleted-Flag
+ // 4A T2: sauberes Delete-Event statt updated mit deleted-Flag
         workflowEventBus.emitEvent(ctx.tenantId, 'contact.deleted', { id_uuid: input.id_uuid });
         return { success: true };
       }
@@ -431,7 +431,7 @@ export const contactsRouter = router({
         eventDetails: `Deleted contact: ${input.id_uuid}`,
         actorIdentity: ctx.session?.user?.email || 'unknown'
       });
-      // Auftrag 008 4A T2: sauberes Delete-Event statt updated mit deleted-Flag
+ // 4A T2: sauberes Delete-Event statt updated mit deleted-Flag
       workflowEventBus.emitEvent(ctx.tenantId, 'contact.deleted', { id_uuid: input.id_uuid });
       return { success: true };
     }),

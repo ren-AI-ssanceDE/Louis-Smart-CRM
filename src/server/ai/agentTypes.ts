@@ -53,28 +53,28 @@ export interface AgentPipelineContext {
   }>;
   currentIteration: number;
   maxIterations: number;
-  // Auftrag 006 Task 0: Admin-konfigurierbare ReAct-Laufzeitparameter (Regel 12)
+ // Task 0: Admin-konfigurierbare ReAct-Laufzeitparameter (Regel 12)
   toolResultTruncateChars: number;
   reactKeepLastResults: number;
   reactCompactionFromIteration: number;
   earlyExitAfterTools: number;
   lastInjectedToolResults?: number;
-  // Auftrag 006 B3: Prompt-Direktiven-Modus ('always' | 'intent')
+ // B3: Prompt-Direktiven-Modus ('always' | 'intent')
   promptDirectivesMode?: 'always' | 'intent';
-  // Auftrag 007: Tool-Call-Modus ('auto' | 'json' | 'native')
+ // : Tool-Call-Modus ('auto' | 'json' | 'native')
   toolCallMode?: 'auto' | 'json' | 'native';
-  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
+ // Phase 1 (Parität): Cache-Tier-Toggles (NULL = Backend-Default, Regel 12)
   promptParallelToolGuidance?: boolean;
   promptToolGuidanceTrim?: boolean;
   memoryFrozenSnapshot?: boolean;
-  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+ // Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
   compressionEnabled?: boolean;
   compressionThresholdPercent?: number | null;
   compressionTailTokenBudget?: number | null;
   compressionAuxModel?: string | null;
   compressionPersistSummary?: boolean;
   compressionModelContextMap?: string | null;
-  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+ // Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
   memoryPrefetchEnabled?: boolean;
   memoryPrefetchTimeoutS?: number | null;
   memoryRecallStatusEnabled?: boolean;
@@ -82,7 +82,7 @@ export interface AgentPipelineContext {
   memoryConsolidationBudget?: number | null;
   // #20: Anzahl der per Prefetch injizierten relevanten Memory-Einträge (Chat-Feedback)
   memoryRecallCount?: number;
-  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+ // Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
   toolCallRetryMax?: number | null;
   emptyRetryBudget?: number | null;
   emptyRetryCostThresholdUsd?: number | null;
@@ -90,27 +90,27 @@ export interface AgentPipelineContext {
   toolGuardrailNoProgressBlock?: number | null;
   loopDeadlineS?: number | null;
   thinkingScrubEnabled?: boolean;
-  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+ // Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
   recallFtsEnabled?: boolean;
   recallSearchLimit?: number | null;
-  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+ // Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
   skillCuratorEnabled?: boolean;
   skillInjectMaxTokens?: number | null;
   skillPruneInactiveAfterDays?: number | null;
   skillInjectTopK?: number | null;
-  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+ // P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
   curatorIntervalHours?: number | null;
   curatorArchiveAfterDays?: number | null;
-  // Auftrag 026 P1-3 (Parität): Spawn-Depth (#55) + Steering (#53)
+ // P1-3 (Parität): Spawn-Depth (#55) + Steering (#53)
   subtaskMaxDepth?: number | null;
-  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   auditRetentionDays?: number | null;
-  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   sessionRetentionDays?: number | null;
   subtaskDepth?: number;
   /** #53: Steering-Handle für Sub-Agenten (abbrechen + Steer-Nachrichten). */
   steering?: { signal: AbortSignal; queue: string[]; injected: string[] };
-  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+ // Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
   mcpRefreshIntervalS?: number | null;
   subtaskTimeoutS?: number | null;
   subtaskMaxParallel?: number | null;
@@ -152,7 +152,7 @@ export interface AgentExecutionResult {
   outputTokens: number;
   cachedTokens: number;
   executionTimeMs: number;
-  // Auftrag 025 Phase 3 (#20): Anzahl der per Prefetch injizierten relevanten Memory-Einträge
+ // Phase 3 (#20): Anzahl der per Prefetch injizierten relevanten Memory-Einträge
   memoryRecallCount?: number;
   skillSuggestion?: {
     workflow_name: string;

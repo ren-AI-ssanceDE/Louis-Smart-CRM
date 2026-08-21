@@ -83,7 +83,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     category: 'google',
     transportType: 'stdio',
     command: 'npx',
-    // BUG-13 (Auftrag 015): deprecated @modelcontextprotocol/server-gdrive → aktive Community-Lösung
+ // deprecated @modelcontextprotocol/server-gdrive → aktive Community-Lösung
     args: ['-y', '@us-all/google-drive-mcp'],
     authType: 'oauth2',
     oauthProvider: 'google',
@@ -119,7 +119,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     category: 'database',
     transportType: 'stdio',
     command: 'npx',
-    // BUG-13 (Auftrag 015): deprecated @modelcontextprotocol/server-postgres → aktive Community-Lösung
+ // deprecated @modelcontextprotocol/server-postgres → aktive Community-Lösung
     args: ['-y', '@henkey/postgres-mcp-server', '{{POSTGRES_CONNECTION_STRING}}'],
     authType: 'none',
     fields: [
@@ -145,7 +145,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     category: 'search',
     transportType: 'stdio',
     command: 'npx',
-    // BUG-13 (Auftrag 015): deprecated @modelcontextprotocol/server-brave-search → aktive Community-Lösung
+ // deprecated @modelcontextprotocol/server-brave-search → aktive Community-Lösung
     args: ['-y', 'mcp-server-brave-search'],
     authType: 'api_key',
     fields: [
@@ -170,7 +170,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     category: 'communication',
     transportType: 'stdio',
     command: 'npx',
-    // BUG-13 (Auftrag 015): deprecated @modelcontextprotocol/server-slack → aktive Community-Lösung
+ // deprecated @modelcontextprotocol/server-slack → aktive Community-Lösung
     args: ['-y', '@nrjdalal/slack-mcp-server'],
     authType: 'api_key',
     fields: [
@@ -200,8 +200,8 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     id: 'obsidian-mcp',
     name: 'Obsidian Vault (Tier 1)',
     // 2026-08-16: ECHTES Obsidian-MCP — das Local-REST-API-Plugin
-    // ist selbst ein MCP-Server (http://127.0.0.1:27123/mcp/ bzw. https :27124/mcp/).
     // Konfiguration NUR im Admin (URL + API-Key) — kein .env, kein Vault-Pfad im Code.
+    // Konfiguration NUR im Admin (URL + API-Key) — kein.env, kein Vault-Pfad im Code.
     // (Dateisystem-Zugriff obsidian-mcp@2 wurde verworfen — kein Backup-Preset gewünscht.)
     description: 'Echtes Obsidian-MCP: verbindet sich mit dem Local-REST-API-Plugin in Obsidian (eigener MCP-Server). Obsidian muss laufen; URL + API-Key im Admin eintragen.',
     icon: 'BookOpen',
@@ -229,7 +229,7 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     ],
     defaultToolMappings: [
       // Echte Tools des Local-REST-API-MCP-Servers (16 Tools, README verifiziert)
-      // Auftrag 036: Ziel-Vault annotiert — ALLE diese Tools zeigen auf den OBSIDIAN-Vault
+ // : Ziel-Vault annotiert — ALLE diese Tools zeigen auf den OBSIDIAN-Vault
       // (Tier 1), NICHT auf den internen Wissensvault (knowledge_data_vault). Die
       // Katalog-Pendants vault_read/vault_search kapseln obsidian_vault_read/obsidian_search.
       { mcpToolName: 'vault_read', louisToolName: 'obsidian_vault_read', description: 'Datei aus dem Obsidian-Vault lesen', enabled: true },

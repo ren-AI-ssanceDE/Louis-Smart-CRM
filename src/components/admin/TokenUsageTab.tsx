@@ -1,5 +1,5 @@
 // ============================================================================
-// Token-Verbrauch (Auftrag 006 Task 7, B2) — Admin-Tab
+// Token-Verbrauch — Admin-Tab
 // Aggregiert sys_louis_ai_agent_runs: Summen, Ø/Request, Tages-Trend, letzte Läufe.
 // Texte via i18n (admin:token_usage.*, common:*).
 // ============================================================================
@@ -9,7 +9,7 @@ import { trpc } from "../../lib/trpc";
 import { useTranslation } from "react-i18next";
 import { Activity, TrendingUp, Zap, Clock, Cpu, Layers, ChevronLeft, ChevronRight } from "lucide-react";
 
-// Auftrag 2026-08-15: Pagination für die Läufe-Liste (war unbegrenzt → sehr lange Liste)
+// 6-08-15: Pagination für die Läufe-Liste (war unbegrenzt → sehr lange Liste)
 const RECENT_PAGE_SIZE = 10;
 
 export function TokenUsageTab() {
@@ -104,7 +104,7 @@ export function TokenUsageTab() {
             </div>
           )}
 
-          {/* Letzte Läufe — Auftrag 2026-08-15: paginiert (10 pro Seite) */}
+          {/* Letzte Läufe — paginiert (10 pro Seite) */}
           {data.recent && data.recent.length > 0 && (
             <div className="bg-primary-dark border border-white/10 rounded-2xl p-5 space-y-3">
               <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">

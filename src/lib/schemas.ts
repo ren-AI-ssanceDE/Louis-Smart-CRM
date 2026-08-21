@@ -353,7 +353,7 @@ export const LouisAiConfigSchema = z.object({
   parallel_slots: z.number().int().positive().default(1),
   chunk_size: z.number().int().positive().default(500),
   chunk_overlap: z.number().int().nonnegative().default(50),
-  // Auftrag 006 Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default, Admin-einstellbar — Regel 12)
+ // Task 0: ReAct-Laufzeitparameter (NULL = Backend-Default, Admin-einstellbar — Regel 12)
   max_iterations: z.number().int().min(1).max(15).nullable().optional(),
   max_history_tokens: z.number().int().min(200).max(8000).nullable().optional(),
   tool_result_truncate_chars: z.number().int().min(200).max(20000).nullable().optional(),
@@ -363,32 +363,32 @@ export const LouisAiConfigSchema = z.object({
   react_keep_last_results: z.number().int().min(1).max(10).nullable().optional(),
   react_compaction_from_iteration: z.number().int().min(2).max(20).nullable().optional(),
   early_exit_after_tools: z.number().int().min(1).max(20).nullable().optional(),
-  // Auftrag 006 B3: Prompt-Direktiven-Modus ('always' default, 'intent' spart Tokens bei Nicht-E-Mail-Requests)
+ // B3: Prompt-Direktiven-Modus ('always' default, 'intent' spart Tokens bei Nicht-E-Mail-Requests)
   prompt_directives_mode: z.enum(['always', 'intent']).default('always'),
-  // Auftrag 007 T5: Tool-Call-Modus ('auto' default = native mit JSON-Fallback, 'json' = JSON-Freitext, 'native' = erzwungen)
+ // T5: Tool-Call-Modus ('auto' default = native mit JSON-Fallback, 'json' = JSON-Freitext, 'native' = erzwungen)
   react_tool_call_mode: z.enum(['auto', 'json', 'native']).default('auto'),
   // 2026-08-18: Text-Fallback-Kanal (false = strikt/nativ; true = Fallback für Modelle ohne function calling; NULL = Default false)
   text_fallback_enabled: z.boolean().nullable().optional(),
-  // Auftrag 012 P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
+ // P0-2: Memory-Budget (Tokens) für die User-Memory-Injektion (NULL = Backend-Default 800, Regel 12)
   memory_budget_tokens: z.number().int().min(200).max(8000).nullable().optional(),
-  // Auftrag 025 Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
+ // Phase 1 (Parität): Cache-Tier-Architektur (NULL = Backend-Default, Regel 12)
   prompt_parallel_tool_guidance: z.boolean().nullable().optional(),
   prompt_tool_guidance_trim: z.boolean().nullable().optional(),
   memory_frozen_snapshot: z.boolean().nullable().optional(),
-  // Auftrag 025 Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
+ // Phase 2 (Parität): Kontext-Kompression (NULL = Backend-Default, Regel 12)
   compression_enabled: z.boolean().nullable().optional(),
   compression_threshold_percent: z.number().int().min(10).max(95).nullable().optional(),
   compression_tail_token_budget: z.number().int().min(2000).max(100000).nullable().optional(),
   compression_aux_model: z.string().nullable().optional(),
   compression_persist_summary: z.boolean().nullable().optional(),
   compression_model_context_map: z.string().nullable().optional(),
-  // Auftrag 025 Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
+ // Phase 3 (Parität): Memory (NULL = Backend-Default, Regel 12)
   memory_prefetch_enabled: z.boolean().nullable().optional(),
   memory_prefetch_timeout_s: z.number().int().min(1).max(30).nullable().optional(),
   memory_recall_status_enabled: z.boolean().nullable().optional(),
   memory_auto_scan_enabled: z.boolean().nullable().optional(),
   memory_consolidation_budget: z.number().int().min(200).max(4000).nullable().optional(),
-  // Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
+ // Phase 4 (Parität): Fehlerfestigkeit (NULL = Backend-Default, Regel 12)
   tool_call_retry_max: z.number().int().min(0).max(10).nullable().optional(),
   empty_retry_budget: z.number().int().min(1).max(10).nullable().optional(),
   empty_retry_cost_threshold_usd: z.number().min(0.001).max(1).nullable().optional(),
@@ -396,24 +396,24 @@ export const LouisAiConfigSchema = z.object({
   tool_guardrail_no_progress_block: z.number().int().min(1).max(10).nullable().optional(),
   loop_deadline_s: z.number().int().min(10).max(600).nullable().optional(),
   thinking_scrub_enabled: z.boolean().nullable().optional(),
-  // Auftrag 025 Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
+ // Phase 5 (Parität): Sessions & Recall (NULL = Backend-Default, Regel 12)
   recall_fts_enabled: z.boolean().nullable().optional(),
   recall_search_limit: z.number().int().min(1).max(20).nullable().optional(),
-  // Auftrag 025 Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
+ // Phase 6 (Parität): Curator & Skills (NULL = Backend-Default, Regel 12)
   skill_curator_enabled: z.boolean().nullable().optional(),
   skill_inject_max_tokens: z.number().int().min(200).max(8000).nullable().optional(),
   skill_prune_inactive_after_days: z.number().int().min(7).max(365).nullable().optional(),
   skill_inject_top_k: z.number().int().min(1).max(10).nullable().optional(),
-  // Auftrag 026 P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
+ // P1-1 (Parität): Curator-Tick/Archiv (NULL = Backend-Default, Regel 12)
   curator_interval_hours: z.number().int().min(1).max(720).nullable().optional(),
   curator_archive_after_days: z.number().int().min(7).max(3650).nullable().optional(),
-  // Auftrag 026 P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
+ // P1-3 (Parität): Subagent-Spawn-Depth (NULL = Backend-Default, Regel 12)
   subtask_max_depth: z.number().int().min(1).max(5).nullable().optional(),
-  // Auftrag 037 P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Audit-Log-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   audit_retention_days: z.number().int().min(1).max(3650).nullable().optional(),
-  // Auftrag 038 P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
+ // P1: Session-Retention in Tagen (NULL = kein Auto-Prune, Regel 12)
   session_retention_days: z.number().int().min(1).max(3650).nullable().optional(),
-  // Auftrag 025 Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
+ // Phase 7 (Parität): MCP-Registry & Subagent (NULL = Backend-Default, Regel 12)
   mcp_refresh_interval_s: z.number().int().min(30).max(3600).nullable().optional(),
   subtask_timeout_s: z.number().int().min(30).max(600).nullable().optional(),
   subtask_max_parallel: z.number().int().min(1).max(5).nullable().optional(),
@@ -444,7 +444,7 @@ export const CustomWorkflowSchema = z.object({
   dag_structure: z.record(z.string(), z.unknown()).nullable().optional(),
   // S5: Skill-Metadaten — sonst strippt Zod .object() die Felder aus der tRPC-Antwort
   // Nullable-Pflicht: DB-Spalten ohne NOT-NULL-Default (z.B. skill_category) liefern NULL,
-  // z.string().optional() akzeptiert kein null -> ZodOutput-Fehler -> getWorkflows leert den Tab.
+  // z.string.optional akzeptiert kein null -> ZodOutput-Fehler -> getWorkflows leert den Tab.
   skill_description: z.string().nullable().optional(),
   skill_tags: z.array(z.string()).nullable().optional().default([]),
   skill_category: z.string().nullable().optional(),
@@ -1499,7 +1499,7 @@ export const McpSanitizeOptionsSchema = z.object({
 export type McpSanitizeOptions = z.infer<typeof McpSanitizeOptionsSchema>;
 
 // --- S1: Session-Recall-Tool (recall_sessions) ---
-// Auftrag 025 Phase 5 (#48): limit ohne festen Default — der Backend-Default kommt aus der
+// Phase 5 (#48): limit ohne festen Default — der Backend-Default kommt aus der
 // Admin-Config recall_search_limit (Regel 12, NULL = 10). Explizite LLM-Limits gewinnen.
 export const RecallSessionsInputSchema = z.object({
   query: z.string().min(1, "Suchbegriff erforderlich").max(200),
@@ -1573,7 +1573,7 @@ export const AgentJobCreateSchemaBase = z.object({
   // S11 Teil B: Watchdog-Cron (script/monitor brauchen script_path)
   job_type: z.enum(['agent', 'script', 'monitor']).default('agent'),
   script_path: z.string().optional(),
-  // Auftrag 012 P1-3: Optionale Tool-Domänen-Einschränkung pro Job (NULL/[] = alle Domänen, Regel 12/Abwärtskompatibilität)
+ // P1-3: Optionale Tool-Domänen-Einschränkung pro Job (NULL/[] = alle Domänen, Regel 12/Abwärtskompatibilität)
   allowed_domains: z.array(z.enum(['CORE', 'CRM_READ', 'CRM_WRITE', 'KNOWLEDGE', 'KANBAN', 'TEMPLATES', 'WORKFLOWS'])).optional()
 });
 // superRefine NUR auf dem Create-Schema — Zod v4 verbietet .partial() auf Schemas mit Refinements
@@ -1601,7 +1601,7 @@ export const AgentJobFullSchema = z.object({
   updated_at_utc: z.string(),
   job_type: z.enum(['agent', 'script', 'monitor']).nullable().optional(),
   script_path: z.string().nullable().optional(),
-  // Auftrag 012 P1-3: Tool-Domänen-Limit (NULL/[] = alle Domänen)
+ // P1-3: Tool-Domänen-Limit (NULL/[] = alle Domänen)
   allowed_domains: z.array(z.enum(['CORE', 'CRM_READ', 'CRM_WRITE', 'KNOWLEDGE', 'KANBAN', 'TEMPLATES', 'WORKFLOWS'])).nullable().optional(),
   monitor_hash: z.string().nullable().optional(),
   monitor_last_output: z.string().nullable().optional()
@@ -1639,7 +1639,7 @@ export const SubTaskSpecSchema = z.object({
     task_prompt: z.string().min(1).max(2000),
     required_tools: z.array(z.string()).optional(),
     max_turns: z.number().int().min(1).max(5).default(3),
-    // Auftrag 012 P1-2: optionales JSON-Schema — Subtask muss strukturiert antworten (1 Korrekturversuch)
+ // P1-2: optionales JSON-Schema — Subtask muss strukturiert antworten (1 Korrekturversuch)
     required_output_schema: z.record(z.string(), z.unknown()).optional()
   })).min(1).max(5)
 });
@@ -1650,7 +1650,7 @@ export const SubTaskResultSchema = z.object({
   final_text: z.string(),
   tool_trace: z.array(z.object({ tool: z.string(), query: z.string() })),
   error: z.string().optional(),
-  // Auftrag 012 P1-2: Kennzeichnung, ob ein Schema-Korrekturversuch nötig war (optional, abwärtskompatibel)
+ // P1-2: Kennzeichnung, ob ein Schema-Korrekturversuch nötig war (optional, abwärtskompatibel)
   retried: z.boolean().optional(),
   verification_status: z.string().optional()
 });

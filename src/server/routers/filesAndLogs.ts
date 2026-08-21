@@ -420,7 +420,7 @@ export const filesAndLogsRouter = router({
       if (f.entityType) { params.push(`%${f.entityType}%`); conditions.push(`LOWER(entity_type) LIKE LOWER($${params.length})`); }
       if (f.from) { params.push(f.from); conditions.push(`created_at_utc >= $${params.length}`); }
       if (f.to) { params.push(f.to); conditions.push(`created_at_utc <= $${params.length}`); }
-      // BUG-FIX (2026-08-19,  „Audit-Log leer"): LIMIT/OFFSET gehörten
+      // BUG-FIX (2026-08-19, „Audit-Log leer"): LIMIT/OFFSET gehörten
       // in die WHERE-Conditions → SQL-Syntaxfehler → Anzeige immer leer (DB hatte 4827 Einträge).
       params.push((f.limit || 100));
       const limitParam = params.length;

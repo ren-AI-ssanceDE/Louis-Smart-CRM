@@ -868,7 +868,7 @@ export async function executeApproveMailDraft(
 }
 
 /**
- * G7 (Auftrag 009): List Mail Drafts Tool
+ * G7: List Mail Drafts Tool
  * Listet E-Mail-Entwürfe (sys_louis_mail_drafts) — optional nach Status gefiltert.
  * Query JSON: { status?: "PENDING"|"APPROVED"|"REJECTED", recipient?: string, limit?: number }
  */

@@ -6,7 +6,7 @@ import { Session, IdentityRole } from "../types.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 
-// 021-D (V2-6): Passwort-Hashing auf bcrypt (per-User-Salt, Kostenfaktor 10).
+// (V2-6): Passwort-Hashing auf bcrypt (per-User-Salt, Kostenfaktor 10).
 // Alt-Hashes (PBKDF2, fixes Salt, 1000 Iterationen) bleiben per Fallback gültig
 // und werden beim nächsten erfolgreichen Login lazy migriert (siehe authorize).
 const BCRYPT_ROUNDS = 10;
@@ -106,7 +106,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
           }
 
           if (user && verifyPassword(password, String(user.password_hash || ""))) {
-            // 021-D (V2-6): Lazy-Migration — Alt-PBKDF2-Hash nach erfolgreichem Login auf bcrypt umstellen
+            // (V2-6): Lazy-Migration — Alt-PBKDF2-Hash nach erfolgreichem Login auf bcrypt umstellen
             if (!isBcryptHash(String(user.password_hash || ""))) {
               user.password_hash = hashPassword(password);
               saveFallbackStore();
@@ -128,7 +128,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
             if (res.rows.length > 0) {
               const user = res.rows[0];
               if (verifyPassword(password, String(user.password_hash || ""))) {
-                // 021-D (V2-6): Lazy-Migration — Alt-PBKDF2-Hash nach erfolgreichem Login auf bcrypt umstellen
+                // (V2-6): Lazy-Migration — Alt-PBKDF2-Hash nach erfolgreichem Login auf bcrypt umstellen
                 if (!isBcryptHash(String(user.password_hash || ""))) {
                   const newHash = hashPassword(password);
                   await pool.query(
@@ -205,7 +205,7 @@ export const authConfig: Parameters<typeof ExpressAuth>[0] = {
   trustHost: true,
 };
 
-// 021-F (Regel 2026-08-17): Auth-Secret lebt in der DB (sys_app_security),
+// (Regel 2026-08-17): Auth-Secret lebt in der DB (sys_app_security),
 // NICHT in Dateien/Code. Der alte hartkodierte UUID-Fallback wird ersetzt:
 // NULL/leer = beim ersten Start generiert + in der DB persistiert (stabil über
 // Neustarts, Sessions bleiben gültig). AUTH_SECRET-Env ist nur ein optionaler

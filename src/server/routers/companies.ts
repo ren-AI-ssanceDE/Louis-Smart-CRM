@@ -391,7 +391,7 @@ export const companiesRouter = router({
       if (isUsingFallback) {
         fallbackStore.companies = fallbackStore.companies.filter(c => c.id_uuid !== input.id_uuid);
         saveFallbackStore();
-        // Auftrag 008 4A T2: sauberes Delete-Event
+ // 4A T2: sauberes Delete-Event
         workflowEventBus.emitEvent(ctx.tenantId, 'company.deleted', { id_uuid: input.id_uuid });
         return { success: true };
       }
@@ -407,7 +407,7 @@ export const companiesRouter = router({
         eventDetails: `Deleted company: ${input.id_uuid}`,
         actorIdentity: ctx.session?.user?.email || 'unknown'
       });
-      // Auftrag 008 4A T2: sauberes Delete-Event
+ // 4A T2: sauberes Delete-Event
       workflowEventBus.emitEvent(ctx.tenantId, 'company.deleted', { id_uuid: input.id_uuid });
       return { success: true };
     }),

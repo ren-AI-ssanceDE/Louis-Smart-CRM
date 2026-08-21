@@ -217,13 +217,13 @@ export async function listMcpApiKeys(tenantId: string): Promise<McpApiKey[]> {
   const tId = tenantId || "1";
 
   if (isUsingFallback) {
-    // Auftrag 016 P1-1: auch widerrufene Keys listen (is_active=false) — sonst verschwinden sie aus der Historie
+ // P1-1: auch widerrufene Keys listen (is_active=false) — sonst verschwinden sie aus der Historie
     const keys = (fallbackStore.mcp_api_keys || []).filter(
       (k) => k.tenant_id === tId || k.tenant_id === "1"
     );
     return keys.map((k) => normalizeMcpApiKey(k));
   } else {
-    // Auftrag 016 P1-1: Filter auf aktive Keys entfernt — widerrufene (is_active=false) bleiben sichtbar (Historie, Inaktiv-Badge)
+ // P1-1: Filter auf aktive Keys entfernt — widerrufene (is_active=false) bleiben sichtbar (Historie, Inaktiv-Badge)
     const res = await pool.query(
       `SELECT * FROM mcp_api_keys WHERE (tenant_id = $1 OR tenant_id = '1') ORDER BY created_at DESC`,
       [tId]

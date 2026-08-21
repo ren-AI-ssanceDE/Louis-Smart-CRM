@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 008 4B (T4): DAG-Mapper — reine Funktionen für den visuellen Editor.
+// 4B (T4): DAG-Mapper — reine Funktionen für den visuellen Editor.
 // IWorkflowDAG ↔ React-Flow-Graph, Zyklen-Validierung (DAG-Garantie),
 // Linear→DAG-Konvertierung. Kein any (Regel 4), testbar ohne React.
 // ============================================================================

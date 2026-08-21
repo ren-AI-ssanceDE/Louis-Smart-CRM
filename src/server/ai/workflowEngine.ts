@@ -9,7 +9,7 @@ import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent,
 import { CustomWorkflow, WorkflowInstance, Invoice, InvoiceOverduePayload, AgentJob } from "../../types.js";
 import { runLouisAiFlow } from "./orchestrator.js";
 import { executeSendTelegramMessage } from "./tools/messaging.js";
-// Auftrag 026 P1-1 (#29): Curator-Tick im Scheduler-Heartbeat
+// P1-1 (#29): Curator-Tick im Scheduler-Heartbeat
 import { maybeRunCuratorTick } from "./skillCurator.js";
 
 /**
@@ -205,7 +205,7 @@ async function checkOverdueInvoices() {
 }
 
 /**
- * Auftrag 037 P2: Audit-Log-Retention-Prune — liest audit_retention_days aus der
+ * P2: Audit-Log-Retention-Prune — liest audit_retention_days aus der
  * Admin-Config (NULL = kein Auto-Prune, Regel 12) und prunt in Batches.
  * Fehlertolerant: nie werfen (Scheduler läuft weiter).
  */
@@ -246,7 +246,7 @@ async function pruneAuditLogsIfConfigured(): Promise<void> {
 }
 
 /**
- * Auftrag 038 P2: Session-Retention-Prune — liest session_retention_days aus der
+ * P2: Session-Retention-Prune — liest session_retention_days aus der
  * Admin-Config (NULL = kein Auto-Prune, Regel 12) und prunt inaktive Sessions
  * in Batches (Kinder werden verwaist). Fehlertolerant: nie werfen.
  */
@@ -298,14 +298,14 @@ async function tickWorkflowScheduler() {
       console.error("[WorkflowScheduler] Fehler bei der Überprüfung überfälliger Rechnungen:", odErr);
     }
 
-    // Auftrag 037 P2: Audit-Log-Retention-Prune (opt-in über audit_retention_days, NULL = kein Prune)
+ // P2: Audit-Log-Retention-Prune (opt-in über audit_retention_days, NULL = kein Prune)
     try {
       await pruneAuditLogsIfConfigured();
     } catch (prErr: unknown) {
       console.error("[WorkflowScheduler] Fehler im Audit-Log-Prune:", prErr);
     }
 
-    // Auftrag 038 P2: Session-Retention-Prune (opt-in über session_retention_days, NULL = kein Prune)
+ // P2: Session-Retention-Prune (opt-in über session_retention_days, NULL = kein Prune)
     try {
       await pruneSessionsIfConfigured();
     } catch (psErr: unknown) {
@@ -392,7 +392,7 @@ async function tickWorkflowScheduler() {
       }
     }
 
-    // 1b. Auftrag 008 4A T1-Nachtrag (A1): PENDING_QUESTION-Instanzen fortsetzen,
+ // 1b. 4A T1-Nachtrag (A1): PENDING_QUESTION-Instanzen fortsetzen,
     // sobald die zugehörige Rückfrage im Dashboard beantwortet wurde.
     try {
       let questionPending: WorkflowInstance[] = [];
@@ -499,8 +499,8 @@ async function tickWorkflowScheduler() {
     interface TimerTriggerConfig {
       frequency?: string;
       time?: string;
-      weekday?: string | number; // Auftrag 008 4A T3: Wochentag für weekly (1=Mo..7=So)
-      cron?: string; // Auftrag 008 4A T3: 5-Felder-Cron-Expression (Minute Stunde Tag Monat Wochentag)
+      weekday?: string | number; // 4A T3: Wochentag für weekly (1=Mo..7=So)
+      cron?: string; // 4A T3: 5-Felder-Cron-Expression (Minute Stunde Tag Monat Wochentag)
     }
 
     for (const wf of timerWorkflows) {
@@ -556,7 +556,7 @@ async function tickWorkflowScheduler() {
             }
           }
         } else if (frequency === "weekly") {
-          // Auftrag 008 4A T3: wöchentlich (wie Agent-Jobs: schedule_weekday 1=Mo..7=So)
+ // 4A T3: wöchentlich (wie Agent-Jobs: schedule_weekday 1=Mo..7=So)
           const weekday = Number(config.weekday) || 1;
           const todayDow = new Date().getDay() === 0 ? 7 : new Date().getDay();
           const todayDateStr = new Date().toISOString().split("T")[0];
@@ -569,7 +569,7 @@ async function tickWorkflowScheduler() {
             }
           }
         } else if (frequency === "cron" && config.cron) {
-          // Auftrag 008 4A T3: 5-Felder-Cron (Minute Stunde Tag Monat Wochentag; Wochentag 0/7=So)
+ // 4A T3: 5-Felder-Cron (Minute Stunde Tag Monat Wochentag; Wochentag 0/7=So)
           const now = new Date();
           const minuteBucket = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
           if (!lastRunMeta || !lastRunMeta.startsWith(minuteBucket)) {
@@ -598,7 +598,7 @@ async function tickWorkflowScheduler() {
 let isEngineInitialized = false;
 
 // ============================================================================
-// Auftrag 008 4A T3: 5-Felder-Cron-Matcher (Minute Stunde Tag Monat Wochentag)
+// 4A T3: 5-Felder-Cron-Matcher (Minute Stunde Tag Monat Wochentag)
 // Unterstützt: "*", Zahlen, "*/n"-Schritte. Wochentag: 0/7 = Sonntag, 1=Mo..6=Sa.
 // Reine Funktion, kein any (Regel 4) — testbar.
 // ============================================================================
@@ -800,7 +800,7 @@ async function processAgentJobs(): Promise<void> {
   }
 }
 
-// Auftrag 012 P1-3: runAgentJobNow — führt einen einzelnen Agent-Job sofort aus (Ad-hoc/Test),
+// P1-3: runAgentJobNow — führt einen einzelnen Agent-Job sofort aus (Ad-hoc/Test),
 // unabhängig vom Scheduler-Tick. Nutzt denselben Ausführungspfad wie processAgentJobs.
 export async function runAgentJobNow(jobId: string, tenantId: string): Promise<{ success: boolean; message: string }> {
   if (runningAgentJobIds.has(jobId)) {
@@ -981,7 +981,7 @@ async function deliverJobOutput(job: AgentJob, tenantId: string, text: string, s
         tenant_id: tenantId,
         session_title: job.job_name,
         conversation_history_json: history,
-        // Auftrag 025 Phase 2 (#12): Session-Spalten befüllen (Summary + Lineage) — DDL existierte,
+ // Phase 2 (#12): Session-Spalten befüllen (Summary + Lineage) — DDL existierte,
         // INSERT ließ sie leer (Katalog- 2026-08-18).
         short_term_summary_text: "",
         parent_session_id: null,
@@ -1420,7 +1420,7 @@ export function initWorkflowEngine() {
     try {
       console.log(`[WorkflowEngine] 🔍 Event "${eventName}" empfangen für Tenant "${tenantId}". Payload-Daten:`, JSON.stringify(data, null, 2));
 
-      // Auftrag 013 P2-A: Skill-Suggestion-Event → persistieren (Chat-Karte im Frontend)
+ // P2-A: Skill-Suggestion-Event → persistieren (Chat-Karte im Frontend)
       if (eventName === "agent.skill_suggestion") {
         try {
           const s = (data || {}) as {
@@ -1566,7 +1566,7 @@ export function initWorkflowEngine() {
     tickWorkflowScheduler().catch(err => {
       console.error("[WorkflowEngine] Error inside ticker loop execution:", err);
     });
-    // Auftrag 026 P1-1 (#29): Curator-Tick im selben Heartbeat (Fälligkeit + Config intern geprüft)
+ // P1-1 (#29): Curator-Tick im selben Heartbeat (Fälligkeit + Config intern geprüft)
     void maybeRunCuratorTick("1").catch((err) => {
       console.warn("[SkillCurator] Heartbeat-Tick fehlgeschlagen (ignoriert):", err instanceof Error ? err.message : String(err));
     });

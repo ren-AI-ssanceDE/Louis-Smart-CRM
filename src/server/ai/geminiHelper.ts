@@ -22,7 +22,7 @@ export function getDeterministicTools<T extends { name: string }>(tools: T[]): T
   return [...tools].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// Auftrag 007 T4: Gemini functionCall-Parts → UniversalToolCall (reine Funktion, testbar)
+// T4: Gemini functionCall-Parts → UniversalToolCall (reine Funktion, testbar)
 export function mapGeminiFunctionCalls(
   candidates: Array<{
     content?: { parts?: Array<{ functionCall?: { name?: string; args?: Record<string, unknown> } }> };
@@ -673,7 +673,7 @@ export async function generateContentUniversal({
   responseSchema?: unknown;
   jsonFormat?: boolean;
   tools?: unknown[];
-  // Auftrag 025 Phase 4 (#37/#38): harte Deadline im Provider-Call-Pfad (Bounded-Response)
+ // Phase 4 (#37/#38): harte Deadline im Provider-Call-Pfad (Bounded-Response)
   timeoutMs?: number;
 }): Promise<{ text: string; reasoning_content?: string; tool_calls?: UniversalToolCall[]; usageMetadata?: ModelUsageMetadata; usage?: ModelUsageMetadata }> {
   
@@ -691,7 +691,7 @@ export async function generateContentUniversal({
   // Fallback for non-Gemini tools injection to systemInstruction
   let adjustedSystemInstruction = systemInstruction || '';
 
-  // Auftrag 025 Phase 4 (#37/#38): Bounded-Response — Provider-Calls terminieren garantiert
+ // Phase 4 (#37/#38): Bounded-Response — Provider-Calls terminieren garantiert
   // (harte Deadline statt Hängen; Fehlerantworten werden als Fehler geworfen, nie blind gelesen).
   const callWithDeadline = async <T>(p: Promise<T>): Promise<T> => {
     if (!timeoutMs || timeoutMs <= 0) return p;
@@ -859,7 +859,7 @@ export async function generateContentUniversal({
       candidatesTokenCount: completionTokens
     };
 
-    // Auftrag 007 T4: Gemini functionCall-Parts → UniversalToolCall mappen
+ // T4: Gemini functionCall-Parts → UniversalToolCall mappen
     // (Gemini liefert Tool-Aufrufe nicht als Text, sondern als functionCall-Blöcke)
     const toolCalls = mapGeminiFunctionCalls(
       (res.candidates || []) as Array<{

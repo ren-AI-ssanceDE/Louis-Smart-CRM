@@ -21,7 +21,7 @@ import {
 } from "../ai/tools/crm.js";
 import {
   executeListVaultFiles, executeLocalKnowledgeSearch, executeVaultWrite, executeVaultUpdate, executeVaultDelete,
-  // Auftrag 036 P1: knowledge_*-Familie (Alias-Funktionen für die MCP-Exposition)
+ // P1: knowledge_*-Familie (Alias-Funktionen für die MCP-Exposition)
   executeKnowledgeWrite, executeKnowledgeUpdate, executeKnowledgeDelete, executeKnowledgeSearch,
   executeRecallSessions, executeLearnWorkflow
 } from "../ai/tools/knowledge.js";
@@ -73,7 +73,7 @@ export interface JsonRpcResponse {
 // -----------------------------------------------------------------------------
 // MCP Tools Metadata Catalog
 // -----------------------------------------------------------------------------
-// Exportiert für den Feldnamen-Abgleich-Test (021-C: Katalog ↔ Agent-Schema).
+// Exportiert für den Feldnamen-Abgleich-Test .
 export const MCP_TOOLS_CATALOG = [
   // 1. Companies & Contacts
   {
@@ -445,8 +445,8 @@ export const MCP_TOOLS_CATALOG = [
   },
 
   // ===========================================================================
-  // 6. BUG-1 (Auftrag 015): Erweiterung — Notizen, Vault, Mails, Kanban, Templates,
-  //    Angebote, Sessions, Workflows (wrappen der Agent-Execute-Funktionen)
+  // 6. Erweiterung — Notizen, Vault, Mails, Kanban, Templates,
+  // Angebote, Sessions, Workflows (wrappen der Agent-Execute-Funktionen)
   // ===========================================================================
 
   // --- Notizen ---
@@ -775,11 +775,11 @@ function checkMcpToolScope(name: string, ctx: McpContext): void {
   const hasScope = (s: string) => scopes.includes(s) || scopes.includes("admin") || scopes.includes("full_access");
 
   const isReadTool = name.startsWith("crm_list_") || name.startsWith("crm_get_") || name.startsWith("crm_search_")
-    // BUG-1 (Auftrag 015): neue Tool-Familien — Lese-Tools
+ // neue Tool-Familien — Lese-Tools
     || name.startsWith("notes_list") || name.startsWith("vault_search") || name.startsWith("mail_list")
     || name.startsWith("kanban_get_") || name.startsWith("templates_list") || name.startsWith("sessions_");
   const isWriteTool = name.startsWith("crm_create_") || name.startsWith("crm_update_") || name.startsWith("crm_move_") || name.startsWith("crm_upload_") || name.startsWith("crm_generate_") || name.startsWith("crm_run_")
-    // BUG-1 (Auftrag 015): neue Tool-Familien — Schreib-Tools
+ // neue Tool-Familien — Schreib-Tools
     || name.startsWith("notes_create") || name.startsWith("notes_update") || name.startsWith("notes_delete")
     || name.startsWith("vault_write") || name.startsWith("vault_update") || name.startsWith("vault_delete")
     || name.startsWith("mail_approve") || name.startsWith("kanban_create_") || name.startsWith("kanban_update_") || name.startsWith("kanban_delete_")
@@ -877,7 +877,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         fallbackStore.companies.push(payload as unknown as z.infer<typeof CompanyFullSchema>);
         saveFallbackStore();
       } else {
-        // BUG-6 (Auftrag 015): Spalte bank_name existiert NICHT in der DB (Schema-Drift) — aus INSERT entfernt
+ // Spalte bank_name existiert NICHT in der DB (Schema-Drift) — aus INSERT entfernt
         await pool.query(
           `INSERT INTO core_registry_companies (
             id_uuid, tenant_id, full_legal_name, short_code, tax_vat_id, tax_number,
@@ -980,7 +980,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
     case "crm_create_contact": {
       const parsed = CreateContactArgsZodSchema.parse(args);
       const idUuid = uuidv4();
-      // BUG-7 (Auftrag 015): full_legal_name ist DB-NOT-NULL — aus first/last_name zusammensetzen (wie Agent)
+ // full_legal_name ist DB-NOT-NULL — aus first/last_name zusammensetzen (wie Agent)
       const fullLegalName = [parsed.first_name, parsed.last_name].filter(Boolean).join(" ").trim() || parsed.last_name || "Unbekannter Kontakt";
       const payload = {
         id_uuid: idUuid,
@@ -1536,7 +1536,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         file_name: filename,
         file_size_bytes: Buffer.byteLength(content, "utf8"),
         mime_type: "text/plain",
-        // BUG-12 (Auftrag 015): chunk_count existiert nicht in der DB — document_hash statt dessen (wie louisAi.ts/storage.ts)
+ // chunk_count existiert nicht in der DB — document_hash statt dessen (wie louisAi.ts/storage.ts)
         document_hash: crypto.createHash("sha256").update(content).digest("hex"),
         created_at_utc: new Date().toISOString(),
         updated_at_utc: new Date().toISOString(),
@@ -1588,7 +1588,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
     }
 
     // =========================================================================
-    // BUG-1 (Auftrag 015): Neue Tool-Familien — Notizen, Vault, Mails, Kanban,
+ // Neue Tool-Familien — Notizen, Vault, Mails, Kanban,
     // Templates, Angebote, Sessions, Workflows (Wrapper auf Agent-Execute-Funktionen)
     // =========================================================================
 
@@ -1599,14 +1599,14 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "notes_create": {
-      // BUG-1: MCP-Interface (en) → Agent-Schema (de): entity_type/entity_id_uuid/content → contact_id_uuid/company_id_uuid/note_text
+ // MCP-Interface (en) → Agent-Schema (de): entity_type/entity_id_uuid/content → contact_id_uuid/company_id_uuid/note_text
       const mapped: Record<string, unknown> = { note_text: args.content };
       if (args.priority) mapped.priority = args.priority === "high" ? "hoch" : args.priority === "low" ? "niedrig" : "normal";
       const entityType = String(args.entity_type || "");
       const entityId = String(args.entity_id_uuid || "");
       if (entityType === "contact" || entityType === "contacts") mapped.contact_id_uuid = entityId;
       else if (entityType === "company" || entityType === "companies") mapped.company_id_uuid = entityId;
-      // 021-C (V2-2): MCP-Pfad persistiert die Notiz wirklich (bypassApproval=true) —
+      // (V2-2): MCP-Pfad persistiert die Notiz wirklich (bypassApproval=true) —
       // vorher No-Op + irreführender Audit CREATE|NOTE ohne DB-Eintrag.
       const res = await executeCreateNoteDraft(tenantId, JSON.stringify(mapped), "mcp_client", true);
       if (!res.success) throw new Error(res.error || "Fehler beim Erstellen der Notiz");
@@ -1614,7 +1614,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "notes_update": {
-      // 021-C (V2-5): Katalog note_id_uuid/content → Agent id_uuid/note_text
+      // (V2-5): Katalog note_id_uuid/content → Agent id_uuid/note_text
       const mapped: Record<string, unknown> = { id_uuid: String(args.note_id_uuid || "") };
       if (args.content !== undefined && args.content !== null) mapped.note_text = String(args.content);
       if (args.priority !== undefined && args.priority !== null) mapped.priority = String(args.priority);
@@ -1624,7 +1624,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "notes_delete": {
-      // 021-C (V2-5): Katalog note_id_uuid → Agent id_uuid
+      // (V2-5): Katalog note_id_uuid → Agent id_uuid
       const mapped: Record<string, unknown> = { id_uuid: String(args.note_id_uuid || "") };
       const res = await executeDeleteNote(tenantId, JSON.stringify(mapped), "mcp_client");
       if (!res.success) throw new Error(res.error || "Fehler beim Löschen der Notiz");
@@ -1665,7 +1665,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "mail_approve_draft": {
-      // 021-E (T-1-Fund): Katalog draft_id_uuid → Agent id_uuid (Drift wie V2-5)
+      // (T-1-Fund): Katalog draft_id_uuid → Agent id_uuid (Drift wie V2-5)
       const mapped = { id_uuid: String(args.draft_id_uuid || args.id_uuid || "") };
       const res = await executeApproveMailDraft(tenantId, JSON.stringify(mapped));
       if (!res.success) throw new Error(res.error || "Fehler beim Genehmigen des Mail-Entwurfs");

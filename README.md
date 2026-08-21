@@ -140,7 +140,7 @@ npm run test:e2e:ephemeral # Playwright gegen den Test-Stack
 npm run test:full          # Kompletter Volltest (s. o.)
 ```
 
-**Heilige Regeln im Test-Stack:** Google-MCP ist im Test-Stack **nicht konfiguriert** (frische DB = keine OAuth-Tokens) → verbindet sich nie. Im Client-Volltest gegen Live gilt: Löschfunktionen NUR auf selbst angelegten QA-Daten, Mails/Termine NUR an `stefan@ren-ai-ssance.de`.
+**Heilige Regeln im Test-Stack:** Google-MCP ist im Test-Stack **nicht konfiguriert** (frische DB = keine OAuth-Tokens) → verbindet sich nie. Im Client-Volltest gegen Live gilt: Löschfunktionen NUR auf selbst angelegten QA-Daten, Mails/Termine NUR an die freigegebene Test-Adresse.
 
 ### Qualitäts-Gates (vor jedem Commit)
 

@@ -497,7 +497,7 @@ export const ProposedChangeViewer: React.FC<ProposedChangeViewerProps> = ({
     );
   }
 
-  // --- 4b. KANBAN (Auftrag 042): Board/Card-Vorschau ---
+ // --- 4b. KANBAN : Board/Card-Vorschau ---
   if (entityType === 'kanban_board' || entityType === 'kanban_card') {
     const isBoard = entityType === 'kanban_board';
     const title = String(proposedState.title || (isBoard ? 'Neues Board' : 'Neue Karte'));

@@ -1,5 +1,5 @@
 // ============================================================================
-// Auftrag 025 Phase 4 (Parität): Fehlerfestigkeit — Fehlerklassifikation
+// Phase 4 (Parität): Fehlerfestigkeit — Fehlerklassifikation
 // #33 Schlanke Fehlerklassifikation (Status/Code/Message → Retry-Strategie je Typ).
 // NICHT 2000 Zeilen — bewusst schlank (~150), provider-agnostisch.
 // Reine, deterministische Funktionen — kein any (Regel 4), testbar.

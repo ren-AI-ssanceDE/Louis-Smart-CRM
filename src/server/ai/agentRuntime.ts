@@ -38,7 +38,7 @@ import {
   executeGetTemplates,
   executeGetTemplateDetails,
   executeApplyTemplate,
-  // G2–G6 (Auftrag 009): Update-Tools + Notizen-Vollverwaltung + Kanban-Board + Mail-Drafts
+ // G2–G6 : Update-Tools + Notizen-Vollverwaltung + Kanban-Board + Mail-Drafts
   executeUpdateDraftCompany,
   executeUpdateDraftContact,
   executeUpdateDraftInvoice,
@@ -62,17 +62,17 @@ import { evaluateGovernanceRules } from "./governance.js";
 import { vaultSearch, vaultReadText, readUserMemoryVault, writeUserMemoryVault, resolveSkillFiles } from "./vaultStore.js";
 import type { VaultSkillFile } from "./vaultStore.js";
 import { sanitizeFinalText, containsToolCallXml } from "./toolCallSanitizer.js";
-// Auftrag 025 Phase 3 (#23/#24/#26): Memory-Härtung (Terminal-Message, Scaffolding-Strip, Auto-Scan)
+// Phase 3 (#23/#24/#26): Memory-Härtung (Terminal-Message, Scaffolding-Strip, Auto-Scan)
 import { buildTerminalMemoryMessage, isSkillScaffoldingContent, scanMemoryContent } from "./memoryManager.js";
-// Auftrag 025 Phase 4 (#31/#32/#41/#42): Response-Guards + (#40) Tool-Guardrails
+// Phase 4 (#31/#32/#41/#42): Response-Guards + (#40) Tool-Guardrails
 import { isEmptyResponse, exceedsEmptyRetryCost, stripTurnFinalizerScaffolding, classifyToolResult } from "./responseGuards.js";
 import { ToolGuardrails } from "./toolGuardrails.js";
-// Auftrag 025 Phase 6 (#28/#29): Skill-Curator (inaktiv bis aktiviert, NIE löschen)
+// Phase 6 (#28/#29): Skill-Curator (inaktiv bis aktiviert, NIE löschen)
 import { filterInactiveSkills, persistSkillFrontmatter, bumpSkillCounter } from "./skillCurator.js";
 
-// Auftrag 025 Phase 7 (#59): Sub-Agent-Task-Dedupe (Key → Startzeitpunkt, 5-Min-Fenster)
+// Phase 7 (#59): Sub-Agent-Task-Dedupe (Key → Startzeitpunkt, 5-Min-Fenster)
 const subtaskInProgress: Map<string, number> = new Map();
-// Auftrag 026 P1-3 (#53): Steering-Handles je laufendem Subtask (abort + steer-Queue)
+// P1-3 (#53): Steering-Handles je laufendem Subtask (abort + steer-Queue)
 interface SubtaskSteerHandle {
   controller: AbortController;
   queue: string[];
@@ -99,7 +99,7 @@ export function getRunningSubtaskIds(): string[] {
   return [...subtaskHandles.keys()];
 }
 
-// Auftrag 025 Phase 4 (#34): Thinking-Scrub-Toggle für ALLE finalen Antwort-Pfade
+// Phase 4 (#34): Thinking-Scrub-Toggle für ALLE finalen Antwort-Pfade
 function sanitizeFinal(text: string | null | undefined, language: string, scrubEnabled: boolean | undefined): string {
   return sanitizeFinalText(text, language, { enableThinkingScrub: scrubEnabled ?? true });
 }
@@ -117,7 +117,7 @@ const WRITE_ACTION_MAP: Record<string, { entity: string; action: GovernanceActio
   update_kanban_card: { entity: "kanban_card", action: "UPDATE" },
   move_kanban_card: { entity: "kanban_card", action: "MOVE" },
   delete_kanban_card: { entity: "kanban_card", action: "DELETE" },
-  // G2–G6 (Auftrag 009): Update-Tools + Notizen-Vollverwaltung + Kanban-Board
+ // G2–G6 : Update-Tools + Notizen-Vollverwaltung + Kanban-Board
   update_company_draft: { entity: "companies", action: "UPDATE" },
   update_contact_draft: { entity: "contacts", action: "UPDATE" },
   update_note: { entity: "notes", action: "UPDATE" },
@@ -125,7 +125,7 @@ const WRITE_ACTION_MAP: Record<string, { entity: string; action: GovernanceActio
   update_invoice_draft: { entity: "invoices", action: "UPDATE" },
   update_offer_draft: { entity: "offers", action: "UPDATE" },
   create_kanban_board: { entity: "kanban_board", action: "CREATE" },
-  // Auftrag 036 P1: knowledge_*-Familie (interne Wissensvault-Tools)
+ // P1: knowledge_*-Familie (interne Wissensvault-Tools)
   knowledge_write: { entity: "vault_file", action: "CREATE" },
   knowledge_update: { entity: "vault_file", action: "UPDATE" },
   knowledge_delete: { entity: "vault_file", action: "DELETE" },
@@ -148,7 +148,7 @@ const WRITE_ACTION_MAP: Record<string, { entity: string; action: GovernanceActio
 const SUBAGENT_CORE_EXCLUDED: ReadonlySet<string> = new Set(['update_memory', 'delete_memory_note', 'ask_user_question', 'verify_subtask']);
 
 // S10: Deterministisches Skill-Matching (description 3 / name 2 / tags 1, case-insensitiv; Top-K)
-// Auftrag 013 P2-E: Pinned-Skills (frontmatter pinned: true) werden IMMER einschlossen (Prio vor Scoring).
+// P2-E: Pinned-Skills (frontmatter pinned: true) werden IMMER einschlossen (Prio vor Scoring).
 function topMatchSkills(skills: VaultSkillFile[], userMessage: string, topK: number): VaultSkillFile[] {
   const term = userMessage.toLowerCase();
   const pinned = skills.filter((s) => s.pinned);
@@ -168,7 +168,7 @@ function topMatchSkills(skills: VaultSkillFile[], userMessage: string, topK: num
   return combined;
 }
 
-// Auftrag 012 P0-2: Budgetiertes Notizen-Rendering für die Memory-Injektion.
+// P0-2: Budgetiertes Notizen-Rendering für die Memory-Injektion.
 // Neueste Notizen zuerst; sobald das Token-Budget erreicht ist, werden ältere weggelassen
 // (mit Zähler, damit der Nutzer/Agent sieht, dass gekürzt wurde).
 interface BudgetedNotesResult {
@@ -181,7 +181,7 @@ function renderBudgetedMemoryNotes(
   preserveOrder: boolean = false
 ): BudgetedNotesResult {
   if (!notes || notes.length === 0) return { text: "", dropped: 0 };
-  // Auftrag 025 Phase 3 (#18): preserveOrder=true → Prefetch-Reihenfolge (Relevanz) beibehalten;
+ // Phase 3 (#18): preserveOrder=true → Prefetch-Reihenfolge (Relevanz) beibehalten;
   // sonst neueste zuerst (bisheriges Verhalten).
   const sorted = preserveOrder ? notes.slice() : notes.slice().sort((a, b) => String(b.created_at_utc).localeCompare(String(a.created_at_utc)));
   const lines: string[] = [];
@@ -196,7 +196,7 @@ function renderBudgetedMemoryNotes(
   return { text: lines.join("\n"), dropped: notes.length - lines.length };
 }
 
-// Auftrag 025 Phase 1 (#3): Frozen Memory-Snapshot — Memory-Injektion als REINE Funktion,
+// Phase 1 (#3): Frozen Memory-Snapshot — Memory-Injektion als REINE Funktion,
 // GENAU EINMAL pro Request gerendert (Cache-Prefix-Stabilität, never-render-mid-session).
 // Toggle memory_frozen_snapshot=false → Live-Refresh nach update_memory/delete_memory_note
 // (siehe runReActLoop: Referenz-Vergleich + Rebuild des CONTEXT-Tiers).
@@ -208,7 +208,7 @@ export function buildMemoryInjectionBlock(
   if (!userMemory || !(userMemory.response_preferences_text || (userMemory.chat_notes_json && userMemory.chat_notes_json.length > 0))) {
     return "";
   }
-  // Auftrag 025 Phase 3 (#18): preserveOrder=true → Prefetch-Reihenfolge (Relevanz) beibehalten
+ // Phase 3 (#18): preserveOrder=true → Prefetch-Reihenfolge (Relevanz) beibehalten
   const { text, dropped } = renderBudgetedMemoryNotes(userMemory.chat_notes_json || [], budgetTokens, preserveOrder);
   return `## User Memory (Gedächtnis):
 Das Folgende ist das dauerhafte Gedächtnis über den Nutzer (Präferenzen + Notizen). Wenn der Nutzer nach gespeicherten Fakten, Präferenzen oder früheren Absprachen fragt, beantworte die Frage ZUERST auf Basis dieses Gedächtnisses — auch wenn die Daten nicht im CRM stehen. Erfinde keine Inhalte, die nicht hier stehen.
@@ -217,7 +217,7 @@ ${text ? `Notizen:\n${text}${dropped > 0 ? `\n(… und ${dropped} weitere älter
 `;
 }
 
-// Auftrag 012 P1-2: Validierung eines Subtask-Ergebnisses gegen ein optionales Output-Schema.
+// P1-2: Validierung eines Subtask-Ergebnisses gegen ein optionales Output-Schema.
 // Pragmatischer Vertrag-Check: final_text muss valides JSON sein und alle im Schema geforderten
 // Top-Level-Keys enthalten. Liefert { ok, error? }.
 function validateSubtaskOutput(finalText: string, schema: Record<string, unknown> | undefined): { ok: boolean; error?: string } {
@@ -277,13 +277,13 @@ export function buildOptimizedConversationHistory(
 }
 
 // ============================================================================
-// Auftrag 006 A2+B1 (Regel 12): Delta-Statt-Kumulativ + Context-Compaction.
+// A2+B1 (Regel 12): Delta-Statt-Kumulativ + Context-Compaction.
 // Baut die <PREVIOUS_TOOL_RESULTS>-Sektion des ReAct-Dynamic-Payloads:
-//  - Ergebnisse, die das Modell bereits in einer früheren Iteration gesehen hat
-//    (Index < lastInjectedCount) → kompakte 1-Zeilen-Zusammenfassung
-//  - Neue Ergebnisse (Index >= lastInjectedCount) → voll eingebettet (getruncated)
-//  - B1 (compactionActive, keepLast): die jüngsten keepLast Ergebnisse werden
-//    voll eingebettet, ALLE älteren als 1-Zeiler — unabhängig vom Delta-Stand.
+// - Ergebnisse, die das Modell bereits in einer früheren Iteration gesehen hat
+// (Index < lastInjectedCount) → kompakte 1-Zeilen-Zusammenfassung
+// - Neue Ergebnisse (Index >= lastInjectedCount) → voll eingebettet (getruncated)
+// - B1 (compactionActive, keepLast): die jüngsten keepLast Ergebnisse werden
+// voll eingebettet, ALLE älteren als 1-Zeiler — unabhängig vom Delta-Stand.
 // Macht den Prompt-Wachstum von O(n²) zu O(n). Reine Funktion, kein any.
 // ============================================================================
 export function buildToolResultsSection(
@@ -348,11 +348,11 @@ export function isAnnouncementText(text: string): boolean {
   return ANNOUNCEMENT_PATTERNS.some((re) => re.test(text || ""));
 }
 
-// Auftrag 006 B3 (Regel 12): Intent-gesteuerte Prompt-Direktiven.
+// B3 (Regel 12): Intent-gesteuerte Prompt-Direktiven.
 // Bestimmt, ob der E-Mail-/Zahlungserinnerungs-Direktiven-Block (≈600 Zeichen)
 // in den System-Prefix injiziert wird:
-//   - mode 'always' → immer (bisheriges Verhalten, Default)
-//   - mode 'intent' → nur wenn die Nutzeranfrage E-Mail-/Mahnungs-Bezug hat
+// - mode 'always' → immer (bisheriges Verhalten, Default)
+// - mode 'intent' → nur wenn die Nutzeranfrage E-Mail-/Mahnungs-Bezug hat
 // Reine Funktion, kein any — testbar.
 // ============================================================================
 export function shouldInjectEmailDirectives(
@@ -372,7 +372,7 @@ export function shouldInjectEmailDirectives(
   return emailKeywords.some((kw) => text.includes(kw));
 }
 
-// Auftrag 025 Phase 1 (#5): Tool-Guidance nur bei geladenen Tools (prompt_tool_guidance_trim).
+// Phase 1 (#5): Tool-Guidance nur bei geladenen Tools (prompt_tool_guidance_trim).
 // Verallgemeinert shouldInjectEmailDirectives auf den aktiven Tool-Katalog: Die E-Mail-/
 // Mahnungs-Direktiven (~600 Zeichen) werden nur injiziert, wenn E-Mail-bezogene Tools im
 // Katalog stehen ODER die Nutzeranfrage E-Mail-Bezug hat. trim=false → bisheriges Verhalten
@@ -417,15 +417,15 @@ export interface DefinedToolDescriptor {
 }
 
 // ============================================================================
-// Auftrag 036 P0: Vault-Tool-Zuordnung — EINE Quelle der Wahrheit
+// P0: Vault-Tool-Zuordnung — EINE Quelle der Wahrheit
 // Zwei Vault-Welten mit ähnlichen Namen (Verwechslungsquelle für das LLM):
-//   INTERN  → knowledge_data_vault/<tenantId> (App-Dateisystem)
-//   OBSIDIAN→ Obsidian-Notiz-Vault via MCP (Schreiben nur unter _louis/)
-// buildVaultMappingDirective() injiziert die Zuordnung in den System-Prompt.
+// INTERN → knowledge_data_vault/<tenantId> (App-Dateisystem)
+// OBSIDIAN→ Obsidian-Notiz-Vault via MCP (Schreiben nur unter _louis/)
+// buildVaultMappingDirective injiziert die Zuordnung in den System-Prompt.
 // ============================================================================
 
 /** Tools, die im INTERNEN Wissensvault (knowledge_data_vault) lesen/schreiben. */
-// Auftrag 036 P1: knowledge_*-Familie; Alias-Namen (vault_write etc.) bleiben
+// P1: knowledge_*-Familie; Alias-Namen (vault_write etc.) bleiben
 // als Dispatch-Aliase gültig (Workflows/MCP-Katalog), stehen aber nicht mehr
 // als primäre Katalog-Namen im Prompt.
 export const INTERNAL_VAULT_TOOLS: readonly string[] = [
@@ -447,7 +447,7 @@ export const OBSIDIAN_VAULT_TOOLS: readonly string[] = [
 ];
 
 /**
- * Auftrag 036 P1: Alias-Namen der internen Vault-Tools (vor der knowledge_*-Umbenennung).
+ * P1: Alias-Namen der internen Vault-Tools (vor der knowledge_*-Umbenennung).
  * Bleiben dispatchbar (agentRuntime + workflowExecutoren) und für die Workflow-Validierung
  * bekannt — erscheinen aber nicht mehr als primäre Katalog-Namen im LLM-Prompt.
  */
@@ -474,7 +474,7 @@ export function buildVaultMappingDirective(): string {
 export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   // CORE (immer verfügbar)
   { name: "crm_data_analyst", desc: "'crm_data_analyst': Analysiert und aggregiert CRM-Entitäten.", domain: 'CORE' },
-  // Auftrag 016 P1-2: Alias sichtbar machen (Dispatch + Whitelist existierten bereits, Katalog-Eintrag fehlte)
+ // P1-2: Alias sichtbar machen (Dispatch + Whitelist existierten bereits, Katalog-Eintrag fehlte)
   { name: "data_architect", desc: "'data_architect': Alias für 'crm_data_analyst' — Analysiert und aggregiert CRM-Entitäten (Synonym).", domain: 'CORE' },
   { name: "text_generator", desc: "'text_generator': Hochgradig konfigurierbare Text- & Branding-Engine.", domain: 'CORE' },
   
@@ -489,26 +489,26 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   { name: "create_contact_draft", desc: "'create_contact_draft': Erstellt einen Kontaktentwurf. Query JSON: { first_name, last_name, email_address, phone_number, company_id, street, house_number, postal_code, city, country_code, language, salutation, gender_identity, date_of_birth, website, email_2, mobile_number, fax_number, tax_vat_id, iban, bic_swift, payment_term, opt_in_marketing?, opt_in_social_media?, opt_in_direct_message?, opt_in_sms?, opt_in_phone? } — Opt-in-Felder sind boolean (optional, Default false).", domain: 'CRM_WRITE' },
   { name: "create_offer_draft", desc: "'create_offer_draft': Erstellt einen Angebotsentwurf. Query JSON: { title, company_id?, contact_id?, offer_number?, line_items: [{ description, quantity, unit_price, vat_rate? }], payment_term?, valid_until?, currency_code?, introductory_text?, closing_text? } — title + line_items sind Pflicht.", domain: 'CRM_WRITE' },
   { name: "create_note_draft", desc: "'create_note_draft': Erstellt einen Notiz-Entwurf für einen Kontakt (contact_id_uuid) oder eine Firma (company_id_uuid). Query JSON: { contact_id_uuid?, company_id_uuid?, note_text, priority? } — genau EIN Ziel angeben, note_text ist Pflicht.", domain: 'CRM_WRITE' },
-  // G2/G4 (Auftrag 009): Update-Tools + Notizen-Vollverwaltung
+ // G2/G4 : Update-Tools + Notizen-Vollverwaltung
   { name: "update_company_draft", desc: "'update_company_draft': Aktualisiert ein bestehendes Unternehmen (Partial-Update, nur bereitgestellte Felder). Query JSON: { id_uuid, full_legal_name?, street?, city?, email_address?, phone_number?, iban?, ... }", domain: 'CRM_WRITE' },
   { name: "update_contact_draft", desc: "'update_contact_draft': Aktualisiert einen bestehenden Kontakt (Partial-Update, inkl. Opt-in-Felder). Query JSON: { id_uuid, first_name?, last_name?, email_address?, phone_number?, opt_in_marketing?, ... }", domain: 'CRM_WRITE' },
   { name: "list_notes", desc: "'list_notes': Listet Notizen. Query JSON: { entity_type?: 'contact'|'company', entity_id_uuid?, search?, limit? }", domain: 'CRM_READ' },
   { name: "update_note", desc: "'update_note': Ändert eine Notiz (note_text/priority). Query JSON: { id_uuid, note_text?, priority? }", domain: 'CRM_WRITE' },
   { name: "delete_note", desc: "'delete_note': Löscht eine Notiz. Query JSON: { id_uuid }", domain: 'CRM_WRITE' },
-  // G5/G6 (Auftrag 009): Update-Tools für Rechnung + Angebot
+ // G5/G6 : Update-Tools für Rechnung + Angebot
   { name: "update_invoice_draft", desc: "'update_invoice_draft': Aktualisiert eine bestehende Rechnung (Partial-Update, z. B. payment_status, due_date, Beträge). Query JSON: { id_uuid, payment_status?, due_date?, ... }", domain: 'CRM_WRITE' },
   { name: "update_offer_draft", desc: "'update_offer_draft': Aktualisiert ein bestehendes Angebot (Partial-Update). Query JSON: { id_uuid, title?, valid_until?, payment_term?, ... }", domain: 'CRM_WRITE' },
   { name: "finalize_and_send_offer", desc: "'finalize_and_send_offer': Finalisiert ein Angebot und generiert das PDF.", domain: 'CRM_WRITE' },
   { name: "send_smtp_email", desc: "'send_smtp_email': Erstellt einen E-Mail-Entwurf zur Freigabe.", domain: 'CRM_WRITE' },
-  // G7 (Auftrag 009): E-Mail-Entwürfe abrufen
+ // G7 : E-Mail-Entwürfe abrufen
   { name: "list_mail_drafts", desc: "'list_mail_drafts': Listet E-Mail-Entwürfe. Query JSON: { status?: 'PENDING'|'APPROVED'|'REJECTED', recipient?, limit? }", domain: 'CRM_READ' },
   
   // KNOWLEDGE / VAULT
   { name: "web_search", desc: "'web_search': Externe Webrecherche für Mehrwertsteuersätze, Firmenregister etc.", domain: 'KNOWLEDGE' },
-  // Auftrag 036 P1: interne Wissensvault-Familie = knowledge_* (Alias: alte vault_*-Namen)
+ // P1: interne Wissensvault-Familie = knowledge_* (Alias: alte vault_*-Namen)
   { name: "knowledge_search", desc: "'knowledge_search': Liest oder durchsucht Wissensdateien (Markdown .md, TXT, PDF, Word etc.) im INTERNEN Wissensvault (knowledge_data_vault). Alias: 'local_knowledge'.", domain: 'KNOWLEDGE' },
   { name: "list_knowledge_files", desc: "'list_knowledge_files': Listet hochgeladene Dateien des INTERNEN Wissensvaults (knowledge_data_vault) auf. Alias: 'list_vault_files'.", domain: 'KNOWLEDGE' },
-  // G8 (Auftrag 009): Vault-Vollverwaltung (write/update/delete) — INTERNER Wissensvault (036: knowledge_*-Familie)
+ // G8 : Vault-Vollverwaltung (write/update/delete) — INTERNER Wissensvault (036: knowledge_*-Familie)
   { name: "knowledge_write", desc: "'knowledge_write': Legt eine neue Datei im INTERNEN Wissensvault (knowledge_data_vault) an. Query JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv. Alias: 'vault_write'.", domain: 'KNOWLEDGE' },
   { name: "knowledge_update", desc: "'knowledge_update': Aktualisiert den Inhalt einer Datei im INTERNEN Wissensvault (knowledge_data_vault, upsert). Query JSON: { file_name, content }. Alias: 'vault_update'.", domain: 'KNOWLEDGE' },
   { name: "knowledge_delete", desc: "'knowledge_delete': Löscht eine Datei aus dem INTERNEN Wissensvault (knowledge_data_vault). Query JSON: { file_name }. Alias: 'vault_delete'.", domain: 'KNOWLEDGE' },
@@ -524,7 +524,7 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   // KANBAN
   { name: "list_kanban_boards", desc: "'list_kanban_boards': Listet Kanban-Boards auf.", domain: 'KANBAN' },
   { name: "get_kanban_board_details", desc: "'get_kanban_board_details': Holt Details eines Kanban-Boards.", domain: 'KANBAN' },
-  // G3 (Auftrag 009): Kanban-Board anlegen
+ // G3 : Kanban-Board anlegen
   { name: "create_kanban_board", desc: "'create_kanban_board': Legt ein neues Kanban-Board an. Query JSON: { title, description?, columns?: string[], sample_cards?: string[] } — Default-Spalten: Offen/In Bearbeitung/Erledigt.", domain: 'KANBAN' },
   { name: "create_kanban_card", desc: "'create_kanban_card': Erstellt eine Karte auf dem Kanban-Board.", domain: 'KANBAN' },
   { name: "update_kanban_card", desc: "'update_kanban_card': Aktualisiert eine Kanban-Karte.", domain: 'KANBAN' },
@@ -658,14 +658,14 @@ export class AgentRuntime {
       }
 
       // Phase 4: Compliance & Critique LLM Gate (Bypassed for Fast-Path Read Queries)
-      // B3 (Auftrag 011): Draft-Flow-Vorschläge (proposedChanges ohne emails)
+ // B3 : Draft-Flow-Vorschläge (proposedChanges ohne emails)
       // überspringen die LLM-Kritik — die menschliche Freigabe im Chat IST die
       // Kontrolle; die Kritikschleife kostet sonst 1-2 Min Latenz pro Antwort.
       // (2026-2026-08-16): Kritikschleife läuft NUR noch, wenn eine
       // CRM-Änderung vorgeschlagen wurde (proposedChanges gesetzt) — reine
       // isComplex-Aufgaben (z. B. Vault-/Memory-Schreibvorgänge ohne Draft)
       // überspringen den Critic (spart ~15s + ~2k Output-Token pro Antwort).
-      // Admin-Steuerung des Critic-Verhaltens: notiert in Auftrag 018 Phase D.
+ // Admin-Steuerung des Critic-Verhaltens: notiert in Phase D.
       const isDraftFlowProposal = !!context.proposedChanges &&
         context.proposedChanges.entity_type !== 'emails';
       const requiresCritic = !!context.proposedChanges && !isDraftFlowProposal;
@@ -736,7 +736,7 @@ export class AgentRuntime {
         eventDetails: `Execution complete in ${executionTimeMs}ms. Tokens: In=${context.inputTokens}, Out=${context.outputTokens}. Active Tools: ${activeTools.length}/${SYSTEM_TOOL_CATALOG.length}`
       });
 
-      // Auftrag 006 Task 7 (B2): Token-Metriken persistieren (Admin-Ansicht „Token-Verbrauch")
+ // Task 7 (B2): Token-Metriken persistieren (Admin-Ansicht „Token-Verbrauch")
       try {
         await recordAgentRun({
           tenantId: context.tenantId,
@@ -809,7 +809,7 @@ export class AgentRuntime {
         outputTokens: context.outputTokens,
         cachedTokens: context.cachedTokens,
         executionTimeMs,
-        // Auftrag 025 Phase 3 (#20): Recall-Status-Feedback
+ // Phase 3 (#20): Recall-Status-Feedback
         memoryRecallCount: context.memoryRecallCount ?? 0
       };
     } catch (fatalError: unknown) {
@@ -859,7 +859,7 @@ export class AgentRuntime {
     const preferredLanguageName = context.language === 'de' ? 'German / Deutsch' : 'English';
 
     // === S3: Zone 1 (statischer System-Prefix) — EINMAL pro Request vor der Schleife ===
-    // Timestamp kommt aus context.temporalAnchor (im Orchestrator 1x pro Request gesetzt) — KEIN new Date() in der Schleife.
+    // Timestamp kommt aus context.temporalAnchor (im Orchestrator 1x pro Request gesetzt) — KEIN new Date in der Schleife.
     const temporalAnchor = context.temporalAnchor || new Date().toISOString();
     const weekdaysGerman = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
     const weekdayName = weekdaysGerman[new Date(temporalAnchor).getDay()];
@@ -909,7 +909,7 @@ export class AgentRuntime {
                 paramStr = ` (Parameters: ${keys.join(", ")})`;
               }
             }
-            // Auftrag 036 P2: gekapselte Obsidian-Vault-MCP-Tools markieren — der LLM soll
+ // P2: gekapselte Obsidian-Vault-MCP-Tools markieren — der LLM soll
             // vault_read/vault_search (Katalog) nutzen statt der rohen MCP-Tools (Disambiguierung).
             const isCappedVaultMcp = /(^|_)vault_(read|write|delete|list)$/.test(t.normalized_tool_name)
               || /(^|_)search_simple$/.test(t.normalized_tool_name);
@@ -1015,7 +1015,7 @@ ${isToolAccessQuestion(context.userMessage) ? `
     `;
 
     // S10: Vault-Skill-Injektion (1x pro Request, nach Zone-1-Aufbau — caching-freundlich, request-gebunden)
-    // Auftrag 025 Phase 6 (#28/#30): Curator-Filter (inaktiv wird NICHT injiziert, bleibt aber im
+ // Phase 6 (#28/#30): Curator-Filter (inaktiv wird NICHT injiziert, bleibt aber im
     // Vault erhalten — NIE löschen) + kompakte Injektion: Index Name+Description + Details nur
     // bis skill_inject_max_tokens (volle Skills on-demand via vault_read, Muster skill_list_index).
     try {
@@ -1038,7 +1038,7 @@ ${isToolAccessQuestion(context.userMessage) ? `
             remainingChars -= chunk.length;
           }
           context.systemPrefix += `\n## Relevant Vault Skills:\n${indexLines.join("\n")}${detailLines.length > 0 ? `\n\n### Skill-Details (Budget-begrenzt — vollständiger Inhalt via vault_read):\n${detailLines.join("\n")}` : ""}`;
-          // Auftrag 012 P0-1: Transparenz — Thought-Log-Zeile, welche Skills injiziert wurden
+ // P0-1: Transparenz — Thought-Log-Zeile, welche Skills injiziert wurden
           context.thoughtLog.push(`[S10] Verwendete Skills: ${relevant.map((s) => s.name).join(", ")}`);
           // #29: Curator — genutzte Skills als aktiv + last_used markieren (24h-Cooldown),
           // veraltete als inaktiv markieren (best-effort, NIE löschen).
@@ -1084,15 +1084,15 @@ ${isToolAccessQuestion(context.userMessage) ? `
     }
 
     // ============================================================================
-    // Auftrag 025 Phase 1 (#1/#2/#4): Cache-Tier-Architektur — CONTEXT-Tier 1x pro Request.
-    // STABLE   = context.systemPrefix (oben, 1x gebaut): Identität, CRM-Regeln, Tool-Katalog
-    //            (deterministisch sortiert), ReAct-/Draft-Direktiven, #7 Task-Completion.
-    // CONTEXT  = Request-gebundene, pro Iteration UNVERÄNDERTE Blöcke: Timestamp (#4),
-    //            #6 Parallel-Tool-Guidance (Toggle prompt_parallel_tool_guidance),
-    //            ShortTermSummary, #3 Memory-Snapshot (1x gerendert — frozen), offene
-    //            Rückfragen, Attachments.
+    // hase 1 (#1/#2/#4): Cache-Tier-Architektur — CONTEXT-Tier 1x pro Request.
+    // STABLE = context.systemPrefix (oben, 1x gebaut): Identität, CRM-Regeln, Tool-Katalog
+    // (deterministisch sortiert), ReAct-/Draft-Direktiven, #7 Task-Completion.
+    // CONTEXT = Request-gebundene, pro Iteration UNVERÄNDERTE Blöcke: Timestamp (#4),
+    // #6 Parallel-Tool-Guidance (Toggle prompt_parallel_tool_guidance),
+    // ShortTermSummary, #3 Memory-Snapshot (1x gerendert — frozen), offene
+    // Rückfragen, Attachments.
     // VOLATILE = pro Iteration wechselnd (unten in der Schleife): Iteration, Tool-Ergebnisse,
-    //            History, Early-Exit-/Retry-Direktiven.
+    // History, Early-Exit-/Retry-Direktiven.
     // Never-render-mid-session (#2): systemInstruction wird NICHT mehr pro Iteration als
     // Template-Literal neu zusammengesetzt — nur noch Konkatenation contextInstruction + Volatile.
     // ============================================================================
@@ -1101,7 +1101,7 @@ ${isToolAccessQuestion(context.userMessage) ? `
       : '';
 
     const buildContextInstruction = (): string => {
-      // Auftrag 025 Phase 3 (#18): Prefetch-Reihenfolge beibehalten, wenn Prefetch aktiv ist
+ // Phase 3 (#18): Prefetch-Reihenfolge beibehalten, wenn Prefetch aktiv ist
       const memBlock = buildMemoryInjectionBlock(context.userMemory, context.aiConfig.memory_budget_tokens ?? 800, context.memoryPrefetchEnabled ?? true);
       return `${context.systemPrefix || ""}
 Current System Timestamp: ${formattedTimestamp}
@@ -1125,20 +1125,20 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
     // Memory-Tool den Snapshot ersetzt, wird der CONTEXT-Tier einmalig neu gerendert.
     let memorySnapshotRef = context.userMemory;
 
-    // Auftrag 025 Phase 3 (#20): Recall-Status — sichtbares Feedback im Thought-Log
+ // Phase 3 (#20): Recall-Status — sichtbares Feedback im Thought-Log
     if ((context.memoryRecallCount ?? 0) > 0) {
       context.thoughtLog.push(`[Memory-Prefetch] ${context.memoryRecallCount} relevante Einträge erinnert (query-abhängig geladen).`);
     }
 
     // B4-Nachfolge (2026-08-16, provider-agnostisch): Ankündigungs-Schutz-Zähler
     // lebt AUSSERHALB der Schleife (zählt über Iterationen hinweg, max 2 Korrektur-Runden).
-    // Auftrag 025 Phase 4 (#31): TOOL_CALL_RETRY_MAX ist jetzt Admin-Config (Regel 12, NULL = 2).
+ // Phase 4 (#31): TOOL_CALL_RETRY_MAX ist jetzt Admin-Config (Regel 12, NULL = 2).
     const TOOL_CALL_RETRY_MAX = context.toolCallRetryMax ?? 2;
     let toolCallRetryCount = 0;
     // Fix (2026-08-17): Korrektur-Runden bei kaputtem JSON (parseFailed) — bounded.
     let jsonRetryCount = 0;
 
-    // Auftrag 025 Phase 4 (#40): Tool-Guardrails (fail-open) + (#31) Empty-Streak + (#38) Loop-Deadline
+ // Phase 4 (#40): Tool-Guardrails (fail-open) + (#31) Empty-Streak + (#38) Loop-Deadline
     const guardrails = new ToolGuardrails({
       exactFailureBlock: context.toolGuardrailExactBlock ?? 3,
       noProgressBlock: context.toolGuardrailNoProgressBlock ?? 3
@@ -1154,14 +1154,14 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       context.currentIteration = loopCount;
       context.thoughtLog.push(`ReAct Iteration [Round ${loopCount}]: Analyzing system states...`);
 
-      // Auftrag 025 Phase 4 (#38): harte Loop-Deadline — hängende Läufe terminieren garantiert
+ // Phase 4 (#38): harte Loop-Deadline — hängende Läufe terminieren garantiert
       if (loopDeadlineReached()) {
         context.thoughtLog.push(`[Deadline #38] Loop-Deadline (${context.loopDeadlineS ?? 120}s) erreicht — Antwort wird aus den vorliegenden Ergebnissen gebaut.`);
         context.isComplete = true;
         break;
       }
 
-      // Auftrag 026 P1-3 (#53): Subagent-Steering — Abort-Check + Steer-Queue-Drain am Iterations-Anfang
+ // P1-3 (#53): Subagent-Steering — Abort-Check + Steer-Queue-Drain am Iterations-Anfang
       if (context.steering) {
         if (context.steering.signal.aborted) {
           const reason = context.steering.signal.reason instanceof Error ? context.steering.signal.reason.message : String(context.steering.signal.reason || "abort_subtask");
@@ -1175,7 +1175,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         }
       }
 
-      // Auftrag 006 A2: Tool-Ergebnis-Stand VOR dieser Iteration — nur NEUE Ergebnisse
+ // A2: Tool-Ergebnis-Stand VOR dieser Iteration — nur NEUE Ergebnisse
       // werden in der Folge-Iteration voll eingebettet, ältere als 1-Zeilen-Zusammenfassung.
       const resultsBeforeIteration = context.toolResults.length;
 
@@ -1213,7 +1213,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
 
       const optimizedHistory = buildOptimizedConversationHistory(context.history, context.maxHistoryTokens || 2000);
 
-      // Auftrag 025 Phase 1 (#1/#2/#4): CONTEXT-Tier (1x vor der Schleife gebaut) +
+ // Phase 1 (#1/#2/#4): CONTEXT-Tier (1x vor der Schleife gebaut) +
       // VOLATILE-Teil (History). Kein Template-Rebuild pro Iteration — nie-render-mid-session.
       const systemInstruction = contextInstruction + `\n## Conversation History:\n${JSON.stringify(optimizedHistory)}`;
 
@@ -1249,7 +1249,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       context.retryDirective = undefined;
 
       try {
-        // Auftrag 007 T3: Native Tool-Calls — tools nur im Modus 'auto'/'native' übergeben.
+ // T3: Native Tool-Calls — tools nur im Modus 'auto'/'native' übergeben.
         // 'json' = bisheriges Verhalten (JSON-Freitext). Gemini-Zweig nutzt nativeTools
         // nur, wenn der Katalog als functionDeclarations konvertierbar ist.
         const toolCallMode = context.toolCallMode || 'auto';
@@ -1261,7 +1261,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         const useNativeTools = strictNative ? true : toolCallMode !== 'json';
         // Katalog-Tools + Steuer-Tools (finalize_response/propose_crm_changes werden von
         // safeParseReActDecision als native Calls erwartet, stehen aber nicht im Katalog)
-        // Auftrag 025 Phase 1 (#8): Schema-Normalisierung — doppelt gewrappte Tool-Schemas
+ // Phase 1 (#8): Schema-Normalisierung — doppelt gewrappte Tool-Schemas
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
@@ -1298,7 +1298,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
           context.cachedTokens += metadata.cachedInputTokens || metadata.cacheReadInputTokens || 0;
         }
 
-        // Auftrag 025 Phase 4 (#31): Empty-Response-Guard — leere Antwort → Retry (bounded);
+ // Phase 4 (#31): Empty-Response-Guard — leere Antwort → Retry (bounded);
         // deterministischer Streak + Kostenbudget → Abbruch (Muster empty_response_guard.py).
         if (isEmptyResponse(res.text) && (!res.tool_calls || res.tool_calls.length === 0)) {
           emptyStreak++;
@@ -1319,7 +1319,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         }
         emptyStreak = 0; // nicht-leere Antwort → Streak zurücksetzen
 
-        // Auftrag 007 T3: tool_calls durchreichen (native Tool-Calls) — sonst JSON-Pfad wie bisher
+ // T3: tool_calls durchreichen (native Tool-Calls) — sonst JSON-Pfad wie bisher
         const decision = safeParseReActDecision({ text: res.text || "", tool_calls: res.tool_calls as ToolCall[] | undefined }, { strictNativeOnly: !(context.textFallbackEnabled ?? false) });
 
         if (decision.thought) {
@@ -1484,7 +1484,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
           });
           // Delta-Tracking: nur Ergebnisse ab resultsBeforeIteration sind fürs Modell neu
           context.lastInjectedToolResults = resultsBeforeIteration;
-          // Auftrag 025 Phase 4 (#40/#42): Batch-Ergebnisse klassifizieren + registrieren
+ // Phase 4 (#40/#42): Batch-Ergebnisse klassifizieren + registrieren
           settled.forEach((s, i) => {
             const pc = dedupedCalls[i];
             if (s.status === "fulfilled") {
@@ -1538,7 +1538,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
             continue;
           }
 
-          // Auftrag 025 Phase 4 (#40): Guardrails VOR der Ausführung (fail-open — Hinweis statt Abbruch)
+ // Phase 4 (#40): Guardrails VOR der Ausführung (fail-open — Hinweis statt Abbruch)
           const exactCheck = guardrails.checkExactFailure(toolName, toolQuery);
           if (exactCheck.blocked) {
             context.thoughtLog.push(`[Guardrail] ${exactCheck.hint}`);
@@ -1556,7 +1556,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
           context.toolResults.push(single);
           // Delta-Tracking: nur Ergebnisse ab resultsBeforeIteration sind fürs Modell neu
           context.lastInjectedToolResults = resultsBeforeIteration;
-          // Auftrag 025 Phase 4 (#40/#42): Ergebnis klassifizieren + im Guardrail registrieren
+ // Phase 4 (#40/#42): Ergebnis klassifizieren + im Guardrail registrieren
           guardrails.record(toolName, toolQuery, classifyToolResult(toolName, single.result));
           // #3 Live-Modus (memory_frozen_snapshot=false): Memory-Tools haben den Snapshot
           // ersetzt → CONTEXT-Tier einmalig neu rendern (frozen=true: bleibt byte-identisch).
@@ -1565,7 +1565,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
             contextInstruction = buildContextInstruction();
           }
 
-          // B3 (Auftrag 011): einheitlicher Draft-Flow — nach einem Write-Tool mit
+ // B3 : einheitlicher Draft-Flow — nach einem Write-Tool mit
           // draft=true (Freigabe-Vorschlag) den Loop sofort beenden. Sonst verifiziert
           // der Agent den (noch nicht geschriebenen) Zustand, findet nichts in der DB
           // und ruft das Tool erneut auf → ReAct-Endlosschleife bis zum Timeout.
@@ -1611,7 +1611,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       }
     }
 
-    // Auftrag 025 Phase 4 (#41): Turn-Finalizer — reine Tool-Call-/Verifikations-Scaffolding-
+ // Phase 4 (#41): Turn-Finalizer — reine Tool-Call-/Verifikations-Scaffolding-
     // Tails aus der finalen Antwort entfernen (Muster turn_finalizer.py:120).
     if (context.finalDraftText) {
       const cleaned = stripTurnFinalizerScaffolding(context.finalDraftText);
@@ -1800,19 +1800,19 @@ ${toolTrace}`;
         return createToolError(`Ungültige delegate_subtask-Argumente: ${parsed.error.message}`);
       }
 
-      // Auftrag 025 Phase 7 (#44): subtask_max_parallel statt hardcoded 3 (Regel 12, NULL = 2)
+ // Phase 7 (#44): subtask_max_parallel statt hardcoded 3 (Regel 12, NULL = 2)
       const maxParallel = context.subtaskMaxParallel ?? 2;
       const tasks = parsed.data.tasks.slice(0, maxParallel);
       if (parsed.data.tasks.length > maxParallel) {
         context.thoughtLog.push(`[delegate_subtask] Mehr als ${maxParallel} Tasks übergeben — nur die ersten ${maxParallel} werden ausgeführt.`);
       }
-      // Auftrag 026 P1-3 (#55): Spawn-Depth-Cap — Sub-Agenten auf Ebene N dürfen nur bis
+ // P1-3 (#55): Spawn-Depth-Cap — Sub-Agenten auf Ebene N dürfen nur bis
       // subtask_max_depth (NULL = 3) weiter delegieren; darüber → sauberer Tool-Fehler.
       const { nextDepth, allowed: depthAllowed } = computeSubtaskDepth(context.subtaskDepth, context.subtaskMaxDepth ?? null);
       if (!depthAllowed) {
         return createToolError(`Maximale Delegations-Tiefe erreicht (${context.subtaskMaxDepth ?? 3}) — Sub-Agenten auf dieser Ebene dürfen nicht weiter delegieren (#55).`);
       }
-      // Auftrag 025 Phase 7 (#44): Subtask-Deadline (NULL = 120 s) — hängende Sub-Agenten
+ // Phase 7 (#44): Subtask-Deadline (NULL = 120 s) — hängende Sub-Agenten
       // terminieren garantiert (Checkpointing: PENDING → SUCCESS/FAILED wird persistiert).
       const subtaskTimeoutMs = (context.subtaskTimeoutS ?? 120) * 1000;
       const runWithDeadline = <T>(p: Promise<T>): Promise<T> => {
@@ -1828,7 +1828,7 @@ ${toolTrace}`;
       const settled = await Promise.allSettled(tasks.map(async (task) => {
         const dbId = uuidv4();
 
-        // Auftrag 025 Phase 7 (#59): Task-Dedupe — gleiche Subtask (ID + Prompt) innerhalb
+ // Phase 7 (#59): Task-Dedupe — gleiche Subtask (ID + Prompt) innerhalb
         // von 5 Minuten nicht doppelt ausführen (Muster task_planner).
         const dedupeKey = `${context.tenantId}:${context.userId}:${task.subtask_id}:${task.task_prompt}`;
         const inProgressSince = subtaskInProgress.get(dedupeKey);
@@ -1847,19 +1847,19 @@ ${toolTrace}`;
         }
         subtaskInProgress.set(dedupeKey, Date.now());
 
-        // Auftrag 026 P1-3 (#53): Steering-Handle je Subtask registrieren (abort + steer-Queue)
+ // P1-3 (#53): Steering-Handle je Subtask registrieren (abort + steer-Queue)
         const steerHandle: SubtaskSteerHandle = { controller: new AbortController(), queue: [] };
         subtaskHandles.set(task.subtask_id, steerHandle);
 
         await this.persistSubTask(context.tenantId, dbId, task, "PENDING", null);
 
-        // Auftrag 012 P1-2: optionales Output-Schema in den Subtask-Prompt einbetten
+ // P1-2: optionales Output-Schema in den Subtask-Prompt einbetten
         const schema = task.required_output_schema as Record<string, unknown> | undefined;
         const schemaPrompt = schema && Object.keys(schema).length > 0
           ? `\n\nANTWORTFORMAT (strikt): Antworte NUR mit einem validen JSON-Objekt gemäß folgendem Schema. Kein Text davor oder danach.\nSchema: ${JSON.stringify(schema)}\n`
           : "";
 
-        // Auftrag 025 Phase 7 (#58): Session-Continuation — der Sub-Agent bekommt den
+ // Phase 7 (#58): Session-Continuation — der Sub-Agent bekommt den
         // Eltern-Kontext (Ziel + bereits gesammelte Fakten des Haupt-Agenten, gekürzt).
         const parentContext = context.toolResults.length > 0
           ? `\n\nELTERN-KONTEXT (bereits gesammelte Fakten des Haupt-Agenten):\n${context.toolResults.slice(-3).map((t) => `- ${t.toolName}: ${String(t.result ?? "").slice(0, 200)}`).join("\n")}\n`
@@ -1892,7 +1892,7 @@ ${toolTrace}`;
           isFastPath: false,
           isComplex: true,
           temporalAnchor: new Date().toISOString(),
-          // Auftrag 026 P1-3 (#53/#55): Steering-Handle + Delegations-Tiefe an den Sub-Agenten
+ // P1-3 (#53/#55): Steering-Handle + Delegations-Tiefe an den Sub-Agenten
           steering: { signal: steerHandle.controller.signal, queue: steerHandle.queue, injected: [] },
           subtaskDepth: nextDepth
         });
@@ -1901,13 +1901,13 @@ ${toolTrace}`;
         let subContext: AgentPipelineContext | null = null;
 
         try {
-          // Erster Lauf (Auftrag 025 Phase 7 #58: Eltern-Kontext + #44: Deadline)
+ // Erster Lauf 
           subContext = buildSubContext(task.task_prompt + schemaPrompt + parentContext);
           let subResult = await runWithDeadline(this.executePipeline(subContext));
           let finalText = subResult.finalDraftText || "";
           let retried = false;
 
-          // Auftrag 012 P1-2: Schema-Validierung mit genau 1 Korrekturversuch
+ // P1-2: Schema-Validierung mit genau 1 Korrekturversuch
           const validation = validateSubtaskOutput(finalText, schema);
           if (!validation.ok && schema) {
             retried = true;
@@ -1998,13 +1998,13 @@ ${toolTrace}`;
       if (!rawArgs.preference && !rawArgs.note) {
         return createToolError("update_memory benötigt mindestens 'preference' oder 'note'.");
       }
-      // Auftrag 025 Phase 3 (#24): Skill-Scaffolding-Stripping — Skill-/Workflow-Turns
+ // Phase 3 (#24): Skill-Scaffolding-Stripping — Skill-/Workflow-Turns
       // verschmutzen das Memory nicht (Muster _strip_skill_scaffolding).
       const candidateText = `${rawArgs.preference || ""} ${rawArgs.note || ""}`;
       if (isSkillScaffoldingContent(candidateText)) {
         return createToolError("Nicht gespeichert: Inhalt sieht nach technischem Skill-/Workflow-Scaffolding aus (kein Nutzer-Fakt). Speichere nur dauerhafte Präferenzen/Notizen über den Nutzer.");
       }
-      // Auftrag 025 Phase 3 (#26): Auto-Memory-Scan — ADDITIV vor dem Speichern; bei
+ // Phase 3 (#26): Auto-Memory-Scan — ADDITIV vor dem Speichern; bei
       // 0 Treffern greifen die bestehenden Louis-Bedingungen unverändert (kein Fallback-Ersatz).
       if (context.memoryAutoScanEnabled ?? true) {
         const scan = scanMemoryContent(candidateText);
@@ -2025,7 +2025,7 @@ ${toolTrace}`;
         current.response_preferences_text = prefs.join("\n");
       }
       if (rawArgs.note) {
-        // Auftrag 012 P0-2: Notiz-Dedupe — identischer Inhalt innerhalb 24 h wird nicht dupliziert
+ // P0-2: Notiz-Dedupe — identischer Inhalt innerhalb 24 h wird nicht dupliziert
         const now = Date.now();
         const noteText = rawArgs.note.trim();
         const duplicateWithin24h = current.chat_notes_json.some((n) => {
@@ -2039,7 +2039,7 @@ ${toolTrace}`;
       }
       const writeRes = await writeUserMemoryVault(context.tenantId, context.userId, current);
 
-      // Auftrag 025 Phase 1 (#3): memory_frozen_snapshot=false → Live-Refresh des Memory-
+ // Phase 1 (#3): memory_frozen_snapshot=false → Live-Refresh des Memory-
       // Snapshots im Kontext (wirkt ab der nächsten Iteration; frozen=true = erst nächster Request).
       if (!(context.memoryFrozenSnapshot ?? true)) {
         context.userMemory = current;
@@ -2074,7 +2074,7 @@ ${toolTrace}`;
         eventDetails: `${context.userId}: ${rawArgs.preference ? "preference" : ""}${rawArgs.note ? " note" : ""}`,
         actorIdentity: context.userId
       });
-      // Auftrag 025 Phase 3 (#23): Terminal-Success-Response — verhindert Modell-Thrash
+ // Phase 3 (#23): Terminal-Success-Response — verhindert Modell-Thrash
       // (Muster memory_tool.py:702 — „gespeichert, nicht wiederholen“).
       return createToolSuccess({ message: buildTerminalMemoryMessage(rawArgs.preference || rawArgs.note || "", writeRes.source), path: writeRes.path });
     } catch (err) {
@@ -2082,7 +2082,7 @@ ${toolTrace}`;
     }
   }
 
-  // Auftrag 012 P0-2: delete_memory_note — einzelne Notiz aus dem Gedächtnis entfernen (Vault-first, DB-Spiegel)
+ // P0-2: delete_memory_note — einzelne Notiz aus dem Gedächtnis entfernen (Vault-first, DB-Spiegel)
   private async executeDeleteMemoryNote(context: AgentPipelineContext, argsStr: string): Promise<ToolResult<Record<string, unknown>>> {
     try {
       const rawArgs = JSON.parse(argsStr) as { note_id?: string };
@@ -2101,7 +2101,7 @@ ${toolTrace}`;
       }
       const writeRes = await writeUserMemoryVault(context.tenantId, context.userId, current);
 
-      // Auftrag 025 Phase 1 (#3): memory_frozen_snapshot=false → Live-Refresh des Memory-
+ // Phase 1 (#3): memory_frozen_snapshot=false → Live-Refresh des Memory-
       // Snapshots im Kontext (delete_memory_note, identisch zu update_memory).
       if (!(context.memoryFrozenSnapshot ?? true)) {
         context.userMemory = current;
@@ -2166,7 +2166,7 @@ ${toolTrace}`;
     }
   }
 
-  // Auftrag 012 P0-1: update_skill — bestehenden Skill aktualisieren (Freigabe-Flow, Version-Inkrement im approveProposal)
+ // P0-1: update_skill — bestehenden Skill aktualisieren (Freigabe-Flow, Version-Inkrement im approveProposal)
   private async executeUpdateSkill(context: AgentPipelineContext, argsStr: string): Promise<ToolResult<Record<string, unknown>>> {
     try {
       const rawArgs = JSON.parse(argsStr) as { name?: string; content?: string; description?: string; tags?: string[]; category?: string };
@@ -2191,7 +2191,7 @@ ${toolTrace}`;
     }
   }
 
-  // Auftrag 012 P0-1: delete_skill — Skill löschen (Freigabe-Flow)
+ // P0-1: delete_skill — Skill löschen (Freigabe-Flow)
   private async executeDeleteSkill(context: AgentPipelineContext, argsStr: string): Promise<ToolResult<Record<string, unknown>>> {
     try {
       const rawArgs = JSON.parse(argsStr) as { name?: string };
@@ -2212,7 +2212,7 @@ ${toolTrace}`;
     }
   }
 
-  // Auftrag 026 P1-3 (#53): steer_subtask — Nachricht an laufenden Sub-Agenten (nächster Schritt)
+ // P1-3 (#53): steer_subtask — Nachricht an laufenden Sub-Agenten (nächster Schritt)
   private async executeSteerSubtask(context: AgentPipelineContext, argsStr: string): Promise<ToolResult<Record<string, unknown>>> {
     try {
       const rawArgs = JSON.parse(argsStr) as { subtask_id?: string; message?: string };
@@ -2230,7 +2230,7 @@ ${toolTrace}`;
     }
   }
 
-  // Auftrag 026 P1-3 (#53): abort_subtask — laufenden Sub-Agenten abbrechen (Teilresultat bleibt)
+ // P1-3 (#53): abort_subtask — laufenden Sub-Agenten abbrechen (Teilresultat bleibt)
   private async executeAbortSubtask(context: AgentPipelineContext, argsStr: string): Promise<ToolResult<Record<string, unknown>>> {
     try {
       const rawArgs = JSON.parse(argsStr) as { subtask_id?: string; reason?: string };
@@ -2322,7 +2322,7 @@ ${toolTrace}`;
   // create/update/move/delete_kanban_card (schreiben bzw. setzen proposedChanges).
   private readonly READ_TOOL_WHITELIST: ReadonlySet<string> = new Set([
     'web_search', 'local_knowledge', 'list_vault_files', 'list_companies', 'list_contacts', 'list_invoices',
-    // Auftrag 036 P1: neue knowledge_*-Namen (Alias neben den alten)
+ // P1: neue knowledge_*-Namen (Alias neben den alten)
     'knowledge_search', 'list_knowledge_files',
     'crm_data_analyst', 'data_architect', 'text_generator', 'get_templates', 'get_template_details',
     'apply_template', 'list_kanban_boards', 'get_kanban_board_details', 'get_workflows', 'recall_sessions'
@@ -2359,7 +2359,7 @@ ${toolTrace}`;
     context.thoughtLog.push(`Executing tool "${toolName}" with query: "${toolQuery}"`);
 
     // S8: Governance-Check vor jedem Write-Tool-Call (BLOCK / REQUIRE_APPROVAL / ASK / ALLOW)
-    //  (2026-08-17): normalisierte MCP-Namen (mcp_<server>_vault_write) auflösen —
+    // (2026-08-17): normalisierte MCP-Namen (mcp_<server>_vault_write) auflösen —
     // sonst greift die Governance bei Vault-Writes über den MCP-Pfad nicht.
     let govMapping = WRITE_ACTION_MAP[toolName];
     if (!govMapping) {
@@ -2376,7 +2376,7 @@ ${toolTrace}`;
         context.thoughtLog.push(`[Governance] BLOCK für ${toolName}: ${gov.note || "blockiert"}`);
         return { toolName, query: toolQuery, result: `Governance-Block: ${gov.note || "Aktion blockiert"}` };
       }
-      // Auftrag 042: REQUIRE_APPROVAL — Draft-Entitäten (invoices/companies/contacts/offers/emails/kanban_*)
+ // : REQUIRE_APPROVAL — Draft-Entitäten (invoices/companies/contacts/offers/emails/kanban_*)
       // haben ihren Approval-Flow im Draft-Pfad selbst (Freigabe im Chat) → unverändert ausführen.
       if (gov.effect === "ASK") {
         // S11-Vorbereitung: ASK → Tool nicht ausführen, Agent soll ask_user_question aufrufen
@@ -2402,7 +2402,7 @@ ${toolTrace}`;
     } else if (toolName === "list_vault_files" || toolName === "list_knowledge_files") {
       result = await executeListVaultFiles(context.tenantId, toolQuery);
     } else if (toolName === "recall_sessions") {
-      // Auftrag 025 Phase 5 (#48): Admin-Config für Recall (NULL = Backend-Default, Regel 12)
+ // Phase 5 (#48): Admin-Config für Recall (NULL = Backend-Default, Regel 12)
       result = await executeRecallSessions(context.tenantId, toolQuery, {
         ftsEnabled: context.aiConfig.recall_fts_enabled ?? true,
         defaultLimit: context.aiConfig.recall_search_limit ?? 10
@@ -2573,7 +2573,7 @@ ${toolTrace}`;
     } else if (toolName === "get_kanban_board_details") {
       result = await executeGetKanbanBoardDetails(context.tenantId, toolQuery);
     } else if (toolName === "create_kanban_board") {
-      // G3 (Auftrag 009) + Auftrag 042 P1: Draft-Flow — Vorschlag für Chat-Freigabe
+ // G3 + P1: Draft-Flow — Vorschlag für Chat-Freigabe
       result = await executeCreateKanbanBoard(context.tenantId, toolQuery, context.userId);
       if (result && typeof result === "object" && "success" in result && (result as { success: boolean }).success) {
         const resData = (result as { data?: Record<string, unknown> }).data;
@@ -2644,16 +2644,16 @@ ${toolTrace}`;
         }
       }
     } else if (toolName === "list_notes") {
-      // G4 (Auftrag 009)
+ // G4 
       result = await executeListNotes(context.tenantId, toolQuery);
     } else if (toolName === "update_note") {
-      // G4 (Auftrag 009)
+ // G4 
       result = await executeUpdateNote(context.tenantId, toolQuery, context.userId);
     } else if (toolName === "delete_note") {
-      // G4 (Auftrag 009)
+ // G4 
       result = await executeDeleteNote(context.tenantId, toolQuery, context.userId);
     } else if (toolName === "list_mail_drafts") {
-      // G7 (Auftrag 009)
+ // G7 
       result = await executeListMailDrafts(context.tenantId, toolQuery);
     } else if (toolName === "get_templates") {
       result = await executeGetTemplates(context.tenantId, toolQuery);
@@ -2663,12 +2663,12 @@ ${toolTrace}`;
       result = await executeApplyTemplate(context.tenantId, toolQuery);
     } else if (toolName === "vault_write" || toolName === "vault_update" || toolName === "vault_delete"
       || toolName === "knowledge_write" || toolName === "knowledge_update" || toolName === "knowledge_delete") {
-      // G8 (Auftrag 009): Vault-Vollverwaltung — Auftrag 036 P1: knowledge_*-Aliase
+ // G8 : Vault-Vollverwaltung — P1: knowledge_*-Aliase
       if (toolName === "vault_write" || toolName === "knowledge_write") result = await executeVaultWrite(context.tenantId, toolQuery, context.userId);
       else if (toolName === "vault_update" || toolName === "knowledge_update") result = await executeVaultUpdate(context.tenantId, toolQuery, context.userId);
       else result = await executeVaultDelete(context.tenantId, toolQuery, context.userId);
     } else if (toolName === "update_company_draft") {
-      // G2 (Auftrag 009) + B3 (Auftrag 011): Draft-Flow — Update als Vorschlag
+ // G2 + B3 : Draft-Flow — Update als Vorschlag
       result = await executeUpdateDraftCompany(context.tenantId, toolQuery, context.userId);
       if (result && typeof result === "object" && "success" in result && (result as { success: boolean }).success) {
         const resData = (result as { data?: Record<string, unknown> }).data;
@@ -2683,7 +2683,7 @@ ${toolTrace}`;
         }
       }
     } else if (toolName === "update_contact_draft") {
-      // G2 (Auftrag 009) + B3 (Auftrag 011): Draft-Flow — Update als Vorschlag
+ // G2 + B3 : Draft-Flow — Update als Vorschlag
       result = await executeUpdateDraftContact(context.tenantId, toolQuery, context.userId);
       if (result && typeof result === "object" && "success" in result && (result as { success: boolean }).success) {
         const resData = (result as { data?: Record<string, unknown> }).data;
@@ -2698,7 +2698,7 @@ ${toolTrace}`;
         }
       }
     } else if (toolName === "update_invoice_draft") {
-      // G5 (Auftrag 009) + B3 (Auftrag 011): Draft-Flow — Update als Vorschlag
+ // G5 + B3 : Draft-Flow — Update als Vorschlag
       result = await executeUpdateDraftInvoice(context.tenantId, toolQuery, context.userId);
       if (result && typeof result === "object" && "success" in result && (result as { success: boolean }).success) {
         const resData = (result as { data?: Record<string, unknown> }).data;
@@ -2713,7 +2713,7 @@ ${toolTrace}`;
         }
       }
     } else if (toolName === "update_offer_draft") {
-      // G6 (Auftrag 009) + B3 (Auftrag 011): Draft-Flow — Update als Vorschlag
+ // G6 + B3 : Draft-Flow — Update als Vorschlag
       result = await executeUpdateDraftOffer(context.tenantId, toolQuery, context.userId);
       if (result && typeof result === "object" && "success" in result && (result as { success: boolean }).success) {
         const resData = (result as { data?: Record<string, unknown> }).data;
@@ -2845,7 +2845,7 @@ ${toolTrace}`;
 export const globalAgentRuntime = new AgentRuntime();
 
 // ============================================================================
-// Auftrag 008 4A T1-Nachtrag (B1): delegate_subtask als Workflow-Schritt.
+// 4A T1-Nachtrag (B1): delegate_subtask als Workflow-Schritt.
 // Baut isolierte Sub-Contexts (wie executeDelegation) und führt sie über den
 // globalen AgentRuntime-Singleton aus — kontext-agnostisch nutzbar (Workflows).
 // Liefert dieselbe Struktur wie executeDelegation (SubTaskResult[] + Verifikation).
@@ -2894,7 +2894,7 @@ export async function runSubTasksStandalone(
       }
     } catch { /* Persistenz best-effort */ }
 
-    // Auftrag 012 P1-2: optionales Output-Schema auch im Workflow-Pfad (konsistent zu executeDelegation)
+ // P1-2: optionales Output-Schema auch im Workflow-Pfad (konsistent zu executeDelegation)
     const schema = task.required_output_schema as Record<string, unknown> | undefined;
     const schemaPrompt = schema && Object.keys(schema).length > 0
       ? `\n\nANTWORTFORMAT (strikt): Antworte NUR mit einem validen JSON-Objekt gemäß folgendem Schema. Kein Text davor oder danach.\nSchema: ${JSON.stringify(schema)}\n`
@@ -2933,7 +2933,7 @@ export async function runSubTasksStandalone(
       let finalText = subResult.finalDraftText || "";
       let retried = false;
 
-      // Auftrag 012 P1-2: Schema-Validierung mit genau 1 Korrekturversuch
+ // P1-2: Schema-Validierung mit genau 1 Korrekturversuch
       const validation = validateSubtaskOutput(finalText, schema);
       if (!validation.ok && schema) {
         retried = true;
