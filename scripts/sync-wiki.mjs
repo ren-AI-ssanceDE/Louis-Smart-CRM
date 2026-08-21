@@ -2,7 +2,7 @@
 // ============================================================================
 // WIKI-SYNC: GitHub-Wiki mit den aktuellen docs/Readmes synchronisieren
 // ----------------------------------------------------------------------------
-// Regel (Stefan 2026-08-21): Das GitHub-Wiki ist ein SPIEGEL der Readmes —
+// Regel (2026-08-21): Das GitHub-Wiki ist ein SPIEGEL der Readmes —
 // bei JEDEM Live-Push muss das Wiki mit den aktuellen Readme-Inhalten
 // synchronisiert werden. Dieses Skript:
 //   1. Kopiert jede docs/Readme-*.md in das Wiki-Repo (Namens-Mapping:
