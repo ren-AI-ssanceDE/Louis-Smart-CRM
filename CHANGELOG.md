@@ -2,6 +2,19 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.1] — 2026-08-21
+
+Doku- und Infrastruktur-Pflege nach 2.1.0:
+
+### 📝 Dokumentation
+- **README:** Tool-Steuerung über Chatprofile beschrieben (eigene Tools immer verfügbar, externe MCP-Tools pro Profil regelbar — Admin-Freigaben, Session-Override)
+- **MCP-Namespace korrigiert:** `mcp_<server>_<tool>` statt `mcp_<server>__<tool>` (Louis-AI- und Systemarchitektur-Readme)
+- **README/CHANGELOG/Releases:** interne Verweise entfernt (öffentlicher Stand = nur öffentliche Inhalte)
+
+### 🔧 Infrastruktur
+- **PostgreSQL-Volume-Auto-Erkennung:** `npm run setup:volumes` erkennt das vorhandene Volume auf jedem System (kein Umbenennen — Abwärtskompatibilität für alle Installationen); Compose nutzt `POSTGRES_VOLUME` mit `external`-Schutz
+- **Watchdog für öffentliches Repo:** automatische Prüfung auf interne Referenzen (still bei Grün, Alarm bei Rot)
+
 ## [2.1.0] — 2026-08-21
 
 Weiterentwicklung auf V2-Basis: MCP-Client-Engine (SDK-Umbau), Chatprofile, DAG-Workflow-Reifung und deutlich erweiterte Qualitätsabsicherung.

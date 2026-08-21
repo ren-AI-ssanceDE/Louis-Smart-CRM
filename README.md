@@ -1,6 +1,6 @@
 # Louis Smart CRM
 
-> **Version 2.1.0** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
+> **Version 2.1.1** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
 > Ein integrierter AI-Assistent („Louis AI") erledigt CRM-Aufgaben im Chat: Kontakte, Firmen, Angebote, Rechnungen (ZUGFeRD/XRechnung), Notizen, Wissensdatenbank, Workflows und MCP-Anbindung.
 
 ---
@@ -164,6 +164,6 @@ Deploy-Praxis: nach Änderungen `docker compose up -d --build app`, dann Verifik
 
 ### Release & Versionierung
 
-- Version in `package.json` (aktuell **2.1.0**); Änderungshistorie: `CHANGELOG.md`
+- Version in `package.json` (aktuell **2.1.1**); Änderungshistorie: `CHANGELOG.md`
 - Bekannte akzeptierte Restrisiken für V2: Tenant-List-Vektor (`OR tenant_id = '1'`-Muster), lokaler-LLM-Subtask-Pfad unter paralleler Last
 - Rollback: Docker-Image `louis-smart-crm-app:latest` neu bauen aus git-Tag; DB-Backup einspielen (siehe oben)
