@@ -84,14 +84,14 @@ Weiterentwicklung auf V2-Basis: MCP-Client-Engine (SDK-Umbau), Chatprofile, DAG-
 
 - Tenant-List-Vektor (`OR tenant_id = '1'`-Muster in Listen-Tools) — offen (Folgearbeit)
 - Lokaler-LLM-Subtask-Pfad unter paralleler LLM-Last (Timeout) — bekannte Restlücke
-- Gmail-Delete-Scope: Google erlaubt kein hartes Löschen über die API — dokumentiert (C1, Option A)
-- `drive_search` (transient) und `obsidian_active_file_get_path` (Umgebung) — dokumentierte Client-Volltest-Befunde
+- Gmail-Delete-Scope: Google erlaubt kein hartes Löschen über die API — dokumentiert (Option A)
+- `drive_search` (transient) und `obsidian_active_file_get_path` (Umgebung) — dokumentierte Client-Volltest-Hinweise
 
 ---
 
 ## [2.0.0] — 2026-08-17
 
-Release der Produktionsreife: 103 Commits seit dem Import aus Google AI Studio (V1-Basis), abgesichert durch 316 Unit-Tests, Live-E2E (102/103), MCP-Volltest (45/45) und ZUGFeRD-Referenzvalidierung.
+Release der Produktionsreife: 103 Commits seit dem V1-Import, abgesichert durch 316 Unit-Tests, Live-E2E (102/103), MCP-Volltest (45/45) und ZUGFeRD-Referenzvalidierung.
 
 ### 🚀 Highlights V2
 
@@ -105,7 +105,7 @@ Release der Produktionsreife: 103 Commits seit dem Import aus Google AI Studio (
 ### 🐛 Wichtige Fixes (Auswahl)
 
 - **Auth-Secret in der DB statt Code/Env:** Das Session-Secret wird beim ersten Start generiert und in `sys_app_security` gespeichert — kein hartkodierter Fallback mehr (Regel: keine Einstellungen in Dateien; alle Konfiguration über Admin-Panel/DB).
-- **Workflow-Notiz persistiert wirklich (N3):** `create_note_draft`-Schritte im linearen Workflow-Executor und im DAG-Executor (Dispatch `executeCreateNoteDraft` + LLM-Dispatch `CreateNote`) übergeben `bypassApproval=true` — vorher liefen alle drei Pfade als No-Op (nur Draft-Meldung bzw. nur Audit ohne DB-Eintrag). Live verifiziert: Notiz in `sys_louis_ai_notes` (Test Testkunde, `ai_workflow(_dag)`).
+- **Workflow-Notiz persistiert wirklich:** `create_note_draft`-Schritte im linearen Workflow-Executor und im DAG-Executor (Dispatch `executeCreateNoteDraft` + LLM-Dispatch `CreateNote`) übergeben `bypassApproval=true` — vorher liefen alle drei Pfade als No-Op (nur Draft-Meldung bzw. nur Audit ohne DB-Eintrag). Live verifiziert: Notiz in `sys_louis_ai_notes` (Test Testkunde, `ai_workflow(_dag)`).
 - Council-MCP: Session-Upsert (INSERT … ON CONFLICT) — `crm_run_council_deliberation` benutzbar
 - Angebots-Finalisierung: „Output validation failed" behoben (ISO-Mapper für pg-Date-Spalten in offers-Router)
 - MCP-Mapping-Cluster: `notes_create` persistiert wirklich; Feldnamen-Drift (`invoice_line_items`, `note_id_uuid`, `draft_id_uuid`) behoben + Drift-Guard-Test
@@ -131,4 +131,4 @@ Release der Produktionsreife: 103 Commits seit dem Import aus Google AI Studio (
 
 ## [1.0.0] — 2026-08-04 (Basis)
 
-Import aus Google AI Studio („Run and deploy your AI Studio app"): CRM-Grundgerüst (Firmen, Kontakte, Angebote, Rechnungen), Chat mit Google-GenAI, ZUGFeRD-Erzeugung, Docker-Stack. Danach 13 Aufträge (001–013) mit laufenden Funktions- und Qualitätserweiterungen, die in 2.0.0 münden.
+CRM-Grundgerüst (Firmen, Kontakte, Angebote, Rechnungen), Chat mit Google-GenAI, ZUGFeRD-Erzeugung, Docker-Stack. Danach 13 Erweiterungsrunden mit laufenden Funktions- und Qualitätserweiterungen, die in 2.0.0 münden.

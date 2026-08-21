@@ -810,7 +810,7 @@ export async function generateContentUniversal({
     }
     const ai = new GoogleGenAI({
       apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+      httpOptions: { headers: { 'User-Agent': 'louis-crm' } }
     });
     
     const genConfig: GenerateContentConfig = {};

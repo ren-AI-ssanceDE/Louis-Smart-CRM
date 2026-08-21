@@ -195,7 +195,7 @@ export async function executeWebSearch(query: string, attempt: number = 1, tenan
         apiKey: process.env.GEMINI_API_KEY || "dummy",
         httpOptions: {
           headers: {
-            'User-Agent': 'aistudio-build',
+            'User-Agent': 'louis-crm',
           }
         }
       });

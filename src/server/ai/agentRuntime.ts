@@ -847,7 +847,7 @@ export class AgentRuntime {
       apiKey: cleanApiKey || "dummy",
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build',
+          'User-Agent': 'louis-crm',
         }
       }
     });
