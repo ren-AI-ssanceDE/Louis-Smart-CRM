@@ -797,7 +797,7 @@ export const invoicesRouter = router({
         associated_company_id: data.associated_company_id,
         associated_contact_id: data.associated_contact_id
       });
-      // Auftrag 008 4A T2: generisches Update-Event (Workflows, die jedes Update triggern wollen)
+      // Generisches Update-Event (Workflows, die jedes Update triggern wollen)
       workflowEventBus.emitEvent(ctx.tenantId, 'invoice.updated', {
         id_uuid,
         invoice_number: data.invoice_number,
