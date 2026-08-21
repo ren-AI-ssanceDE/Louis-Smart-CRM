@@ -33,6 +33,7 @@ import {
   CreateNoteDraftInputSchema
 } from "../../../lib/schemas.js";
 import { workflowEventBus } from "../workflowEventBus.js";
+import { normalizeQueryValue } from "../vaultStore.js";
 import { offersRouter } from "../../routers/offers.js";
 import { Company, Contact, Invoice, Offer, OfferLineItem, Context } from "../../../types.js";
 
@@ -688,6 +689,7 @@ export async function executeListCompanies(
     const parsed = ListCompaniesInputSchema.safeParse(rawArgs);
     const input = parsed.success ? parsed.data : ListCompaniesInputSchema.parse({});
     const { search, limit, offset, detail_level } = input;
+    const normSearch = normalizeQueryValue(search);
 
     if (isUsingFallback) {
       let list = (fallbackStore.companies || []).filter(
@@ -698,15 +700,15 @@ export async function executeListCompanies(
       if (search) {
         const matched = list.filter(
           (c) =>
-            fuzzyMatch(c.full_legal_name || '', search) ||
-            fuzzyMatch(c.city || '', search) ||
-            fuzzyMatch(c.tax_vat_id || '', search)
+            fuzzyMatch(c.full_legal_name || '', normSearch) ||
+            fuzzyMatch(c.city || '', normSearch) ||
+            fuzzyMatch(c.tax_vat_id || '', normSearch)
         );
         if (matched.length > 0) {
           list = matched;
           isFuzzy = true;
         } else {
-          const s = search.toLowerCase();
+          const s = normSearch.toLowerCase();
           list = list.filter(
             (c) =>
               (c.full_legal_name && c.full_legal_name.toLowerCase().includes(s)) ||
@@ -815,6 +817,7 @@ export async function executeListContacts(
     const parsed = ListContactsInputSchema.safeParse(rawArgs);
     const input = parsed.success ? parsed.data : ListContactsInputSchema.parse({});
     const { search, company_id, limit, offset, detail_level } = input;
+    const normSearch = normalizeQueryValue(search);
 
     if (isUsingFallback) {
       let list = (fallbackStore.contacts || []).filter(
@@ -830,16 +833,16 @@ export async function executeListContacts(
         const matched = list.filter((c) => {
           const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
           return (
-            fuzzyMatch(fullName, search) ||
-            fuzzyMatch(c.email_address || '', search) ||
-            fuzzyMatch(c.phone_number || '', search)
+            fuzzyMatch(fullName, normSearch) ||
+            fuzzyMatch(c.email_address || '', normSearch) ||
+            fuzzyMatch(c.phone_number || '', normSearch)
           );
         });
         if (matched.length > 0) {
           list = matched;
           isFuzzy = true;
         } else {
-          const s = search.toLowerCase();
+          const s = normSearch.toLowerCase();
           list = list.filter((c) => {
             const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim().toLowerCase();
             return (
@@ -960,6 +963,7 @@ export async function executeListInvoices(
     const parsed = ListInvoicesInputSchema.safeParse(rawArgs);
     const input = parsed.success ? parsed.data : ListInvoicesInputSchema.parse({});
     const { search, payment_status, company_id, limit, offset, detail_level, sort_by, sort_order } = input;
+    const normSearch = normalizeQueryValue(search);
 
     if (isUsingFallback) {
       let list = (fallbackStore.invoices || []).filter(
@@ -997,12 +1001,12 @@ export async function executeListInvoices(
 
       let isFuzzy = false;
       if (search) {
-        const matched = list.filter((i) => fuzzyMatch(i.invoice_number || '', search));
+        const matched = list.filter((i) => fuzzyMatch(i.invoice_number || '', normSearch));
         if (matched.length > 0) {
           list = matched;
           isFuzzy = true;
         } else {
-          const s = search.toLowerCase();
+          const s = normSearch.toLowerCase();
           list = list.filter((i) => i.invoice_number && i.invoice_number.toLowerCase().includes(s));
         }
       }
@@ -2087,6 +2091,8 @@ export async function executeListNotes(
     const entityType = raw.entity_type ? String(raw.entity_type).toLowerCase() : undefined;
     const entityId = raw.entity_id_uuid || raw.entity_id || raw.contact_id_uuid || raw.company_id_uuid || undefined;
     const search = raw.search ? String(raw.search) : undefined;
+    // 050 (048-B2): Query normalisieren — Modell kann JSON-String statt Freitext liefern
+    const normSearch = search !== undefined ? normalizeQueryValue(search) : undefined;
     const limit = Math.min(Math.max(Number(raw.limit) || 50, 1), 200);
 
     let rows: Array<Record<string, unknown>> = [];
@@ -2094,7 +2100,7 @@ export async function executeListNotes(
       let notes = (fallbackStore.aiNotes || []).filter((n) => n.tenant_id === tenantId || n.tenant_id === "1");
       if (entityType) notes = notes.filter((n) => String(n.entity_type || "").toLowerCase() === entityType);
       if (entityId) notes = notes.filter((n) => n.entity_id_uuid === entityId);
-      if (search) notes = notes.filter((n) => String(n.note_text || "").toLowerCase().includes(search.toLowerCase()));
+      if (normSearch) notes = notes.filter((n) => String(n.note_text || "").toLowerCase().includes(normSearch.toLowerCase()));
       rows = notes.slice(0, limit);
     } else {
       const params: unknown[] = [tenantId];

@@ -37,6 +37,7 @@ import {
   AnswerQuestionSchema
 } from "../../lib/schemas.js";
 import { runLouisAiFlow, getTenantAiConfig } from "../ai/orchestrator.js";
+import { getChatRunStatus } from "../ai/liveStatusRegistry.js";
 import { scheduleBackgroundCompression, supportsNativeCompaction, waitForCompressionLock, resolveRotatedSessionId, forgetSessionRotationByChild } from "../ai/contextCompressor.js";
 // C.7 (Plan 2026-08-19): Chatprofile — Wechsel-Sperre + Default-Profil für neue Sessions
 import { markChatTaskActive, getDefaultProfileId } from "../mcp/chatProfiles.js";
@@ -1271,6 +1272,20 @@ export const louisAiRouter = router({
         memoryRecallCount: result.memoryRecallCount ?? 0,
         metrics: result.metrics
       };
+    }),
+
+  // 052 (048-B1): Live-Status während der Antwort-Verarbeitung (Parität zur
+  // Agent-Referenz-UI). Fail-open: kein Lauf/abgelaufen → { active: false }.
+  // isPending gepollt (~800ms), speist Status-Zeile + Live-Thought-Block.
+  getChatRunStatus: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid().optional() }))
+    .output(z.object({
+      active: z.boolean(),
+      current: z.object({ kind: z.enum(["tool", "workflow", "skill", "phase"]), label: z.string() }).nullable(),
+      lines: z.array(z.string())
+    }))
+    .query(({ input }) => {
+      return getChatRunStatus(input.sessionId || "");
     }),
 
   approveProposal: protectedProcedure

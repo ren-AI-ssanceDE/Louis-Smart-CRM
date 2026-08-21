@@ -2,6 +2,43 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.2] — 2026-08-21 (in Vorbereitung)
+
+> **Hinweis:** Nächste Version nach Tag `2.1.1` — noch nicht veröffentlicht. Alle Fixes gehören in diese Version.
+
+### 🎯 Fokus: Zuverlässigkeit der KI-Pfade (Vault, Kalender, Tokens, Live-Status)
+
+#### 🐛 Vault-Suche: doppelt-verschachtelte Query behoben
+- **Kern-Fix:** Tool-Vertrag korrigiert — `query` ist reiner Freitext (kein „als JSON"-Hinweis mehr), plus modell-agnostischer Query-Unwrap (`normalizeQueryValue`, rekursiv, max. 3 Ebenen) an allen Query-Einstiegen (Vault-Suche/Lesen, Wissenssuche, Session-Recall, CRM-Listen).
+- Live verifiziert: Thought-Log zeigt `query: "Willkommen"` statt JSON-im-JSON; Golden-Replay 34/34 mit 0 LLM-Calls (110 Golden-Files neu aufgezeichnet).
+
+#### 🔌 Google Kalender: Wechsel auf den aktiven SOTA-Server
+- **Root-Cause:** Das bisherige Paket `mcp-google-calendar` 0.0.5 (seit 03/2025 ungepflegt) lieferte durch eine Zod-4-Inkompatibilität leere Input-Schemas — Terminerstellung scheiterte immer mit HTTP 400.
+- **Fix:** Wechsel auf `@cocal/google-calendar-mcp` (aktiv gepflegt, korrekte Schemas, flache Parameter), OAuth-Umstellung (`GOOGLE_CALENDAR_MCP_TOKEN_PATH`), Tool-Suffixe migriert, Namens-Duplikate nach Server-Wechsel werden aktiv-bevorzugt aufgelöst.
+- **Ergebnis:** 13 Kalender-Tools mit vollständigen Schemas; Termin anlegen/lesen/bearbeiten/löschen live verifiziert (200 statt 400).
+
+#### ⚡ Token-Verbrauch: Memory-Prefetch-Budget hart durchgesetzt
+- Ein 8.000-Zeichen-Memory-Eintrag (inkl. Tracking-URLs) sprengte das Prefetch-Budget und blähte jede Anfrage auf. Budget wird jetzt hart durchgesetzt (Einträge gekürzt statt gesprengt), Riesen-Eintrag bereinigt.
+- **Messung:** Termin-Anfrage 91.423 → **35.451 Input-Tokens (-61%)**, Folge-Nachricht 52.899 → **18.297 (-65%)**.
+
+#### 💬 Live-Status im Chat: „Was macht Louis gerade?"
+- Während der Antwort zeigt die UI **über dem Eingabefeld**, welches Tool / welcher Workflow / welcher Skill gerade ausgeführt wird („Verwende Tool: vault_search" / „Führe Workflow aus: …" / „Nutzt Skill: …").
+- Zusätzlich erscheint in der Nachricht ein **Live-Thought-Block** mit den letzten Denk-Schritten (scrollbar, einklappbar) — nach der Antwort übernimmt der finale Thought-Log.
+- Technik: In-Memory-Status-Registry (Referenz auf den Thought-Log, TTL-Cleanup) + tRPC-Endpoint + Polling (~800ms, nur während der Verarbeitung).
+
+### ✅ Qualität & Tests
+
+- Unit-Tests: **668/668** (78 Dateien; +31 seit 2.0.0: Query-Normalisierung, SOTA-Server, Memory-Budget, Live-Status)
+- Golden-Replay: 34/34 deterministisch (0 LLM-Calls); MCP-Volltest: Kalender 6/6 grün (SOTA)
+- Live-E2E live-status: Status-Zeile + Thought-Block erscheinen/verschwinden korrekt
+- Alle Gates: check:rules, lint, pre-commit-Hook grün; heilige Dateien unangetastet
+
+---
+
+# Changelog — Louis Smart CRM
+
+Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
+
 ## [2.1.1] — 2026-08-21
 
 Doku- und Infrastruktur-Pflege nach 2.1.0:

@@ -397,6 +397,41 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
   });
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // 052 (048-B1): Live-Status während der Antwort-Verarbeitung — Polling (~800ms)
+  // nur bei isPending + vorhandener sessionId; cleanup stoppt den Poll (Antwort/Cancel).
+  const [liveStatus, setLiveStatus] = useState<{ kind: "tool" | "workflow" | "skill" | "phase"; label: string } | null>(null);
+  const [liveLines, setLiveLines] = useState<string[]>([]);
+  const pollSessionIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isPending || !sessionId) {
+      setLiveStatus(null);
+      setLiveLines([]);
+      pollSessionIdRef.current = undefined;
+      return;
+    }
+    pollSessionIdRef.current = sessionId;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const res = await utils.client.getChatRunStatus.query({ sessionId });
+        if (cancelled) return;
+        setLiveStatus(res.current);
+        setLiveLines(res.lines);
+      } catch {
+        // Fail-open: Poll-Fehler ignorieren (Antwort kommt trotzdem)
+      }
+    };
+    void tick();
+    const iv = setInterval(() => { void tick(); }, 800);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      pollSessionIdRef.current = undefined;
+    };
+  }, [isPending, sessionId, utils.client]);
+
   // File attachment states (chat upload)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -608,6 +643,15 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
       : '')) + failedNote;
     setInputText('');
 
+    // 052 (048-B1): Client-seitige sessionId für NEUE Sessions — der Server erzeugt
+    // sonst intern eine UUID (louisAi.ts), die der Client erst NACH der Antwort kennt.
+    // Ohne eigene UUID könnte beim ersten Lauf nicht gepollt werden (getChatRunStatus).
+    let sendSessionId = sessionId;
+    if (!sendSessionId) {
+      sendSessionId = crypto.randomUUID();
+      setSessionId(sendSessionId);
+    }
+
     const attachmentRefs = readyAttachments.map(a => ({
       attachmentId: a.descriptor!.attachmentId,
       fileName: a.descriptor!.fileName,
@@ -640,7 +684,7 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
     try {
       const resultObj = await utils.client.sendMessage.mutate({
         message: userMsg,
-        sessionId,
+        sessionId: sendSessionId,
         language: i18n.language,
         attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
  // P2-B: Lineage — beim ersten sendMessage nach „Als Verlauf fortsetzen“
@@ -1217,13 +1261,24 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
               <div className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-tr from-accent-orange to-accent-blue/80 flex items-center justify-center shadow-md relative animate-pulse">
                 <Brain className="w-4 h-4 text-white animate-spin" />
               </div>
-              <div className="bg-primary-light border border-white/5 p-4 rounded-3xl rounded-tl-none max-w-sm flex items-center gap-3">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-accent-orange rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <div className="w-2 h-2 bg-accent-blue rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <div className="w-2 h-2 bg-neutral-white rounded-full animate-bounce" />
+              <div className="bg-primary-light border border-white/5 p-4 rounded-3xl rounded-tl-none max-w-sm flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-accent-orange rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <div className="w-2 h-2 bg-accent-blue rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <div className="w-2 h-2 bg-neutral-white rounded-full animate-bounce" />
+                  </div>
+                  <p className="text-xs text-slate-400 font-mono tracking-widest uppercase">{t('louis_copilot:thinking', { defaultValue: 'Louis Thinking...' })}</p>
                 </div>
-                <p className="text-xs text-slate-400 font-mono tracking-widest uppercase">{t('louis_copilot:thinking', { defaultValue: 'Louis Thinking...' })}</p>
+                {/* 052 (048-B1): Live-Thought-Block — ankommende ThoughtLog-Zeilen während der Antwort */}
+                {liveLines.length > 0 && (
+                  <div data-testid="live-thought-block" className="mt-1 max-h-40 overflow-y-auto space-y-1">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">{t('louis_copilot:thinking_live', { defaultValue: 'Louis denkt nach…' })}</p>
+                    {liveLines.slice(-8).map((line, idx) => (
+                      <p key={idx} className="text-[11px] font-mono text-slate-400 leading-4 break-words">{line}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <button
@@ -1268,6 +1323,25 @@ export function LouisAi({ onClose }: { onClose?: () => void }) {
       {/* Input Area */}
       <div className="p-4 bg-primary-dark/80 border-t border-white/5">
         <div className="flex flex-col gap-2">
+          {/* 052 (048-B1): Live-Status-Zeile über dem Eingabefeld (während isPending) */}
+          {isPending && (
+            <div
+              data-testid="live-status-row"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-300"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-orange animate-pulse shrink-0" />
+              {liveStatus ? (
+                <span className="font-mono truncate">
+                  {liveStatus.kind === 'tool' && t('louis_copilot:status_tool', { defaultValue: 'Verwende Tool: {{label}}', label: liveStatus.label })}
+                  {liveStatus.kind === 'workflow' && t('louis_copilot:status_workflow', { defaultValue: 'Führe Workflow aus: {{label}}', label: liveStatus.label })}
+                  {liveStatus.kind === 'skill' && t('louis_copilot:status_skill', { defaultValue: 'Nutzt Skill: {{label}}', label: liveStatus.label })}
+                  {liveStatus.kind === 'phase' && t('louis_copilot:status_phase', { defaultValue: 'Phase {{label}}', label: liveStatus.label })}
+                </span>
+              ) : (
+                <span className="font-mono">{t('louis_copilot:thinking', { defaultValue: 'Louis denkt nach...' })}</span>
+              )}
+            </div>
+          )}
           {/* Pending attachment chips */}
           {pendingAttachments.length > 0 && (
             <div className="flex flex-wrap gap-2">

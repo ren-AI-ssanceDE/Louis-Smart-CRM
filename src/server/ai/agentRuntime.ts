@@ -59,7 +59,7 @@ import { vaultToolKind, vaultWriteBaseName, VAULT_WRITE_ACTION_MAP } from "./vau
 import { ToolCall } from "../../types/inference.js";
 import { McpClientEngine } from "../mcp/mcpClientEngine.js";
 import { evaluateGovernanceRules } from "./governance.js";
-import { vaultSearch, vaultReadText, readUserMemoryVault, writeUserMemoryVault, resolveSkillFiles } from "./vaultStore.js";
+import { vaultSearch, vaultReadText, readUserMemoryVault, writeUserMemoryVault, resolveSkillFiles, normalizeQueryValue } from "./vaultStore.js";
 import type { VaultSkillFile } from "./vaultStore.js";
 import { sanitizeFinalText, containsToolCallXml } from "./toolCallSanitizer.js";
 // Phase 3 (#23/#24/#26): Memory-Härtung (Terminal-Message, Scaffolding-Strip, Auto-Scan)
@@ -506,15 +506,15 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   // KNOWLEDGE / VAULT
   { name: "web_search", desc: "'web_search': Externe Webrecherche für Mehrwertsteuersätze, Firmenregister etc.", domain: 'KNOWLEDGE' },
  // P1: interne Wissensvault-Familie = knowledge_* (Alias: alte vault_*-Namen)
-  { name: "knowledge_search", desc: "'knowledge_search': Liest oder durchsucht Wissensdateien (Markdown .md, TXT, PDF, Word etc.) im INTERNEN Wissensvault (knowledge_data_vault). Alias: 'local_knowledge'.", domain: 'KNOWLEDGE' },
+  { name: "knowledge_search", desc: "'knowledge_search': Liest oder durchsucht Wissensdateien (Markdown .md, TXT, PDF, Word etc.) im INTERNEN Wissensvault (knowledge_data_vault). query = Suchbegriff oder Dateiname (Freitext, KEIN JSON). Alias: 'local_knowledge'.", domain: 'KNOWLEDGE' },
   { name: "list_knowledge_files", desc: "'list_knowledge_files': Listet hochgeladene Dateien des INTERNEN Wissensvaults (knowledge_data_vault) auf. Alias: 'list_vault_files'.", domain: 'KNOWLEDGE' },
  // G8 : Vault-Vollverwaltung (write/update/delete) — INTERNER Wissensvault (036: knowledge_*-Familie)
   { name: "knowledge_write", desc: "'knowledge_write': Legt eine neue Datei im INTERNEN Wissensvault (knowledge_data_vault) an. Query JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv. Alias: 'vault_write'.", domain: 'KNOWLEDGE' },
   { name: "knowledge_update", desc: "'knowledge_update': Aktualisiert den Inhalt einer Datei im INTERNEN Wissensvault (knowledge_data_vault, upsert). Query JSON: { file_name, content }. Alias: 'vault_update'.", domain: 'KNOWLEDGE' },
   { name: "knowledge_delete", desc: "'knowledge_delete': Löscht eine Datei aus dem INTERNEN Wissensvault (knowledge_data_vault). Query JSON: { file_name }. Alias: 'vault_delete'.", domain: 'KNOWLEDGE' },
-  { name: "recall_sessions", desc: "'recall_sessions': Durchsucht vergangene KI-Sessions per Volltextsuche. Query JSON: { query, limit, offset }", domain: 'KNOWLEDGE' },
-  { name: "vault_search", desc: "'vault_search': Durchsucht den OBSIDIAN-Vault (Notiz-Vault, NICHT der interne Wissensvault). Query JSON: { query, limit }", domain: 'KNOWLEDGE' },
-  { name: "vault_read", desc: "'vault_read': Liest eine Datei aus dem OBSIDIAN-Vault (Notiz-Vault, NICHT der interne Wissensvault). Query JSON: { path }", domain: 'KNOWLEDGE' },
+  { name: "recall_sessions", desc: "'recall_sessions': Durchsucht vergangene KI-Sessions per Volltextsuche. query = Suchbegriff (Freitext, KEIN JSON).", domain: 'KNOWLEDGE' },
+  { name: "vault_search", desc: "'vault_search': Durchsucht den OBSIDIAN-Vault (Notiz-Vault, NICHT der interne Wissensvault). query = Suchbegriff (Freitext, KEIN JSON-Objekt).", domain: 'KNOWLEDGE' },
+  { name: "vault_read", desc: "'vault_read': Liest eine Datei aus dem OBSIDIAN-Vault (Notiz-Vault, NICHT der interne Wissensvault). query = Dateipfad (z. B. _louis/Willkommen.md, KEIN JSON).", domain: 'KNOWLEDGE' },
   { name: "update_memory", desc: "'update_memory': Merkt sich dauerhafte Präferenzen und Notizen über den Nutzer. Query JSON: { preference?, note? } — mindestens ein Feld gesetzt", domain: 'CORE' },
   { name: "delete_memory_note", desc: "'delete_memory_note': Löscht eine einzelne Notiz aus dem Gedächtnis. Query JSON: { note_id } — die ID erhält man aus update_memory/liste oder dem Memory-Formular", domain: 'CORE' },
   { name: "save_skill", desc: "'save_skill': Legt einen Wissens-Skill im Vault an (Freigabe erforderlich). Query JSON: { name, description, content, category?, tags? }", domain: 'WORKFLOWS' },
@@ -2408,22 +2408,41 @@ ${toolTrace}`;
         defaultLimit: context.aiConfig.recall_search_limit ?? 10
       });
     } else if (toolName === "vault_search") {
-      let vQuery = toolQuery;
+      // 050 (048-B2): rekursiver, modell-agnostischer Unwrap — Modelle liefern
+      // die Query teils als JSON-String ({"query": "..."}, auch 2-fach verschachtelt).
+      // vaultSearch() normalisiert zusätzlich (Defense-in-Depth auf beiden Ebenen).
+      let vQuery: unknown = toolQuery;
       let vLimit = 5;
       try {
-        const vParsed = JSON.parse(toolQuery) as { query?: string; limit?: number };
-        if (vParsed.query) vQuery = vParsed.query;
-        if (vParsed.limit) vLimit = vParsed.limit;
+        if (typeof toolQuery === "string") {
+          const vParsed = JSON.parse(toolQuery) as { query?: string; limit?: number };
+          if (vParsed.query) vQuery = vParsed.query;
+          if (vParsed.limit) vLimit = vParsed.limit;
+        } else if (toolQuery && typeof toolQuery === "object") {
+          const vObj = toolQuery as { query?: string; limit?: number };
+          if (vObj.query) vQuery = vObj.query;
+          if (vObj.limit) vLimit = vObj.limit;
+        }
       } catch { /* reiner Suchstring */ }
-      result = await vaultSearch(context.tenantId, vQuery, vLimit);
+      result = await vaultSearch(context.tenantId, normalizeQueryValue(vQuery), vLimit);
     } else if (toolName === "vault_read") {
       try {
-        const vParsed = JSON.parse(toolQuery) as { path?: string };
-        if (!vParsed.path) throw new Error("path fehlt");
-        result = await vaultReadText(context.tenantId, vParsed.path);
+        // 050 (048-B2): Pfad kann als JSON-String ({"path": "..."}) kommen —
+        // normalizeQueryValue entpackt rekursiv; vaultReadText normalisiert zusätzlich.
+        let vPath: unknown = toolQuery;
+        if (typeof toolQuery === "string") {
+          const vParsed = JSON.parse(toolQuery) as { path?: string };
+          if (vParsed.path) vPath = vParsed.path;
+        } else if (toolQuery && typeof toolQuery === "object") {
+          const vObj = toolQuery as { path?: string };
+          if (vObj.path) vPath = vObj.path;
+        }
+        const cleanPath = normalizeQueryValue(vPath);
+        if (!cleanPath) throw new Error("path fehlt");
+        result = await vaultReadText(context.tenantId, cleanPath);
         // #30 (026 P1-1): vault_read auf eine Skill-Datei = echte Nutzung → use_count+1 (best-effort)
-        if (vParsed.path.startsWith("_louis/skills/") && !vParsed.path.startsWith("_louis/skills/_archive/")) {
-          void bumpSkillCounter(context.tenantId, vParsed.path, "useCount");
+        if (cleanPath.startsWith("_louis/skills/") && !cleanPath.startsWith("_louis/skills/_archive/")) {
+          void bumpSkillCounter(context.tenantId, cleanPath, "useCount");
         }
       } catch (err) {
         result = `vault_read Fehler: ${err instanceof Error ? err.message : String(err)}`;
@@ -2729,6 +2748,8 @@ ${toolTrace}`;
       }
     } else if (toolName.startsWith("workflow_")) {
       // S5-Teil A: Workflow-Makro-Ausführung (vor MCP-Fallback)
+      // 052 (048-B1): ThoughtLog-Zeile für Live-Status (Workflow-Sichtbarkeit)
+      context.thoughtLog.push(`[S5] Führe Workflow "${toolName}" aus...`);
       result = await executeWorkflowMacro(context.tenantId, toolName, toolQuery);
     } else if (toolName === "parallelToolCalls") {
       // S4-Robustheit: Manche Modelle rufen 'parallelToolCalls' als Tool-Name auf, statt das JSON-Feld zu setzen.

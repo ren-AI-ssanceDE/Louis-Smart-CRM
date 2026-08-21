@@ -93,9 +93,9 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   vault_write: queryOnly("Datei-Daten als JSON: { file_name, content, overwrite? } — nur .md/.txt/.json/.csv (Alias: knowledge_write)"),
   vault_update: queryOnly("Datei-Daten als JSON: { file_name, content } (Alias: knowledge_update)"),
   vault_delete: queryOnly("Dateiname als JSON: { file_name } (Alias: knowledge_delete)"),
-  recall_sessions: queryOnly("Suchbegriff als JSON: { query, limit, offset } oder Freitext"),
-  vault_search: queryOnly("Suchbegriff als JSON: { query, limit } oder Freitext"),
-  vault_read: queryOnly("Dateipfad als JSON: { path } oder Pfad-String"),
+  recall_sessions: queryOnly("Suchbegriff als Freitext (z. B. 'Zahlungsbedingungen'); optional limit/offset als JSON: { limit, offset }"),
+  vault_search: queryOnly("Suchbegriff als Freitext (z. B. 'Willkommen'); KEIN JSON-Objekt — optional limit als Zahl"),
+  vault_read: queryOnly("Dateipfad als Pfad-String (z. B. '_louis/Willkommen.md'); KEIN JSON-Objekt"),
   update_memory: {
     type: "object",
     properties: {

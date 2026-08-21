@@ -55,11 +55,11 @@ export function normalizeToolArguments(
     : null;
 
  // Schritt 3 (C2+C5, Go 2026-08-20): Schema-Respekt statt Raten.
-  // Das inputSchema ist die einzige verlässliche Typ-Quelle — ist es leer (keine
-  // properties, z. B. mcp-google-calendar), werden Argumente TYP-ERHALTEND
-  // durchgereicht (String bleibt String, Objekt bleibt Objekt). Vorher baute die
-  // Engine bei leerem Schema mutmaßlich {dateTime,timeZone}-Objekte (C2) und
-  // zerlegte JsonLogic-Query-Objekte in Strings (C5) — beides brach die Server.
+   // Das inputSchema ist die einzige verlässliche Typ-Quelle — ist es leer (keine
+   // properties, z. B. ältere Google-MCP-Server), werden Argumente TYP-ERHALTEND
+   // durchgereicht (String bleibt String, Objekt bleibt Objekt). Vorher baute die
+   // Engine bei leerem Schema mutmaßlich {dateTime,timeZone}-Objekte (C2) und
+   // zerlegte JsonLogic-Query-Objekte in Strings (C5) — beides brach die Server.
   const schemaProps = (inputSchema && typeof inputSchema === "object" && inputSchema.properties && typeof inputSchema.properties === "object")
     ? (inputSchema.properties as Record<string, Record<string, unknown>>)
     : null;
@@ -175,7 +175,7 @@ export function normalizeToolArguments(
       let val = startRaw.trim();
       // C2-Fix (046 Schritt 3): Format-Expansion (YYYY-MM-DD → ISO mit T00:00:00Z)
       // NUR bei explizitem date-time-Schema. Bei unbekanntem/leerem Schema bleibt das
-      // Format erhaltend — mcp-google-calendar erwartet für Ganztages-Events reines
+      // Format erhaltend — ältere Google-MCP-Server erwarten für Ganztages-Events reines
       // YYYY-MM-DD (start: {date: ...}); die Expansion erzeugte 400 Bad Request.
       const wantsDatetime =
         (schemaPropType("start") === "string" && schemaProps?.start && (schemaProps.start as Record<string, unknown>).format === "date-time") ||
@@ -302,7 +302,7 @@ export function normalizeToolArguments(
   if (summaryVal || isoStart || schemaProps?.event) {
     const eventSummary = summaryVal || "Termin";
     // C2-Fix (046 Schritt 3): event.start/event.end typ-erhaltend — String bei
-    // String-Schema (mcp-google-calendar) oder unbekanntem Schema, Objekt nur
+    // String-Schema (ältere Google-MCP-Server) oder unbekanntem Schema, Objekt nur
     // bei explizitem Objekt-Schema (Google-API-Stil).
     const eventStart = eventPropType("start") === "object" ? (startObj || isoStart) : isoStart;
     const eventEnd = eventPropType("end") === "object" ? (endObj || isoEnd) : isoEnd;
@@ -1030,6 +1030,14 @@ export class McpClientEngine {
         envVars["GCAL_CREDENTIALS_PATH"] = credentialsKeysPath;
         envVars["GOOGLE_CALENDAR_CREDENTIALS_PATH"] = credentialsKeysPath;
 
+        // 051 (2026-08-21): SOTA-Server @cocal/google-calendar-mcp — liest Credentials via
+        // GOOGLE_OAUTH_CREDENTIALS und Tokens via GOOGLE_CALENDAR_MCP_TOKEN_PATH. Ohne den
+        // Token-Pfad sucht der SOTA unter $HOME/.config/google-calendar-mcp/tokens.json
+        // (HOME=mcpDir → falscher Ort) und startet den OAuth-Flow neu. Deshalb MUSS
+        // GOOGLE_CALENDAR_MCP_TOKEN_PATH auf die bereits geschriebene token.json zeigen.
+        envVars["GOOGLE_OAUTH_CREDENTIALS"] = clientSecretsPath;
+        envVars["GOOGLE_CALENDAR_MCP_TOKEN_PATH"] = tokenFilePath;
+
         envVars["GMAIL_OAUTH_PATH"] = clientSecretsPath;
         envVars["GDRIVE_OAUTH_PATH"] = clientSecretsPath;
 
@@ -1694,7 +1702,27 @@ export class McpClientEngine {
           orig === cleanTarget
         );
       });
-      const tool = exact ?? list.find((t) => {
+      // 051 (2026-08-21): Bei Namens-Duplikaten (Server-Wechsel: alter disabled + neuer aktiver
+      // Record mit gleichem normalisierten Namen) den AKTIVEN bevorzugen — sonst findet die
+      // Auflösung den alten disabled Record und blockt fälschlich.
+      const tool = exact
+        ? [...list.filter((t) => {
+            const norm = normOf(t);
+            const orig = origOf(t);
+            return (
+              norm === rawTarget ||
+              norm === `mcp_${rawTarget}` ||
+              normCleanOf(t) === cleanTarget ||
+              orig === rawTarget ||
+              orig === cleanTarget
+            );
+          })].sort((a, b) => {
+            const aActive = a.is_enabled_for_louis !== false;
+            const bActive = b.is_enabled_for_louis !== false;
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            return String(b.last_discovered_at || "").localeCompare(String(a.last_discovered_at || ""));
+          })[0]
+        : list.find((t) => {
         const normClean = normCleanOf(t);
         const orig = origOf(t);
         return (
@@ -1710,7 +1738,9 @@ export class McpClientEngine {
       } as McpDiscoveredTool;
     }
 
-    // DB-Zweig: exakte Treffer zuerst (LIMIT 1), Suffix nur wenn exakt nichts gefunden
+    // DB-Zweig: exakte Treffer zuerst (LIMIT 1), Suffix nur wenn exakt nichts gefunden.
+    // 051 (2026-08-21): ORDER BY bevorzugt AKTIVE Records — bei Namens-Duplikaten nach
+    // Server-Wechsel (alter disabled + neuer aktiver Record) gewinnt der aktive.
     const exactRes = await pool.query(
       `SELECT * FROM sys_mcp_discovered_tools 
        WHERE (
@@ -1721,20 +1751,23 @@ export class McpClientEngine {
          OR LOWER(original_tool_name) = $2
        )
        AND (tenant_id = $3 OR (tenant_id = '1' AND $3 = '1')) 
+       ORDER BY (is_enabled_for_louis = true) DESC, last_discovered_at DESC
        LIMIT 1`,
       [rawTarget, cleanTarget, tenantId]
     );
     let row = exactRes.rows[0];
     if (!row) {
+      // looseRes: nutzt $2/$3 — das Parameter-Array darf KEIN unbenutztes $1 enthalten
+      // (sonst 42P18 "could not determine data type of parameter $1", Live-Fund Volltest 051).
       const looseRes = await pool.query(
         `SELECT * FROM sys_mcp_discovered_tools 
          WHERE (
-           LOWER(REGEXP_REPLACE(normalized_tool_name, '^mcp_[^_]+_', '')) = $2
-           OR LOWER(normalized_tool_name) LIKE '%' || $2
+           LOWER(REGEXP_REPLACE(normalized_tool_name, '^mcp_[^_]+_', '')) = $1
+           OR LOWER(normalized_tool_name) LIKE '%' || $1
          )
-         AND (tenant_id = $3 OR (tenant_id = '1' AND $3 = '1')) 
+         AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1')) 
          LIMIT 1`,
-        [rawTarget, cleanTarget, tenantId]
+        [cleanTarget, tenantId]
       );
       row = looseRes.rows[0];
     }

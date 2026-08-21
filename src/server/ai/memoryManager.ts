@@ -111,7 +111,19 @@ export function prefetchRelevantMemoryNotes(
   let usedTokens = 0;
   for (const { n } of scored) {
     const estTokens = Math.ceil(n.content.length / 3.8);
-    if (usedTokens + estTokens > budgetTokens && lines.length > 0) break;
+    // 051 (2026-08-21, 050-B2): Budget HART durchsetzen. Der frühere Code ließ den
+    // ERSTEN Eintrag immer komplett rein, auch wenn er das Budget sprengte (z. B.
+    // 8.000-Zeichen-E-Rechnungs-Eintrag ≈ 2.000 Tokens bei Budget 800) → Token-Explosion.
+    if (usedTokens + estTokens > budgetTokens) {
+      if (lines.length === 0 && budgetTokens > 0) {
+        // Erster Eintrag allein größer als Budget → kürzen statt sprengen (Fail-open:
+        // Information bleibt erhalten, Budget wird nie überschritten).
+        const maxChars = Math.max(Math.floor(budgetTokens * 3.8), 80);
+        lines.push({ ...n, content: n.content.slice(0, maxChars) });
+        usedTokens = budgetTokens;
+      }
+      break;
+    }
     lines.push(n);
     usedTokens += estTokens;
   }

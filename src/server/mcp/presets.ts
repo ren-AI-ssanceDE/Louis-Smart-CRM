@@ -9,7 +9,11 @@ export const MCP_PRESETS_CATALOG: McpPresetDefinition[] = [
     category: 'google',
     transportType: 'stdio',
     command: 'npx',
-    args: ['-y', 'mcp-google-calendar'],
+    // 051 (2026-08-21): SOTA-Wechsel — altes Paket mcp-google-calendar@0.0.5 lieferte
+    // leere inputSchemas (zodToJsonSchema bricht mit transitivem zod@4) → 400 bei create.
+    // @cocal/google-calendar-mcp@2.6.2: aktiv (1.173 Star), Zod-4-nativ, korrekte Schemas,
+    // flache Event-Parameter. Tool-Suffixe wechseln (create_calendar_event → create-event).
+    args: ['-y', '@cocal/google-calendar-mcp'],
     authType: 'oauth2',
     oauthProvider: 'google',
     requiredScopes: [

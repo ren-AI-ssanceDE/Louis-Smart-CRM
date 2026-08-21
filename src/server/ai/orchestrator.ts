@@ -7,6 +7,7 @@ export type { ConversationMessage, TenantAiConfig };
 import { generateContentSafe, generateContentUniversal } from "./geminiHelper.js";
 import { containsToolCallXml, normalizeToolCallText } from "./toolCallSanitizer.js";
 import { globalAgentRuntime } from "./agentRuntime.js";
+import { registerChatRun, markChatRunEnded } from "./liveStatusRegistry.js";
 import { AgentPipelineContext, AgentAttachmentContext, AgentUserMemory, ToolDomain } from "./agentTypes.js";
 import { 
   executeWebSearch, 
@@ -636,8 +637,19 @@ export async function runLouisAiFlow(
     isComplete: false
   };
 
-  const result = await globalAgentRuntime.executePipeline(pipelineContext);
-
+  // 052 (048-B1): Live-Status-Registry — Referenz auf das thoughtLog-Array VOR dem
+  // Lauf registrieren; markChatRunEnded im finally (läuft auch bei Fehlern, TTL-Cleanup 30s).
+  if (sessionId) {
+    registerChatRun(sessionId, pipelineContext.thoughtLog);
+  }
+  let result: Awaited<ReturnType<typeof globalAgentRuntime.executePipeline>>;
+  try {
+    result = await globalAgentRuntime.executePipeline(pipelineContext);
+  } finally {
+    if (sessionId) {
+      markChatRunEnded(sessionId);
+    }
+  }
   return {
     replyText: result.finalDraftText,
     thoughtLog: result.thoughtLog,

@@ -32,6 +32,90 @@ export interface VaultSearchHit {
   score: number;
 }
 
+// ============================================================================
+// 050 (048-B2): Modell-agnostische Query-Normalisierung
+// ----------------------------------------------------------------------------
+// LLM-Modelle (DeepSeek, Gemini, GPT, Claude) übergeben bei query-basierten
+// Tools gelegentlich einen JSON-STRING im query-Feld statt des reinen
+// Suchbegriffs — teils mehrfach verschachtelt:
+//   query = "{\"query\": \"Willkommen\"}"           (1 Ebene)
+//   query = "{\"query\": \"{\\\"query\\\": \\\"Willkommen\\\"}\"}"  (2 Ebenen)
+// Das führte dazu, dass Obsidian/Knowledge nach dem wörtlichen JSON-String
+// suchte → 0 Treffer bei Freitext-Suchen mit JSON-verpackter Query.
+//
+// Kern-Fix (Kontrakt) ist die Schema-/Beschreibungs-Korrektur; diese Funktion
+// ist die Defense-in-Depth: entpackt JSON-Strings rekursiv (max. 3 Ebenen),
+// egal von welchem Modell sie stammen. NIE werfen — bei Unklarheit den
+// Rohwert zurückgeben (Fail-open, kein Chat-Bruch).
+// ============================================================================
+const NORMALIZE_MAX_DEPTH = 3;
+
+export function normalizeQueryValue(value: unknown, depth: number = 0): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return "";
+    if (depth >= NORMALIZE_MAX_DEPTH) return trimmed;
+    // Versuchen, den String als JSON zu parsen UND als query/path-Objekt zu lesen
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+        const inner = obj.query !== undefined && obj.query !== null ? obj.query
+          : obj.path !== undefined && obj.path !== null ? obj.path
+          : typeof obj.search === "string" ? obj.search
+          : undefined;
+        if (inner !== undefined) {
+          // query/path-Feld kann selbst String, Objekt oder Array sein — rekursiv
+          if (typeof inner === "string") return normalizeQueryValue(inner, depth + 1);
+          if (typeof inner === "object") return normalizeQueryValue(inner, depth + 1);
+          return String(inner);
+        }
+        // Objekt ohne query/path/search → JSON.stringify (z. B. { limit: 5 })
+        const str = JSON.stringify(parsed);
+        return str === undefined ? trimmed : str;
+      }
+      if (Array.isArray(parsed)) {
+        const first = parsed.find((x) => typeof x === "string");
+        if (first !== undefined) return first;
+        return trimmed;
+      }
+      if (typeof parsed === "string" && parsed !== trimmed) {
+        // JSON-String in String (z. B. "\"Willkommen\"") — eine Ebene tiefer
+        return normalizeQueryValue(parsed, depth + 1);
+      }
+      return trimmed;
+    } catch {
+      return trimmed; // kein JSON → Freitext unverändert
+    }
+  }
+  if (typeof value === "object") {
+    if (Array.isArray(value)) {
+      const first = value.find((x) => typeof x === "string");
+      if (first !== undefined) return first;
+      return String(value.length > 0 ? JSON.stringify(value) : "");
+    }
+    const obj = value as Record<string, unknown>;
+    const inner = obj.query !== undefined && obj.query !== null ? obj.query
+      : obj.path !== undefined && obj.path !== null ? obj.path
+      : obj.search !== undefined && obj.search !== null ? obj.search
+      : undefined;
+    if (inner !== undefined) {
+      // query/path-Feld kann selbst String, Objekt oder Array sein — rekursiv
+      if (typeof inner === "string") return normalizeQueryValue(inner, depth + 1);
+      if (typeof inner === "object") return normalizeQueryValue(inner, depth + 1);
+      return String(inner);
+    }
+    try {
+      const str = JSON.stringify(value);
+      return str === undefined ? "" : str;
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
+}
+
 export const VAULT_BLOCKED_READ_PREFIXES: string[] = ["Privat/"];
 export const VAULT_BLOCKED_WRITE_PREFIXES: string[] = ["Privat/", "RO/"];
 export const VAULT_ALLOWED_WRITE_PREFIX: string = "_louis/";
@@ -143,7 +227,9 @@ async function governanceBlock(tenantId: string, entityType: string, action: "CR
 }
 
 export async function vaultReadText(tenantId: string, relativePath: string): Promise<VaultReadResult> {
-  const clean = sanitizeVaultPath(relativePath, false);
+  // 050 (048-B2): Pfad normalisieren — Modelle liefern gelegentlich {"path": "..."}
+  // als JSON-String statt des reinen Pfads (Defense-in-Depth zum Schema-Kern-Fix).
+  const clean = sanitizeVaultPath(normalizeQueryValue(relativePath), false);
   if (!clean) {
     await governanceBlock(tenantId, "vault", "READ", `Ungültiger Vault-Pfad (Path-Traversal-Versuch): ${relativePath}`);
     throw new Error(`Governance-Block: Ungültiger Vault-Pfad '${relativePath}'`);
@@ -168,8 +254,12 @@ export async function vaultReadText(tenantId: string, relativePath: string): Pro
 
 export async function vaultSearch(tenantId: string, query: string, limit: number): Promise<VaultSearchHit[]> {
   const clampedLimit = Math.min(Math.max(limit, 1), 20);
+  // 050 (048-B2): Query normalisieren — Modelle liefern gelegentlich JSON-Strings
+  // ({"query": "..."}) statt Freitext; ohne Unwrap sucht Obsidian den wörtlichen
+  // JSON-String und findet nichts. Defense-in-Depth zum Kern-Fix (Schema-Kontrakt).
+  const cleanQuery = normalizeQueryValue(query);
   // Plugin-Tool: search_simple (Obsidian-Volltextsuche) — Ergebnisformat: [{ path, snippet, score? }] o. ä.
-  const tier1 = await tryTierCall<unknown>("obsidian", "search_simple", tenantId, { query, limit: clampedLimit });
+  const tier1 = await tryTierCall<unknown>("obsidian", "search_simple", tenantId, { query: cleanQuery, limit: clampedLimit });
   if (tier1.ok && tier1.data) {
     const raw = tier1.data as { matches?: VaultSearchHit[] } | VaultSearchHit[];
     const hits = Array.isArray(raw) ? raw : raw.matches;

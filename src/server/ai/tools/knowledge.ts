@@ -6,6 +6,7 @@ import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent 
 import { generateEmbedding, formatVectorForPostgres } from "../embeddingHelper.js";
 import { LouisAiKnowledgeMetadata, LouisAiKnowledgeChunk, CustomWorkflow, WorkflowInstance, Company, Contact } from "../../../types.js";
 import { ToolResult, createToolSuccess, createToolError, ListVaultFilesInputSchema, PaginatedToolResponse } from "./types.js";
+import { normalizeQueryValue } from "../vaultStore.js";
 import { RecallSessionsInputSchema } from "../../../lib/schemas.js";
 import { SessionRecallHit } from "../../../types.js";
 import { workflowExecutor } from "../workflowExecutor.js";
@@ -269,6 +270,8 @@ export async function executeRecallSessions(
       return createToolError(`Bitte einen Suchbegriff angeben (recall_sessions): ${parsed.error.message}`);
     }
     const { query, offset } = parsed.data;
+    // 050 (048-B2): Query normalisieren — Modell kann JSON-String statt Freitext liefern
+    const normQuery = normalizeQueryValue(query);
     // Serverseitig hart klemmen (LLM-generierte Werte); Default aus Admin-Config (recall_search_limit)
     const clampedLimit = Math.min(parsed.data.limit ?? (opts?.defaultLimit ?? 10), 20);
     const clampedOffset = Math.min(offset, 1000);
@@ -280,7 +283,7 @@ export async function executeRecallSessions(
 
     if (isUsingFallback || !pool) {
       const sessions = fallbackStore.louisAiSessions || [];
-      const term = query.toLowerCase().trim();
+      const term = normQuery.toLowerCase().trim();
  // Phase 5 (#48): recall_fts_enabled=false → direkt neueste Sessions (kein FTS)
       if (!ftsEnabled) {
         const newest = sessions
@@ -295,7 +298,7 @@ export async function executeRecallSessions(
             snippet: buildRecallSnippet(x),
             relevance: 0,
             created_at_utc: String(x.created_at_utc || ""),
-            context_window: buildContextWindow(x.conversation_history_json, query),
+            context_window: buildContextWindow(x.conversation_history_json, normQuery),
             parent_session: await resolveParentSession(tenantId, x.parent_session_id)
           });
         }
@@ -323,7 +326,7 @@ export async function executeRecallSessions(
               relevance: 0,
               created_at_utc: String(x.created_at_utc || ""),
  // P0-3: Kontext-Fenster + Lineage
-              context_window: buildContextWindow(x.conversation_history_json, query),
+              context_window: buildContextWindow(x.conversation_history_json, normQuery),
               parent_session: await resolveParentSession(tenantId, x.parent_session_id)
             });
           }
@@ -335,7 +338,7 @@ export async function executeRecallSessions(
               snippet: buildRecallSnippet(x.s),
               relevance: x.score,
               created_at_utc: String(x.s.created_at_utc || ""),
-              context_window: buildContextWindow(x.s.conversation_history_json, query),
+              context_window: buildContextWindow(x.s.conversation_history_json, normQuery),
               parent_session: await resolveParentSession(tenantId, x.s.parent_session_id)
             });
           }
@@ -361,7 +364,7 @@ export async function executeRecallSessions(
             snippet: buildRecallSnippet(row),
             relevance: 0,
             created_at_utc: String(row.created_at_utc || ""),
-            context_window: buildContextWindow(row.conversation_history_json, query),
+            context_window: buildContextWindow(row.conversation_history_json, normQuery),
             parent_session: await resolveParentSession(tenantId, row.parent_session_id)
           });
         }
@@ -409,7 +412,7 @@ export async function executeRecallSessions(
               snippet: buildRecallSnippet(row),
               relevance: 0,
               created_at_utc: String(row.created_at_utc || ""),
-              context_window: buildContextWindow(row.conversation_history_json, query),
+              context_window: buildContextWindow(row.conversation_history_json, normQuery),
               parent_session: await resolveParentSession(tenantId, row.parent_session_id)
             });
           }
@@ -421,7 +424,7 @@ export async function executeRecallSessions(
               snippet: buildRecallSnippet(row),
               relevance: Number(row.relevance || 0),
               created_at_utc: String(row.created_at_utc || ""),
-              context_window: buildContextWindow(row.conversation_history_json, query),
+              context_window: buildContextWindow(row.conversation_history_json, normQuery),
               parent_session: await resolveParentSession(tenantId, row.parent_session_id)
             });
           }
@@ -456,7 +459,8 @@ export async function executeRecallSessions(
  * Tool 3: Local Knowledge Tool (RAG searching of metadata chunks)
  */
 export async function executeLocalKnowledgeSearch(tenantId: string, query: string, aiClient?: GoogleGenAI): Promise<ToolResult<Record<string, unknown>>> {
-  const normQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
+  // 050 (048-B2): Query normalisieren (JSON-String-Unwrap, modell-agnostisch)
+  const normQuery = normalizeQueryValue(query).toLowerCase().trim().replace(/\s+/g, " ");
 
   // 0. Auto-ingest any unindexed disk files in knowledge_data_vault
   try {
