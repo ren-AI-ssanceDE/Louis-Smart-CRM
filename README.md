@@ -24,9 +24,10 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 
 ### Start & Login
 
-1. Stack starten: `docker compose up -d` (siehe Teil 2)
-2. Browser öffnen: **http://localhost:3000**
-3. Login: `admin@louis-crm.de` / `admin` (beim ersten Login ändern!)
+1. **Volume-Setup:** `npm run setup:volumes` — erkennt das vorhandene PostgreSQL-Volume auf deinem System (kein Umbenennen, deine Daten bleiben unangetastet) und schreibt den Namen in `.env` (frische Installationen legen automatisch `louis-crm_postgres_data` an)
+2. Stack starten: `docker compose up -d` (siehe Teil 2)
+3. Browser öffnen: **http://localhost:3000**
+4. Login: `admin@louis-crm.de` / `admin` (beim ersten Login ändern!)
 
 ### KI-Assistent — so arbeitest du mit Louis
 
