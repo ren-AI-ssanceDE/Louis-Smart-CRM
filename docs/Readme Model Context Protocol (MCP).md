@@ -108,7 +108,7 @@ Der Connection Manager (`src/server/mcp/`) steuert den Lifecycle (seit dem SDK-U
 * **Tool-Discovery**: `discoverTools` → `tools/list` → Cache; Hot-Reload bei Änderungen (TTL-Cache mit Admin-Basismenge, Chatprofil-Filter läuft bei jedem Aufruf)
 * **Namespace-Mapping**: Normalisierte Tool-Namen `mcp_<server>_<tool>` (z. B. `mcp_e2e_mock_server_014_echo_text`) — `getToolByNormalizedName` matcht **exakt zuerst**, Suffix-Fallback nur wenn nichts exakt passt (verhindert Kollisionen bei gleichen Tool-Namen über mehrere Server)
 * **Universal-Übersetzer**: JSON-Schema → Gemini `FunctionDeclaration` bzw. OpenAI-kompatible Tool-Formate
-* **Kompatibilitäts-Fallback**: Google-Pakete (mcp-gmail, mcp-google-calendar, server-gdrive) liefern `$schema`-Input-Schemas ohne `type`/`properties` — ein Raw-Kompatibilitäts-Fallback (roher JSON-RPC-Client, initialize 2025-03-26) fängt diese Fälle ab
+* **Kompatibilitäts-Fallback**: Einige Google-Pakete (z. B. ältere mcp-gmail/server-gdrive-Versionen) lieferten `$schema`-Input-Schemas ohne `type`/`properties` — ein Raw-Kompatibilitäts-Fallback (roher JSON-RPC-Client) fängt diese Fälle ab. Der Kalender-Server `@cocal/google-calendar-mcp` (seit 2.1.2) liefert vollständige Schemas mit `properties`.
 * **OAuth**: `initiateOAuth` für geschützte Server (Tokens in `sys_mcp_oauth_tokens`, werden vom Server-Prozess selbst refresht)
 * **Presets**: `getPresetsCatalog` + `installPreset` — 1-Klick-Integration bekannter Server (exakt die 8 freigegebenen Presets; im Entwicklungsprozess durch einen Katalog-Guard abgesichert)
 * **Tool-Mappings** (`mcpExecutionRouter`): `executeDomainAction`, `listToolMappings`, `saveToolMapping`, `deleteToolMapping` — domänenbasierte Zuordnung externer Tools

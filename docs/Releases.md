@@ -23,7 +23,7 @@ Louis ist kein einfacher Chat-Bot mehr, sondern ein **eigener Agent mit Business
 ### ✨ 1. Neue Funktionen & Highlights
 
 #### 🔌 MCP-Client-Engine (SDK-Umbau)
-* **49 externe Tools** über die Client-Engine getestet: Google Gmail (26), Google Kalender (6), Google Drive (1), Obsidian (16).
+* **56 externe Tools** über die Client-Engine getestet: Google Gmail (26), Google Kalender (13), Google Drive (1), Obsidian (16).
 * **Moderne SDK-Basis**: Umstellung auf `@modelcontextprotocol/sdk` v1.30 — Streamable-HTTP, SSE und HTTPS mit selbstsignierten Zertifikaten.
 * **Sichere Token-Verwaltung**: Zugangs-Tokens werden AES-256-GCM-verschlüsselt gespeichert (Secret aus der Container-Umgebung).
 * **Stabile Verbindungen**: Fail-Safe-Restarts, Heartbeat-Überwachung und Hard-Timeouts verhindern hängende Server-Prozesse.
@@ -56,7 +56,6 @@ Louis ist kein einfacher Chat-Bot mehr, sondern ein **eigener Agent mit Business
 ### ⚠️ 3. Bekannte Restrisiken
 
 * **Gmail-Hart-Löschen**: Google erlaubt kein hartes `messages.delete` über die API-Scopes — Trash/Wiederherstellen ist funktionsfähig (bewusste Entscheidung).
-* **Kalender `get_calendar_event`**: Externer Server-Bug im Paket `mcp-google-calendar` 0.0.5 (Funktionsersatz über `list_calendar_events`) — Wechsel auf den offiziellen Google-Workspace-Server ist als Folgeauftrag geplant.
 * **Tenant-List-Vektor** und **lokaler-LLM-Subtask-Pfad unter Last**: dokumentierte Restlücken.
 
 ---
