@@ -109,8 +109,3 @@ Louis kennt **zwei getrennte Vaults** — Tool-Namen sind disambiguiert (`knowle
 - **Bekannter Build-Fix:** Lato-Fonts werden aus dem Build-Kontext kopiert (kein GitHub-Download); Mustang-CLI wird beim Build geladen (Netz nötig)
 - **MCP-Test-Key:** `RAW="louis_mcp_<name>"` → `sha256sum` → INSERT in `mcp_api_keys`, nach Tests löschen
 
-### Release & Versionierung
-
-- Version in `package.json` (aktuell **2.1.1**); Änderungshistorie: `CHANGELOG.md`
-- Bekannte akzeptierte Restrisiken für V2: Tenant-List-Vektor (`OR tenant_id = '1'`-Muster), lokaler-LLM-Subtask-Pfad unter paralleler Last
-- Rollback: Docker-Image `louis-smart-crm-app:latest` neu bauen aus git-Tag; DB-Backup einspielen (siehe oben)
