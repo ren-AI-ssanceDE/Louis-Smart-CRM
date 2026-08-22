@@ -109,4 +109,5 @@ if (contentViolations.length > 0) {
   console.error("   Regel (2026-08-22, R-DO-08): Test-/Dev-Interna gehören NICHT in öffentliche Readmes.");
   process.exit(1);
 }
+
 console.log(`✅ Guard ok: ${all ? files.length : files.length} Datei(en) geprüft + Readme-Inhaltsscan sauber, keine Verstöße.`);
