@@ -1,6 +1,6 @@
 # Louis Smart CRM
 
-> **Version 2.1.1** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
+> **Version 2.1.3** — Das KI-gestützte CRM für kleine und mittelständische Unternehmen.
 > Ein integrierter AI-Assistent („Louis AI") erledigt CRM-Aufgaben im Chat: Kontakte, Firmen, Angebote, Rechnungen (ZUGFeRD/XRechnung), Notizen, Wissensdatenbank, Workflows und MCP-Anbindung.
 
 ---
