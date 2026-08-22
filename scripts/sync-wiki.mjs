@@ -57,13 +57,10 @@ function main() {
   const synced = [];
   for (const docFile of docFiles) {
     if (docFile === "README.md" || docFile === "Releases.md" || docFile === "intro.md" || docFile === "voice.md") {
-      // Sonderfall: docs/README.md → Home.md (Wiki-Startseite ist der Readme-Spiegel)
-      if (docFile === "README.md" && !DRY) {
-        fs.copyFileSync(path.join(DOCS_DIR, docFile), path.join(WIKI_DIR, "Home.md"));
-        synced.push({ docFile, wikiName: "Home.md" });
-      } else {
-        console.log(`   ⏭️  übersprungen (kein Wiki-Spiegel): ${docFile}`);
-      }
+      // REGEL (2026-08-22, Stefan): Die README/Home.md wird NICHT mehr vom Sync aktualisiert.
+      // Die Readme gestaltet Stefan selbst; einzige erlaubte Änderung durch den Agent:
+      // die Versionsnummer im Einleitungssatz. Home.md bleibt unangetastet.
+      console.log(`   ⏭️  übersprungen (Readme-Pflege liegt bei Stefan): ${docFile}`);
       continue;
     }
     const wikiName = toWikiName(docFile);
