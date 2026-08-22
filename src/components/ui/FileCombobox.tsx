@@ -37,12 +37,20 @@ export const FileCombobox = ({
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Dropdown liegt im Portal (createPortal → document.body) — der Außen-Klick-Handler
+  // (mousedown) darf Klicks INNERHALB des Dropdowns nicht als "außen" werten, sonst
+  // schließt das Dropdown beim mousedown, bevor der click den Datei-Button erreicht
+  // (2026-08-22: Maus-Klick im Dropdown schloss es vor dem Auswählen; Enter funktionierte).
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Außen-Klick schließt (Szenario 8)
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      const insideRoot = rootRef.current?.contains(t) ?? false;
+      const insideDropdown = dropdownRef.current?.contains(t) ?? false;
+      if (!insideRoot && !insideDropdown) {
         setOpen(false);
         setQuery('');
       }
@@ -91,6 +99,7 @@ export const FileCombobox = ({
 
   const dropdown = open && anchorRect && (
     <div
+      ref={dropdownRef}
       className="fixed z-[200] mt-1.5 rounded-xl border border-white/10 bg-primary-dark shadow-2xl overflow-hidden"
       style={{ top: anchorRect.top, left: anchorRect.left, width: anchorRect.width }}
     >
