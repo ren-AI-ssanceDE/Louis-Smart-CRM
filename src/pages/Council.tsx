@@ -21,11 +21,11 @@ import {
   Info,
   BookOpen,
   Database,
-  X
 } from 'lucide-react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { Dialog } from '../components/ui/Dialog';
 import { CouncilSession, CouncilMessage, CouncilParticipant } from '../types';
 
 // Markdown-Renderer Hilfsfunktionen
@@ -268,7 +268,7 @@ export const Council = () => {
 
   if (isSettingsLoading || isSessionsLoading) {
     return (
-      <div className="flex items-center gap-3 justify-center py-24 h-screen">
+      <div className="flex items-center gap-3 justify-center py-24 min-h-[400px]">
         <Loader2 className="w-8 h-8 text-accent-orange animate-spin" />
         <span className="text-sm font-mono text-slate-400 uppercase tracking-widest">
           {t('council:sondiere_central', { defaultValue: 'Sondiere Council-Zentrale...' })}
@@ -278,41 +278,38 @@ export const Council = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-primary-dark">
-      {/* Top Banner */}
-      <div className="px-8 py-5 border-b border-white/5 bg-primary-light/15 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-accent-orange/10 border border-accent-orange/20 rounded-xl text-accent-orange shadow-lg shadow-accent-orange/5">
-            <Users size={22} />
-          </div>
-          <div>
-            <h1 className="text-base font-black tracking-wider uppercase text-white font-display">Louis LLM Council</h1>
-            <p className="text-[10px] text-slate-400 font-mono">{t('council:subtitle', { defaultValue: 'Unabhängiges Multi-LLM Diskussionsforum nach dem Karpathy-Raffinement-Modell' })}</p>
-          </div>
+    <div className="space-y-8 pb-12">
+      {/* Standard-Seitenkopf (CRM-Design-Sprache) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/5">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-display uppercase italic tracking-[0.05em]">{t('council:page_title', { defaultValue: 'Louis LLM Council' })}</h2>
+          <p className="text-slate-500 text-xs sm:text-sm mt-1 uppercase tracking-widest font-semibold opacity-60 italic">{t('council:subtitle', { defaultValue: 'Unabhängiges Multi-LLM Diskussionsforum nach dem Karpathy-Raffinement-Modell' })}</p>
         </div>
-        
-        <button
-          onClick={() => {
-            setIsCreating(true);
-            setSelectedSessionId(null);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-accent-orange hover:bg-accent-orange/90 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-accent-orange/15"
-        >
-          <Plus size={14} /> {t('council:new_debate', { defaultValue: 'Neue Debatte' })}
-        </button>
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
+          <button
+            onClick={() => {
+              setIsCreating(true);
+              setSelectedSessionId(null);
+            }}
+            className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 sm:px-6 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 active:scale-95 group font-display text-[11px] uppercase tracking-widest leading-none shrink-0"
+          >
+            <Plus size={16} className="group-hover:rotate-90 transition-transform duration-300" />
+            {t('council:new_debate', { defaultValue: 'Neue Debatte' })}
+          </button>
+        </div>
       </div>
 
-      {/* Main Split Screen */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Main Split Screen: Session-Liste (links) + Content (rechts) */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* Left Sidebar: Session List */}
-        <div className="w-80 border-r border-white/5 flex flex-col bg-slate-950/20 shrink-0">
-          <div className="p-4 border-b border-white/5">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 font-mono">{t('council:past_debates', { defaultValue: 'Vergangene Debatten ({{count}})', count: sessions.length })}</h3>
+        <aside className="w-full lg:w-80 shrink-0 bg-primary-light/30 border border-white/5 rounded-xl p-4 lg:sticky lg:top-0">
+          <div className="pb-3 border-b border-white/5 mb-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t('council:past_debates', { defaultValue: 'Vergangene Debatten ({{count}})', count: sessions.length })}</h3>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+          <div className="overflow-y-auto custom-scrollbar p-1 space-y-2 max-h-[65vh]">
             {sessions.length === 0 ? (
-              <div className="p-6 text-center text-slate-600 font-mono text-xs">
+              <div className="p-6 text-center text-slate-500 text-xs">
                 {t('council:no_debates', { defaultValue: 'Keine Debatten aufgezeichnet.' })}
               </div>
             ) : (
@@ -329,7 +326,7 @@ export const Council = () => {
                       "p-4 rounded-xl border transition-all duration-300 cursor-pointer group relative",
                       isSelected
                         ? "bg-primary-light border-white/10 text-white shadow-xl shadow-black/30"
-                        : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white hover:border-white/10"
+                        : "bg-primary-light/30 border-white/5 text-slate-400 hover:text-white hover:border-white/10"
                     )}
                   >
                     <button
@@ -344,17 +341,17 @@ export const Council = () => {
                     <p className="text-xs font-bold tracking-tight line-clamp-2 pr-6 font-display group-hover:text-white">
                       {s.topic}
                     </p>
-                    
+
                     <div className="flex items-center justify-between mt-3">
                       <span className={cn(
-                        "text-[9px] font-mono px-2 py-0.5 rounded-full uppercase font-bold",
+                        "text-[10px] font-mono px-2 py-0.5 rounded-full uppercase font-bold",
                         s.status === 'completed' ? "bg-green-500/10 text-green-400" :
                         s.status === 'active' ? "bg-accent-orange/10 text-accent-orange" :
-                        "bg-slate-800 text-slate-400"
+                        "bg-primary-light text-slate-400"
                       )}>
                         {s.status === 'completed' ? t('council:completed', { defaultValue: 'Beendet' }) : s.status === 'active' ? t('council:round_num', { defaultValue: 'Runde {{num}}', num: s.currentRound }) : t('council:draft', { defaultValue: 'Entwurf' })}
                       </span>
-                      <span className="text-[9px] font-mono text-slate-500">
+                      <span className="text-[10px] text-slate-500">
                         {new Date(s.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
                       </span>
                     </div>
@@ -363,10 +360,10 @@ export const Council = () => {
               })
             )}
           </div>
-        </div>
+        </aside>
 
         {/* Right Content Pane */}
-        <div className="flex-1 flex flex-col bg-primary-dark/40 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 min-w-0">
           <AnimatePresence mode="wait">
             {isCreating ? (
               // Phase 1: Neue Diskussion Konfigurieren
@@ -379,32 +376,32 @@ export const Council = () => {
               >
                 <div>
                   <h2 className="text-xl font-black text-white uppercase italic tracking-wider font-display mb-1">{t('council:initialize_debate', { defaultValue: 'Debatte initialisieren' })}</h2>
-                  <p className="text-xs text-slate-400 font-mono">{t('council:initialize_sub', { defaultValue: 'Konstruiere ein Expertengremium zur parallelisierten Entscheidungsfindung.' })}</p>
+                  <p className="text-xs text-slate-500">{t('council:initialize_sub', { defaultValue: 'Konstruiere ein Expertengremium zur parallelisierten Entscheidungsfindung.' })}</p>
                 </div>
 
                 <div className="space-y-4">
-                  <label className="block text-xs font-bold font-mono text-slate-400 uppercase tracking-wider">{t('council:topic_label', { defaultValue: 'Fragestellung / Topic zur Debatte' })}</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t('council:topic_label', { defaultValue: 'Fragestellung / Topic zur Debatte' })}</label>
                   <textarea
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     placeholder={t('council:topic_placeholder', { defaultValue: 'z.B. Wie sollten wir auf den CRM-Markteintritt eines neuen Mitbewerbers reagieren, der mit Kampfpreisen wirbt?' })}
                     rows={3}
-                    className="w-full bg-slate-900/60 border border-white/5 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-accent-orange/50 transition-colors"
+                    className="w-full bg-primary-light/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-accent-orange/50 transition-colors"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/40 p-5 rounded-xl border border-white/5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-primary-light/40 p-5 rounded-xl border border-white/5">
                   <div>
-                    <label className="block text-xs font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">{t('council:mode_label', { defaultValue: 'Modus' })}</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('council:mode_label', { defaultValue: 'Modus' })}</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setMode('multi-role')}
                         className={cn(
-                          "py-3 px-4 rounded-lg border text-xs font-bold uppercase transition-all",
+                          "py-3 px-4 rounded-xl border text-xs font-bold uppercase transition-all",
                           mode === 'multi-role'
                             ? "bg-accent-orange/15 border-accent-orange text-white"
-                            : "bg-slate-900 border-white/5 text-slate-500 hover:text-white"
+                            : "bg-primary-light/40 border-white/10 text-slate-400 hover:text-white"
                         )}
                       >
                         Multi-Role
@@ -413,10 +410,10 @@ export const Council = () => {
                         type="button"
                         onClick={() => setMode('multi-model')}
                         className={cn(
-                          "py-3 px-4 rounded-lg border text-xs font-bold uppercase transition-all",
+                          "py-3 px-4 rounded-xl border text-xs font-bold uppercase transition-all",
                           mode === 'multi-model'
                             ? "bg-accent-orange/15 border-accent-orange text-white"
-                            : "bg-slate-900 border-white/5 text-slate-500 hover:text-white"
+                            : "bg-primary-light/40 border-white/10 text-slate-400 hover:text-white"
                         )}
                       >
                         Multi-Model
@@ -425,7 +422,7 @@ export const Council = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold font-mono text-slate-400 uppercase tracking-wider mb-2">{t('council:rounds_label', { defaultValue: 'Runden: {{count}}', count: maxRounds })}</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('council:rounds_label', { defaultValue: 'Runden: {{count}}', count: maxRounds })}</label>
                     <input
                       type="range"
                       min="1"
@@ -434,7 +431,7 @@ export const Council = () => {
                       onChange={(e) => setMaxRounds(parseInt(e.target.value))}
                       className="w-full accent-accent-orange mt-3"
                     />
-                    <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+                    <div className="flex justify-between text-[10px] text-slate-500 mt-1">
                       <span>{t('council:round_1_hint', { defaultValue: '1 (Einfacher Entwurf)' })}</span>
                       <span>{t('council:round_5_hint', { defaultValue: '5 (Kritischer Konsens)' })}</span>
                     </div>
@@ -444,11 +441,11 @@ export const Council = () => {
                 {/* Debattanten */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold font-mono text-slate-400 uppercase tracking-wider">{t('council:board_debaters', { defaultValue: 'Gremium / Debattanten ({{count}})', count: participants.length })}</h3>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('council:board_debaters', { defaultValue: 'Gremium / Debattanten ({{count}})', count: participants.length })}</h3>
                     <button
                       type="button"
                       onClick={handleAddParticipant}
-                      className="text-xs font-bold text-accent-orange hover:text-accent-orange/80 transition-colors uppercase font-mono flex items-center gap-1"
+                      className="text-xs font-bold text-accent-orange hover:text-accent-orange/80 transition-colors uppercase flex items-center gap-1"
                     >
                       <Plus size={14} /> {t('council:add_debater', { defaultValue: 'Debattant Hinzufügen' })}
                     </button>
@@ -456,7 +453,7 @@ export const Council = () => {
 
                   <div className="space-y-4">
                     {participants.map((part, index) => (
-                      <div key={part.id} className="p-5 bg-slate-900/50 rounded-xl border border-white/5 space-y-3 relative">
+                      <div key={part.id} className="p-5 bg-primary-light/30 rounded-xl border border-white/5 space-y-3 relative">
                         <button
                           type="button"
                           onClick={() => handleRemoveParticipant(part.id)}
@@ -467,25 +464,25 @@ export const Council = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
-                            <label className="block text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wider mb-1">{t('council:name_role_label', { defaultValue: 'Name / Rolle' })}</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{t('council:name_role_label', { defaultValue: 'Name / Rolle' })}</label>
                             <input
                               type="text"
                               value={part.name}
                               onChange={(e) => handleUpdateParticipant(part.id, 'name', e.target.value)}
-                              className="w-full bg-slate-800/40 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
+                              className="w-full bg-primary-light border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
                             />
                           </div>
 
                           {mode === 'multi-model' && (
                             <div>
-                              <label className="block text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wider mb-1">{t('council:provider_model_label', { defaultValue: 'Provider & Modell' })}</label>
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{t('council:provider_model_label', { defaultValue: 'Provider & Modell' })}</label>
                               <select
                                 value={part.providerId}
                                 onChange={(e) => {
                                   const pId = e.target.value;
                                   handleUpdateParticipant(part.id, 'providerId', pId);
                                 }}
-                                className="w-full bg-slate-800/40 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
+                                className="w-full bg-primary-light border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
                               >
                                 <option value="louis-chat">Louis AI (Standard)</option>
                                 {(settings?.providers || []).map(p => (
@@ -497,25 +494,25 @@ export const Council = () => {
 
                           {mode === 'multi-model' && (
                             <div>
-                              <label className="block text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wider mb-1">{t('council:model_id_override', { defaultValue: 'Modell-ID Überschreibung (optional)' })}</label>
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{t('council:model_id_override', { defaultValue: 'Modell-ID Überschreibung (optional)' })}</label>
                               <input
                                 type="text"
                                 value={part.modelId}
                                 onChange={(e) => handleUpdateParticipant(part.id, 'modelId', e.target.value)}
                                 placeholder={t('council:model_id_placeholder', { defaultValue: 'z.B. gpt-4o, claude-3-5-sonnet' })}
-                                className="w-full bg-slate-800/40 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
+                                className="w-full bg-primary-light border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
                               />
                             </div>
                           )}
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wider mb-1">{t('council:system_prompt_label', { defaultValue: 'System-Prompt (Mission/Rolle)' })}</label>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{t('council:system_prompt_label', { defaultValue: 'System-Prompt (Mission/Rolle)' })}</label>
                           <textarea
                             value={part.systemPrompt}
                             onChange={(e) => handleUpdateParticipant(part.id, 'systemPrompt', e.target.value)}
                             rows={2}
-                            className="w-full bg-slate-800/40 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
+                            className="w-full bg-primary-light border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-accent-orange/40"
                           />
                         </div>
                       </div>
@@ -527,7 +524,7 @@ export const Council = () => {
                   <button
                     onClick={handleStartSession}
                     disabled={createSessionMutation.isPending}
-                    className="flex items-center gap-2 px-6 py-3 bg-accent-orange hover:bg-accent-orange/85 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+                    className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 sm:px-6 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 active:scale-95 font-display text-[11px] uppercase tracking-widest leading-none"
                   >
                     {createSessionMutation.isPending ? (
                       <>
@@ -550,10 +547,10 @@ export const Council = () => {
               ) : activeSessionData?.session ? (
                 <div className="p-8 space-y-8 w-full max-w-7xl mx-auto">
                   {/* Topic Card */}
-                  <div className="bg-slate-900/60 p-6 rounded-xl border border-white/5 space-y-3 shadow-xl">
+                  <div className="bg-primary-light/30 p-6 rounded-xl border border-white/5 space-y-3 shadow-xl">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div className="space-y-1">
-                        <span className="text-[9px] font-mono font-bold text-accent-orange uppercase tracking-widest">{t('council:current_topic', { defaultValue: 'AKTUELLES THEMA' })}</span>
+                        <span className="text-[10px] font-mono font-bold text-accent-orange uppercase tracking-widest">{t('council:current_topic', { defaultValue: 'AKTUELLES THEMA' })}</span>
                         <h2 className="text-lg font-black text-white font-display leading-snug">{activeSessionData.session.topic}</h2>
                       </div>
                       
@@ -561,7 +558,7 @@ export const Council = () => {
                         <button
                           type="button"
                           onClick={() => setIsSaveKbModalOpen(true)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-orange/15 hover:bg-accent-orange/25 text-accent-orange border border-accent-orange/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all font-mono shadow-sm"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-accent-orange/15 hover:bg-accent-orange/25 text-accent-orange border border-accent-orange/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
                           title={t('council:save_to_kb_tooltip', { defaultValue: 'In Wissensdatenbank speichern' })}
                         >
                           <BookOpen size={13} /> {t('council:save_to_kb', { defaultValue: 'In Wissensdatenbank speichern' })}
@@ -570,7 +567,7 @@ export const Council = () => {
                         <button
                           type="button"
                           onClick={handleExportText}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-colors border border-white/5 font-mono uppercase tracking-wider"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 rounded-xl transition-colors border border-white/10 uppercase tracking-wider"
                         >
                           <Download size={13} /> {t('council:export_txt', { defaultValue: 'Export .TXT' })}
                         </button>
@@ -578,7 +575,7 @@ export const Council = () => {
                         <button
                           type="button"
                           onClick={(e) => handleDeleteSession(activeSessionData.session.id, e)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors font-mono"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
                           title={t('council:delete_debate_tooltip', { defaultValue: 'Debatte löschen' })}
                         >
                           <Trash2 size={13} /> {t('council:delete_debate', { defaultValue: 'Löschen' })}
@@ -598,7 +595,7 @@ export const Council = () => {
                     <motion.div
                       initial={{ opacity: 0, scale: 0.98 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="bg-slate-900 p-8 rounded-xl border border-accent-orange/20 shadow-2xl relative overflow-hidden"
+                      className="bg-primary-light/30 p-8 rounded-xl border border-accent-orange/20 shadow-2xl relative overflow-hidden"
                     >
                       <div className="absolute top-0 right-0 p-6 flex items-center gap-2 z-10">
                         <button
@@ -607,7 +604,7 @@ export const Council = () => {
                             setKbSaveOption('summary_only');
                             setIsSaveKbModalOpen(true);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-orange/15 hover:bg-accent-orange/25 text-accent-orange border border-accent-orange/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all font-mono"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-accent-orange/15 hover:bg-accent-orange/25 text-accent-orange border border-accent-orange/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
                         >
                           <BookOpen size={13} /> {t('council:save_summary_to_kb', { defaultValue: 'Synthese in Wissensdatenbank' })}
                         </button>
@@ -615,7 +612,7 @@ export const Council = () => {
                         <button
                           type="button"
                           onClick={handleExportText}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-colors border border-white/5 font-mono uppercase tracking-wider"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 rounded-xl transition-colors border border-white/10 uppercase tracking-wider"
                         >
                           <Download size={13} /> {t('council:export_txt', { defaultValue: 'Export .TXT' })}
                         </button>
@@ -631,7 +628,7 @@ export const Council = () => {
                         </div>
                       </div>
 
-                      <div className="p-6 bg-slate-950/40 rounded-xl border border-white/5 shadow-inner">
+                      <div className="p-6 bg-primary-dark/40 rounded-xl border border-white/5 shadow-inner">
                         {renderMarkdown(activeSessionData.session.finalConclusion)}
                       </div>
                     </motion.div>
@@ -646,7 +643,7 @@ export const Council = () => {
                       </div>
 
                       {/* Runden-Navigations-Tabs */}
-                      <div className="flex items-center gap-1 bg-slate-950/30 p-1 rounded-lg border border-white/5">
+                      <div className="flex items-center gap-1 bg-primary-dark/30 p-1 rounded-lg border border-white/5">
                         {Array.from({ length: activeSessionData.session.status === 'completed' ? activeSessionData.session.maxRounds : activeSessionData.session.currentRound }).map((_, idx) => {
                           const r = idx + 1;
                           // Nur Runden anzeigen, für die es bereits Nachrichten gibt, es sei denn es ist die aktive Draft-Runde
@@ -673,7 +670,7 @@ export const Council = () => {
 
                     {/* Active Step Executor (Phase 2) */}
                     {activeSessionData.session.status !== 'completed' && activeRoundTab === activeSessionData.session.currentRound && (
-                      <div className="p-8 bg-slate-900/30 rounded-xl border border-dashed border-white/10 text-center space-y-4">
+                      <div className="p-8 bg-primary-light/30 rounded-xl border border-dashed border-white/10 text-center space-y-4">
                         <div className="flex justify-center">
                           <div className="p-4 bg-accent-orange/5 rounded-full border border-accent-orange/15 text-accent-orange animate-pulse">
                             <RefreshCw size={24} />
@@ -690,7 +687,7 @@ export const Council = () => {
                         <button
                           onClick={handleExecuteNextRound}
                           disabled={executeStepMutation.isPending}
-                          className="flex items-center gap-2 px-6 py-3 bg-accent-orange hover:bg-accent-orange/85 text-white rounded-lg text-xs font-bold uppercase tracking-wider mx-auto transition-colors shadow-lg shadow-accent-orange/15"
+                          className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 sm:px-6 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 active:scale-95 font-display text-[11px] uppercase tracking-widest leading-none mx-auto"
                         >
                           {executeStepMutation.isPending ? (
                             <>
@@ -715,25 +712,25 @@ export const Council = () => {
                           return (
                             <div
                               key={participant.id}
-                              className="bg-slate-900/50 rounded-xl border border-white/5 overflow-hidden flex flex-col shadow-xl"
+                              className="bg-primary-light/30 rounded-xl border border-white/5 overflow-hidden flex flex-col shadow-xl"
                             >
-                              <div className="px-5 py-4 border-b border-white/5 bg-slate-950/20 flex items-center justify-between shrink-0">
+                              <div className="px-5 py-4 border-b border-white/5 bg-primary-dark/40 flex items-center justify-between shrink-0">
                                 <div className="min-w-0">
                                   <h4 className="text-xs font-bold text-white truncate font-display">{participant.name}</h4>
-                                  <p className="text-[9px] text-slate-500 font-mono truncate">{participant.modelId || 'Louis AI'}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono truncate">{participant.modelId || 'Louis AI'}</p>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {Boolean((msg?.fallbackMetadata as { usedFallback?: boolean } | undefined)?.usedFallback) && (
-                                    <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md uppercase shrink-0 flex items-center gap-1" title={(msg?.fallbackMetadata as { fallbackReason?: string } | undefined)?.fallbackReason || 'Fallback verwendet'}>
+                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md uppercase shrink-0 flex items-center gap-1" title={(msg?.fallbackMetadata as { fallbackReason?: string } | undefined)?.fallbackReason || 'Fallback verwendet'}>
                                       <AlertCircle size={10} /> Fallback
                                     </span>
                                   )}
-                                  <span className="text-[9px] font-mono text-slate-600 border border-white/5 px-2 py-0.5 rounded-md uppercase shrink-0">
+                                  <span className="text-[10px] font-mono text-slate-600 border border-white/5 px-2 py-0.5 rounded-md uppercase shrink-0">
                                     Temp: {participant.temperature}
                                   </span>
                                 </div>
                               </div>
-                              <div className="p-5 flex-1 overflow-y-auto custom-scrollbar max-h-96 min-h-[16rem] bg-slate-950/10">
+                              <div className="p-5 flex-1 overflow-y-auto custom-scrollbar max-h-96 min-h-[16rem] bg-primary-dark/30">
                                 {msg ? (
                                   renderMarkdown(msg.content)
                                 ) : (
@@ -750,7 +747,7 @@ export const Council = () => {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-xs text-slate-600 font-mono">
+                <div className="flex-1 flex items-center justify-center text-xs text-slate-500">
                   {t('council:session_load_error', { defaultValue: 'Session konnte nicht geladen werden.' })}
                 </div>
               )
@@ -762,194 +759,162 @@ export const Council = () => {
                 animate={{ opacity: 1 }}
                 className="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto text-center"
               >
-                <div className="p-6 bg-accent-orange/10 border border-accent-orange/20 rounded-2xl text-accent-orange mb-6 shadow-xl shadow-accent-orange/5 animate-pulse">
+                <div className="p-6 bg-accent-orange/10 border border-accent-orange/20 rounded-xl text-accent-orange mb-6 shadow-xl shadow-accent-orange/5 animate-pulse">
                   <Users size={40} />
                 </div>
                 <h3 className="text-lg font-black text-white uppercase italic tracking-wider font-display mb-2">{t('council:welcome_title', { defaultValue: 'Louis Council' })}</h3>
                 <p className="text-slate-400 text-xs tracking-wide leading-relaxed font-medium mb-6">
                   {t('council:welcome_text', { defaultValue: 'Willkommen im LLM Council. Dieses autarke System ermöglicht es Ihnen, strategische Entscheidungen durch parallele Debatten mehrerer KI-Agenten zu evaluieren und verfeinern zu lassen.' })}
                 </p>
-                <button
-                  onClick={() => setIsCreating(true)}
-                  className="flex items-center gap-2 px-6 py-3 bg-accent-orange hover:bg-accent-orange/85 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-colors shadow-lg shadow-accent-orange/15"
-                >
-                  <Plus size={14} /> {t('council:start_new_debate', { defaultValue: 'Neue Debatte starten' })}
-                </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      {/* Modal: In Wissensdatenbank Speichern */}
-      <AnimatePresence>
-        {isSaveKbModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-6 relative"
-            >
-              <button
-                type="button"
-                onClick={() => setIsSaveKbModalOpen(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+      {/* Modal: In Wissensdatenbank Speichern (geteilte Dialog-Komponente) */}
+      <Dialog
+        isOpen={isSaveKbModalOpen}
+        onClose={() => setIsSaveKbModalOpen(false)}
+        title={t('council:save_kb_title', { defaultValue: 'In Wissensdatenbank Speichern' })}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">{t('council:save_kb_subtitle', { defaultValue: 'Speichern Sie diese Debatte für RAG-Analysen und KI-Recherchen im CRM.' })}</p>
+
+          <div className="space-y-3">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+              {t('council:save_scope_label', { defaultValue: 'Umfang der Speicherung' })}
+            </label>
+
+            <div className="space-y-3">
+              <div
+                onClick={() => setKbSaveOption('full')}
+                className={cn(
+                  "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
+                  kbSaveOption === 'full'
+                    ? "bg-accent-orange/10 border-accent-orange text-white"
+                    : "bg-primary-light/40 border-white/10 text-slate-400 hover:text-slate-200"
+                )}
               >
-                <X size={18} />
-              </button>
-
-              <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-                <div className="p-2.5 bg-accent-orange/10 border border-accent-orange/20 rounded-xl text-accent-orange">
-                  <BookOpen size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white uppercase italic tracking-wider font-display">{t('council:save_kb_title', { defaultValue: 'In Wissensdatenbank Speichern' })}</h3>
-                  <p className="text-xs text-slate-400 font-mono">{t('council:save_kb_subtitle', { defaultValue: 'Speichern Sie diese Debatte für RAG-Analysen und KI-Recherchen im CRM.' })}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-xs font-bold font-mono text-slate-400 uppercase tracking-wider">
-                  {t('council:save_scope_label', { defaultValue: 'Umfang der Speicherung' })}
-                </label>
-
-                <div className="space-y-3">
-                  <div
-                    onClick={() => setKbSaveOption('full')}
-                    className={cn(
-                      "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
-                      kbSaveOption === 'full'
-                        ? "bg-accent-orange/10 border-accent-orange text-white"
-                        : "bg-slate-800/40 border-white/5 text-slate-400 hover:text-slate-200"
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="kbSaveOption"
-                      checked={kbSaveOption === 'full'}
-                      onChange={() => setKbSaveOption('full')}
-                      className="mt-1 accent-accent-orange"
-                    />
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-white uppercase tracking-wider">{t('council:save_full_title', { defaultValue: 'Gesamte Debatte (Granular)' })}</p>
-                      <p className="text-[11px] text-slate-400 font-mono leading-relaxed">
-                        {t('council:save_full_desc', { defaultValue: 'Speichert alle Diskussionsrunden, Personas, Zwischenergebnisse der Agenten UND das abschließende Ergebnis.' })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setKbSaveOption('summary_only')}
-                    className={cn(
-                      "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
-                      kbSaveOption === 'summary_only'
-                        ? "bg-accent-orange/10 border-accent-orange text-white"
-                        : "bg-slate-800/40 border-white/5 text-slate-400 hover:text-slate-200"
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="kbSaveOption"
-                      checked={kbSaveOption === 'summary_only'}
-                      onChange={() => setKbSaveOption('summary_only')}
-                      className="mt-1 accent-accent-orange"
-                    />
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-white uppercase tracking-wider">{t('council:save_kb_synthesis_only_label', { defaultValue: 'Nur Endergebnis / Synthese' })}</p>
-                      <p className="text-[11px] text-slate-400 font-mono leading-relaxed">
-                        {t('council:save_kb_synthesis_only_desc', { defaultValue: 'Speichert ausschließlich die finale Synthese (Consensus Report) und das Hauptthema.' })}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setIsSaveKbModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors font-mono"
-                >
-                  {t('common:cancel', { defaultValue: 'Abbrechen' })}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveToKnowledgeBase}
-                  disabled={saveToKbMutation.isPending}
-                  className="flex items-center gap-2 px-5 py-2 bg-accent-orange hover:bg-accent-orange/85 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-colors shadow-lg shadow-accent-orange/15 font-mono"
-                >
-                  {saveToKbMutation.isPending ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" /> {t('common:saving', { defaultValue: 'Speichere...' })}
-                    </>
-                  ) : (
-                    <>
-                      <BookOpen size={14} /> {t('common:save', { defaultValue: 'Speichern' })}
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-        {/* Modal: Debatte Löschen Bestätigung */}
-        {sessionToDelete && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl"
-            >
-              <div className="flex items-center gap-3.5 text-red-400">
-                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl shrink-0">
-                  <Trash2 size={22} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-wide text-white font-display">
-                    {t('council:confirm_delete_title', { defaultValue: 'Debatte löschen' })}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    {t('council:confirm_delete_sub', { defaultValue: 'Unwiderruflicher Schritt' })}
+                <input
+                  type="radio"
+                  name="kbSaveOption"
+                  checked={kbSaveOption === 'full'}
+                  onChange={() => setKbSaveOption('full')}
+                  className="mt-1 accent-accent-orange"
+                />
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-white uppercase tracking-wider">{t('council:save_full_title', { defaultValue: 'Gesamte Debatte (Granular)' })}</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {t('council:save_full_desc', { defaultValue: 'Speichert alle Diskussionsrunden, Personas, Zwischenergebnisse der Agenten UND das abschließende Ergebnis.' })}
                   </p>
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5 text-xs text-slate-300 font-mono leading-relaxed">
-                {t('council:confirm_delete_session', { defaultValue: 'Möchten Sie diese Diskussions-Session und alle dazugehörigen Nachrichten wirklich unwiderruflich löschen?' })}
+              <div
+                onClick={() => setKbSaveOption('summary_only')}
+                className={cn(
+                  "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
+                  kbSaveOption === 'summary_only'
+                    ? "bg-accent-orange/10 border-accent-orange text-white"
+                    : "bg-primary-light/40 border-white/10 text-slate-400 hover:text-slate-200"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="kbSaveOption"
+                  checked={kbSaveOption === 'summary_only'}
+                  onChange={() => setKbSaveOption('summary_only')}
+                  className="mt-1 accent-accent-orange"
+                />
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-white uppercase tracking-wider">{t('council:save_kb_synthesis_only_label', { defaultValue: 'Nur Endergebnis / Synthese' })}</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {t('council:save_kb_synthesis_only_desc', { defaultValue: 'Speichert ausschließlich die finale Synthese (Consensus Report) und das Hauptthema.' })}
+                  </p>
+                </div>
               </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSessionToDelete(null)}
-                  disabled={deleteSessionMutation.isPending}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold font-mono rounded-lg transition-colors uppercase tracking-wider"
-                >
-                  {t('common:cancel', { defaultValue: 'Abbrechen' })}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteSessionMutation.mutate({ id: sessionToDelete })}
-                  disabled={deleteSessionMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold font-mono rounded-lg transition-colors uppercase tracking-wider shadow-lg shadow-red-600/20"
-                >
-                  {deleteSessionMutation.isPending ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" /> {t('common:deleting', { defaultValue: 'Lösche...' })}
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={14} /> {t('common:confirm_delete_btn', { defaultValue: 'Unwiderruflich Löschen' })}
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+            <button
+              type="button"
+              onClick={() => setIsSaveKbModalOpen(false)}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+            >
+              {t('common:cancel', { defaultValue: 'Abbrechen' })}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveToKnowledgeBase}
+              disabled={saveToKbMutation.isPending}
+              className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 font-display text-[11px] uppercase tracking-widest leading-none"
+            >
+              {saveToKbMutation.isPending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> {t('common:saving', { defaultValue: 'Speichere...' })}
+                </>
+              ) : (
+                <>
+                  <BookOpen size={14} /> {t('common:save', { defaultValue: 'Speichern' })}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Modal: Debatte Löschen Bestätigung (2-stufig, geteilte Dialog-Komponente) */}
+      <Dialog
+        isOpen={!!sessionToDelete}
+        onClose={() => setSessionToDelete(null)}
+        title={t('council:confirm_delete_title', { defaultValue: 'Debatte löschen' })}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3.5 text-red-400">
+            <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl shrink-0">
+              <Trash2 size={22} />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {t('council:confirm_delete_sub', { defaultValue: 'Unwiderruflicher Schritt' })}
+            </p>
+          </div>
+
+          <div className="p-4 bg-primary-dark/60 rounded-xl border border-white/5 text-xs text-slate-300 leading-relaxed">
+            {t('council:confirm_delete_session', { defaultValue: 'Möchten Sie diese Diskussions-Session und alle dazugehörigen Nachrichten wirklich unwiderruflich löschen?' })}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/5">
+            <button
+              type="button"
+              onClick={() => setSessionToDelete(null)}
+              disabled={deleteSessionMutation.isPending}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold rounded-xl transition-colors uppercase tracking-wider"
+            >
+              {t('common:cancel', { defaultValue: 'Abbrechen' })}
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteSessionMutation.mutate({ id: sessionToDelete })}
+              disabled={deleteSessionMutation.isPending}
+              className="flex items-center gap-2 px-4 h-11 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-colors uppercase tracking-wider shadow-lg shadow-red-600/20"
+            >
+              {deleteSessionMutation.isPending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> {t('common:deleting', { defaultValue: 'Lösche...' })}
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} /> {t('common:confirm_delete_btn', { defaultValue: 'Unwiderruflich Löschen' })}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 };

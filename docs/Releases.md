@@ -1,3 +1,15 @@
+## 🚀 Release v2.1.3: Runder, konsistenter, schneller bedienbar
+
+Mit **2.1.3** wird Louis Smart CRM in der Bedienung noch runder und konsistenter. Das Herzstück dieser Version: Der **LLM Council** — euer eigenes Multi-KI-Diskussionsforum für strategische Entscheidungen — tritt jetzt im gewohnten Look des gesamten CRM auf. Gleiche Seitenstruktur, gleiche Karten, gleiche Buttons: Wer Louis kennt, findet sich sofort zurecht. Eure vergangenen Debatten bleiben dabei selbstverständlich in der Seitenleiste sichtbar.
+
+Auch beim **E-Mail-Versand** geht es jetzt schneller: Anhänge werden per **Suche** gefunden statt durch lange Listen zu scrollen, und ihr könnt Dateien einfach per **Drag & Drop** in den Dialog ziehen. Ein nerviger Randfall ist ebenfalls behoben — die Anhangs-Auswahl wird nie mehr am Dialogrand abgeschnitten.
+
+Und Louis wird im Alltag noch ein Stück aufmerksamer: Beantwortet er im Chat eine offene **Rückfrage** (z. B. aus einem Workflow), schließt er sie automatisch sauber ab — kein Hängenbleiben im Rückfrage-Pool.
+
+Louis Smart CRM ist und bleibt ein Projekt für Alle: offen, individualisierbar und mit wachsender Qualität — jede Version wird gründlich geprüft, damit Louis im Alltag zuverlässig für euch arbeitet. Viel Freude damit!
+
+---
+
 ## 🚀 Release v2.1.0: MCP-Client-Engine, Chatprofile & Qualitätsausbau
 
 Louis Smart CRM wächst dank euch weiter: Mit Version **2.1.0** kommen die neue **MCP-Client-Engine** (49 externe Tools über Google Workspace und Obsidian), **Chatprofile** mit getrennten Verläufen und Tool-Auswahl, sowie ein massiver **Qualitäts- und Testausbau** (Cloud-CI, deterministische KI-Tests) frisch dazu.

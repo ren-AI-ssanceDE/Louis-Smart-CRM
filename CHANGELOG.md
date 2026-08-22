@@ -2,7 +2,27 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
-## [2.1.2] — 2026-08-21 (in Vorbereitung)
+## [2.1.3] — 2026-08-22
+
+### 🎯 Fokus: Bedienbarkeit & Konsistenz (Council, E-Mail-Anhänge, Rückfragen)
+
+#### 🗣️ LLM Council: einheitliche Bedienoberfläche
+* Die Council-Seite (Multi-LLM-Diskussionsforum) nutzt jetzt durchgängig die CRM-Design-Sprache: Standard-Seitenkopf, einheitliche Karten-, Button- und Eingabestile, wiederverwendete Dialog-Komponente statt eigener Fenster.
+* Die Session-Übersicht (vergangene Debatten) bleibt als Seitenleiste erhalten — im gewohnten Look der übrigen Module.
+* Redundante Bedienelemente entfernt: ein klarer Einstieg für neue Debatten.
+
+#### 📎 E-Mail-Anhänge: Auswahl per Suche + Drag & Drop
+* Die Anhangs-Auswahl im E-Mail-Dialog ist jetzt eine Such-Combobox: Live-Filterung, bereits angehängte Dateien sind markiert, Escape/Outside-Klick schließt die Auswahl.
+* Anhänge lassen sich zusätzlich per Drag & Drop direkt in den Dialog ziehen.
+* Behoben: Das Auswahl-Dropdown wurde am Dialogrand abgeschnitten und ist jetzt vollständig lesbar.
+
+#### 💬 Rückfragen: Antworten schließen die Frage
+* Beantwortet Louis im Chat eine offene Rückfrage (z. B. aus einem Workflow), wird diese automatisch als beantwortet markiert — der Rückfrage-Pool bleibt sauber.
+
+#### 🧪 Qualität
+* Test-Suite vollständig grün und reproduzierbar (683 Unit-Tests), deterministische UI-Tests für den Council ergänzt.
+
+## [2.1.2] — 2026-08-21
 
 ### 🎯 Fokus: Zuverlässigkeit der KI-Pfade (Vault, Kalender, Tokens, Live-Status)
 

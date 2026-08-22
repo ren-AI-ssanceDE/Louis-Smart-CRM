@@ -1261,7 +1261,7 @@ export const louisAiRouter = router({
       // C.7: Task-Marker freigeben (Wechsel-Sperre)
       releaseChatTask();
 
-      return {
+      const resultObj = {
         replyText: result.replyText,
         thoughtLog: result.thoughtLog,
         proposedChanges: result.proposedChanges,
@@ -1272,6 +1272,33 @@ export const louisAiRouter = router({
         memoryRecallCount: result.memoryRecallCount ?? 0,
         metrics: result.metrics
       };
+
+      // 053 (052-B1): Chat-Antwort auf eine Rückfrage schließt die OPEN-Frage —
+      // sonst bleibt sie im Admin-Tab beantwortbar (Konsistenz-Problem 2026-08-21).
+      // Der Agent hat die Frage als Kontext erhalten und passend beantwortet;
+      // jetzt wird der Status konsistent zu answerQuestionForChat gesetzt
+      // (nur die NEUESTE OPEN-Frage des Tenants; WHERE status='OPEN' = idempotent).
+      if (isUsingFallback || !pool) {
+        const open = (fallbackStore.aiQuestions || [])
+          .filter((q) => (q.tenant_id === tenantId || q.tenant_id === "1") && q.status === "OPEN")
+          .sort((a, b) => String(b.created_at_utc || "").localeCompare(String(a.created_at_utc || "")));
+        if (open.length > 0) {
+          open[0].status = "ANSWERED";
+          open[0].answer = input.message;
+          open[0].answered_at_utc = new Date().toISOString();
+          saveFallbackStore();
+        }
+      } else {
+        await pool.query(
+          `UPDATE sys_louis_ai_questions SET status = 'ANSWERED', answer = $1, answered_at_utc = CURRENT_TIMESTAMP
+           WHERE id_uuid = (SELECT id_uuid FROM sys_louis_ai_questions
+                            WHERE (tenant_id = $2 OR tenant_id = '1') AND status = 'OPEN'
+                            ORDER BY created_at_utc DESC LIMIT 1)
+             AND status = 'OPEN'`,
+          [input.message, tenantId]
+        );
+      }
+      return resultObj;
     }),
 
   // 052 (048-B1): Live-Status während der Antwort-Verarbeitung (Parität zur

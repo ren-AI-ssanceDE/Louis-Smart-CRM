@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Invoice, Company, Contact, Offer } from '../types';
 import { Dialog } from './ui/Dialog';
+import { FileCombobox } from './ui/FileCombobox';
 import { useTranslation } from 'react-i18next';
 import { AiTextGeneratorDialog } from './AiTextGeneratorDialog';
 import { 
@@ -393,17 +394,18 @@ export const MailDialog = ({
   };
 
   const allowedExtensions = ['md', 'txt', 'rst', 'json', 'jsonl', 'csv', 'html', 'xml', 'xls', 'pdf', 'docx', 'pptx', 'py', 'js', 'java'];
-  
-  const handleFileSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    (Array.from(files) as File[]).forEach((file) => {
+
+  // 054 (P0-3): Gemeinsamer Upload-Pfad für Klick UND Drag & Drop (Vault-Muster).
+  // Die Validierung (Endung, Duplikat) läuft identisch für beide Wege.
+  const processFiles = (files: FileList | File[]) => {
+    const list = Array.from(files as ArrayLike<File>);
+    list.forEach((file) => {
       const ext = file.name.split('.').pop()?.toLowerCase();
       if (!ext || !allowedExtensions.includes(ext)) {
         toast.error(t('admin:mail.file_type_not_allowed', { ext, allowed: allowedExtensions.map(extName => '.' + extName).join(', ') }));
         return;
       }
-      
+
       const isAlreadyAttached = customAttachments.some(att => att.filename === file.name);
       if (isAlreadyAttached) {
         toast.error(t('admin:mail.file_already_attached', { filename: file.name }));
@@ -414,7 +416,7 @@ export const MailDialog = ({
       reader.onload = () => {
         const base64Content = (reader.result as string).split(',')[1];
         const isStored = profileFiles.some((f: { name: string }) => f.name === file.name);
-        
+
         setCustomAttachments(prev => [...prev, {
           filename: file.name,
           content: base64Content,
@@ -426,7 +428,30 @@ export const MailDialog = ({
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  const handleFileSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    processFiles(e.target.files);
     e.target.value = '';
+  };
+
+  // 054 (P0-3): Drag & Drop-Handler (Vault/FileBrowser-Muster Z. 185-199)
+  const [dragActive, setDragActive] = useState(false);
+  const handleDrag = (e: React.DragEvent) => {
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFiles(e.dataTransfer.files);
+    }
   };
 
   // Safe WYSIWYG Commands
@@ -804,9 +829,22 @@ export const MailDialog = ({
           </div>
 
           {customAttachments.length === 0 ? (
-            <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest text-center py-4 bg-primary-dark/30 rounded-lg border-2 border-dashed border-white/5">
-              {t('admin:mail.no_files_attached')}
-            </p>
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileAttachInputRef.current?.click()}
+              className={`text-slate-500 text-[10px] uppercase font-black tracking-widest text-center py-4 bg-primary-dark/30 rounded-lg border-2 border-dashed cursor-pointer transition-all ${
+                dragActive
+                  ? "border-accent-orange bg-accent-orange/5 text-accent-orange"
+                  : "border-white/5 hover:border-accent-orange/30 hover:text-slate-400"
+              }`}
+            >
+              {dragActive
+                ? t('admin:mail.drop_files_here')
+                : t('admin:mail.no_files_attached')}
+            </div>
           ) : (
             <div className="space-y-2 font-display">
               {customAttachments.map((att, index) => (
@@ -867,41 +905,19 @@ export const MailDialog = ({
             </div>
           )}
 
-          {/* Existierende Profildateien */}
+          {/* Existierende Profildateien — 054 (Option A): Such-Combobox statt Button-Wust */}
           {profileId && profileType && profileFiles.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-display flex items-center gap-1.5">
                 <Paperclip size={12} className="text-accent-blue" />
                 {t('admin:mail.add_from_profile_manager')}
               </p>
-              <div className="flex flex-wrap gap-2">
-                {profileFiles.map((file: { name: string; size: number }) => {
-                  const isAttached = customAttachments.some(att => att.filename === file.name);
-                  const isLoading = loadingFile === file.name;
-                  return (
-                    <button
-                      key={file.name}
-                      type="button"
-                      disabled={isAttached || isLoading}
-                      onClick={() => handleAttachProfileFile(file.name, file.size)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
-                        isAttached 
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-not-allowed"
-                          : isLoading
-                            ? "bg-primary-dark/50 border-white/5 text-slate-500 cursor-wait animate-pulse"
-                            : "bg-primary-dark/40 border-white/5 text-slate-300 hover:text-white hover:border-white/10 hover:bg-primary-dark cursor-pointer"
-                      }`}
-                    >
-                      <Paperclip size={12} className={isAttached ? "text-emerald-400" : "text-slate-500"} />
-                      <span className="truncate max-w-[180px]" title={file.name}>{file.name}</span>
-                      <span className="text-[10px] font-mono text-slate-500 font-medium">({(file.size / 1024).toFixed(1)} KB)</span>
-                      {isAttached && (
-                        <span className="text-[9px] uppercase font-black text-emerald-400 ml-1">{t('admin:mail.attached_badge')}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <FileCombobox
+                files={profileFiles}
+                attachedNames={customAttachments.map((a) => a.filename)}
+                loadingName={loadingFile}
+                onSelect={(name, size) => handleAttachProfileFile(name, size)}
+              />
             </div>
           )}
         </div>
