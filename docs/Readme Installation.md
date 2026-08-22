@@ -48,7 +48,7 @@ Für den **einfachsten Weg** (Docker) benötigen Sie nur:
 | **PostgreSQL** | 14+, Erweiterung `pgvector` | Produktionsdatenbank mit Vektor-Embeddings (1536-dim.) |
 | **Docker** | aktuell (mit Compose v2) | Empfohlener Produktivbetrieb des Gesamtstacks |
 
-**Keine Datenbank nötig für Entwicklung:** Louis Smart CRM wechselt bei fehlender PostgreSQL-Verbindung automatisch in den lokalen JSON-Fallback-Modus (`.local_fallback_db.json`) — inklusive In-Memory-Vektorsuche.
+**Keine Datenbank nötig für Entwicklung:** Louis Smart CRM wechselt bei fehlender PostgreSQL-Verbindung automatisch in den lokalen JSON-Fallback-Modus — inklusive In-Memory-Vektorsuche.
 
 ## 2. Umgebungsvariablen (`.env`)
 
@@ -83,7 +83,7 @@ npm install        # inkl. postinstall: Assets-Setup (scripts/setup-assets.mjs)
 npm run dev        # tsx server.ts → Port 3000
 ```
 
-Der Server läuft standardmäßig auf **Port 3000** (0.0.0.0). Im Terminal wird angezeigt, ob PostgreSQL oder der JSON-Fallback aktiv ist. Für isolierte E2E-Läufe existiert `npm run dev:e2e` (Port **3100**).
+Der Server läuft standardmäßig auf **Port 3000** (0.0.0.0). Im Terminal wird angezeigt, ob PostgreSQL oder der JSON-Fallback aktiv ist.
 
 ## 4. Produktions-Build und Start
 
@@ -121,16 +121,9 @@ docker compose up --build -d
 * `./louis-scripts` — Agent-Job-Scripte (wird beim ersten Start automatisch angelegt; individuelle Scripte, nicht Teil des öffentlichen Repos)
 * `louis-crm_postgres_data` (externes Volume) und `whisper_models`
 
-## 6. Regeln & Qualitäts-Gates (vor jedem Commit)
+## 6. Regeln & Qualitäts-Gates
 
-```bash
-npm run hooks:install   # einmalig: pre-commit-Hook installieren
-npm run check:rules     # any-Verbot, i18n-Pflicht, Schutz kritischer Systemdateien, additive Migrationen
-npm run lint            # tsc --noEmit
-npm run lint          # tsc --noEmit (Typprüfung)
-npm run test:e2e        # Playwright (E2E-Server :3000/:3100)
-npm run test:zugferd    # ZUGFeRD/XRechnung-E2E (scripts/e2e-validate.ts)
-```
+Für die Entwicklung gelten verbindliche Projektregeln: Typprüfung (`tsc --noEmit`), i18n-Pflicht (DE/EN), Schutz kritischer Systemdateien und additive Migrationen — durchgesetzt durch automatisierte Code-Gates im Entwicklungsprozess.
 
 ## 7. Häufige Fehler & Lösungen
 
@@ -139,4 +132,4 @@ npm run test:zugferd    # ZUGFeRD/XRechnung-E2E (scripts/e2e-validate.ts)
 | `java: command not found` beim PDF-Versand | JRE 17+ installieren und `java` in den PATH aufnehmen |
 | App startet im Fallback-Modus | PostgreSQL-Verbindung prüfen (`docker compose ps`, `pg_isready`) |
 | `AUTH_SECRET` zu kurz | Mindestens 32 Zeichen verwenden |
-| E2E-Server belegt | `npm run dev:e2e` nutzt Port 3100, nicht 3000 |
+

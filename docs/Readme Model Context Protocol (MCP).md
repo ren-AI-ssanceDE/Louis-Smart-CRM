@@ -34,7 +34,7 @@ Im Lieferumfang ist ein fertiger MCP-Server enthalten, der Ihren **Obsidian-Noti
 3. Verbinden, Tools werden automatisch erkannt und erscheinen bei Louis.
 4. Fertig — Louis kann die neuen Werkzeuge nutzen (mit Freigabe).
 
-> 💡 **Tipp für Docker-Betrieb:** Wenn Louis im Docker-Container läuft und der externe MCP-Server **auf dem Host-Rechner** (z. B. `localhost:9333`), dann `localhost` im Louis-Container **nicht** den Host — der Container erreicht den Host nur über `http://host.docker.internal:PORT`. Adressen, die mit `localhost:` beginnen, werden sonst nicht gefunden (Tool-Erkennung findet 0 Tools).
+> 💡 **Tipp für Docker-Betrieb:** Wenn Louis im Docker-Container läuft und der externe MCP-Server **auf dem Host-Rechner** (z. B. `localhost:9000`), dann `localhost` im Louis-Container **nicht** den Host — der Container erreicht den Host nur über `http://host.docker.internal:PORT`. Adressen, die mit `localhost:` beginnen, werden sonst nicht gefunden (Tool-Erkennung findet 0 Tools).
 
 ---
 
@@ -106,7 +106,7 @@ Der Connection Manager (`src/server/mcp/`) steuert den Lifecycle (seit dem SDK-U
 
 * **Serververwaltung** (`mcpClientRouter`): `listServers`, `createServer`, `updateServer`, `deleteServer`, `pingServer`
 * **Tool-Discovery**: `discoverTools` → `tools/list` → Cache; Hot-Reload bei Änderungen (TTL-Cache mit Admin-Basismenge, Chatprofil-Filter läuft bei jedem Aufruf)
-* **Namespace-Mapping**: Normalisierte Tool-Namen `mcp_<server>_<tool>` (z. B. `mcp_e2e_mock_server_014_echo_text`) — `getToolByNormalizedName` matcht **exakt zuerst**, Suffix-Fallback nur wenn nichts exakt passt (verhindert Kollisionen bei gleichen Tool-Namen über mehrere Server)
+* **Namespace-Mapping**: Normalisierte Tool-Namen `mcp_<server>_<tool>` (z. B. `mcp_google_gmail__e_mails_gmail_list_email_labels`) — `getToolByNormalizedName` matcht **exakt zuerst**, Suffix-Fallback nur wenn nichts exakt passt (verhindert Kollisionen bei gleichen Tool-Namen über mehrere Server)
 * **Universal-Übersetzer**: JSON-Schema → Gemini `FunctionDeclaration` bzw. OpenAI-kompatible Tool-Formate
 * **Kompatibilitäts-Fallback**: Einige Google-Pakete (z. B. ältere mcp-gmail/server-gdrive-Versionen) lieferten `$schema`-Input-Schemas ohne `type`/`properties` — ein Raw-Kompatibilitäts-Fallback (roher JSON-RPC-Client) fängt diese Fälle ab. Der Kalender-Server `@cocal/google-calendar-mcp` (seit 2.1.2) liefert vollständige Schemas mit `properties`.
 * **OAuth**: `initiateOAuth` für geschützte Server (Tokens in `sys_mcp_oauth_tokens`, werden vom Server-Prozess selbst refresht)

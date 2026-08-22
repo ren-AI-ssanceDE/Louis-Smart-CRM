@@ -64,7 +64,7 @@ Für Entwickler gelten strenge Qualitätsregeln (keine unsicheren Typen, keine v
 ## 3. Datenbank & Persistenz
 
 * **Produktivdatenbank**: **PostgreSQL 14+** mit Erweiterung **pgvector** (1536-dimensionale Embeddings, `<=>`-Ähnlichkeitssuche)
-* **Fallback**: Lokaler **JSON-Store** (`.local_fallback_db.json`) — kompletter Funktionsumfang ohne DB (Hybrid-Storage-Pattern, `isUsingFallback`)
+* **Fallback**: Lokaler **JSON-Store** — kompletter Funktionsumfang ohne DB (Hybrid-Storage-Pattern)
 * **Datei-Vaults**: `companies_data_vault/`, `contacts_data_vault/`, `knowledge_data_vault/` (persistente Mounts, RAG-indexiert)
 * **Mandantenfähigkeit**: `tenant_id` auf allen Tabellen/Stores (Standard-Mandant `'1'`)
 
@@ -83,19 +83,17 @@ Für Entwickler gelten strenge Qualitätsregeln (keine unsicheren Typen, keine v
 
 | Gate | Werkzeug | Umfang |
 |---|---|---|
-| Projektregeln | Automatisierte Regeln (`npm run check:rules`, pre-commit) | `any`-Verbot, i18n-Pflicht, Schutz kritischer Systemdateien, additive Migrationen |
+| Projektregeln | Automatisierte Code-Gates | `any`-Verbot, i18n-Pflicht, Schutz kritischer Systemdateien, additive Migrationen |
 | Lint/Typen | `tsc --noEmit` (`npm run lint`) | Volle Typprüfung |
-| Unit/Integration | **Vitest** (interne Suite) | Schemas, Router, DAG-Mapper, AI-Tools, Draft-Flow, Sanitizer, Cron-Matcher |
-| E2E | **Playwright** (interne Suite) | Live gegen den Stack — Admin, Workflows, AI-Tools, Chat-Upload, DAG-Editor, Token-Usage |
-| E-Rechnungs-Validierung | Interne ZUGFeRD-E2E (`test:zugferd`) | Single-Line, Multi-Line, Mixed-VAT, XRechnung B2G → `/e2e-out/summary.json` |
+| Automatisierte Tests | Interne Test-Suiten (Unit, E2E, ZUGFeRD) — nicht Teil des öffentlichen Repos | Schemas, Router, Workflows, AI-Tools, Rechnungs-Validierung (Single-Line, Multi-Line, Mixed-VAT, XRechnung B2G) |
 
 ## 6. Programmier-Richtlinien (verbindlich)
 
 ### A. `any`-Verbot
-`any` ist bis auf wenige System-Hydrationsebenen verboten. Stattdessen `unknown` + Type-Guards, Zod-Inferenzen (`z.infer<typeof Schema>`) oder abgeleitete Typen. Wird per `check:rules` + pre-commit-Hook erzwungen.
+`any` ist bis auf wenige System-Hydrationsebenen verboten. Stattdessen `unknown` + Type-Guards, Zod-Inferenzen (`z.infer<typeof Schema>`) oder abgeleitete Typen. Wird durch automatisierte Projektregeln erzwungen.
 
 ### B. Keine hartkodierten UI-Texte
-Jede Benutzer-sichtbare Zeichenkette MUSS über i18n laufen (`de.json`/`en.json`). Verstöße blockieren den Commit (`extract-missing-i18n.mjs`).
+Jede Benutzer-sichtbare Zeichenkette MUSS über i18n laufen (`de.json`/`en.json`). Verstöße blockieren den Commit (automatisierte Prüfung).
 
 ### C. Keine hardcodierten Einstellungen
 Verhaltens- und Laufzeitparameter (KI-Provider, MCPs, Embeddings, Voice, STT, Web-Suche) liegen in der DB-Config (`sys_integrations_louis_ai_config` etc.) und sind im Admin-Panel einstellbar — `NULL` = Systemdefault. Neue Funktionen müssen mit **allen** Backend-Einstellungen funktionieren.
@@ -107,7 +105,7 @@ Nur `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. N
 `src/lib/zugferd.ts`, `src/server/pdfHelper.ts`, `scripts/PDFA_def.ps`, `Dockerfile`, `docker-entrypoint.sh` — zertifizierte E-Rechnungs-Komponenten, nicht verändern.
 
 ### F. Dual-Store-Pflicht
-Neue Backend-Funktionen müssen beide Pfade unterstützen: `if (isUsingFallback) { ... fallbackStore ... } else { await pool.query(...) }`.
+Neue Backend-Funktionen müssen beide Speicherpfade unterstützen (Datenbank + JSON-Fallback).
 
 ### G. Schreibzugriffe über Freigaben
 KI-Werkzeuge, die CRM-Daten verändern, liefern `proposedChanges` (Draft-Flow) statt direkter DB-Writes — Human-in-the-Loop bleibt Pflicht.

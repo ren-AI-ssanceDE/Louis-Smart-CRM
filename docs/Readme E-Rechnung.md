@@ -102,13 +102,13 @@ export function roundFiscal(num: number): number {
 
 ## 5. E2E-Validierungsprüfung
 
-Im Entwicklungsprozess wird die E-Rechnungs-Erzeugung mit einer E2E-Validierung (`npm run test:zugferd`) gegen die Mustang-Referenzvalidierung geprüft:
+Im Entwicklungsprozess wird die E-Rechnungs-Erzeugung mit einer automatisierten E2E-Validierung gegen die Mustang-Referenzvalidierung geprüft:
 1. Rechnungsstellung mit Einzelpositionen (`01-zugferd-single-line`)
 2. Mehrzeilige Rechnung (`02-zugferd-multi-line`)
 3. Gemischte Mehrwertsteuersätze (`03-zugferd-mixed-vat`)
 4. XRechnung B2G mit validen Leitweg-IDs (`04-xrechnung-b2g`)
 
-Ergebnisse: strukturiert unter `/e2e-out/summary.json` (für CI/CD-Audits).
+Die Prüfungen laufen automatisiert im Entwicklungsprozess — jede Version wird gegen die Referenzvalidierung abgesichert.
 
 ## 6. Integration in den Draft-Flow & Workflows
 

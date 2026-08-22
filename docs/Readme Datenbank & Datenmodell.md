@@ -11,7 +11,7 @@
 Louis Smart CRM hat ein **doppeltes Sicherheitsnetz** für die Speicherung:
 
 1. **Normalfall: eine Datenbank (PostgreSQL)** — strukturiert, schnell, mit integrierter KI-Suchfunktion (Vektorsuche für semantische Ähnlichkeit).
-2. **Notfall: eine lokale Datei** — ist die Datenbank nicht erreichbar (z. B. beim Testen ohne Server), wechselt das System **automatisch und unbemerkt** auf eine lokale Datei (`.local_fallback_db.json`). Sie merken davon nichts, und nichts geht verloren.
+2. **Notfall: eine lokale Datei** — ist die Datenbank nicht erreichbar (z. B. beim Testen ohne Server), wechselt das System **automatisch und unbemerkt** auf eine lokale Datei. Sie merken davon nichts, und nichts geht verloren.
 
 Zusätzlich gibt es **Daten-Ordner („Vaults“)** für Dokumente: Unternehmensdateien, Kontaktdateien und Wissensdokumente liegen als echte Dateien auf der Festplatte — sie werden von Louis durchsucht und für KI-Antworten genutzt.
 
@@ -40,8 +40,8 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 ## 1. Dual-Storage-Architektur (`src/server/db.ts`)
 
 * **PostgreSQL-Pfad**: `pg.Pool` mit parametrisierten Queries; Erweiterung `vector` für **1536-dimensionale Embeddings**; Mandanten-Isolation über `tenant_id`.
-* **JSON-Fallback-Pfad**: `fallbackStore` + `saveFallbackStore()` schreiben atomar in `.local_fallback_db.json`; In-Memory-Vektorsuche (Cosine Similarity); selbstheilende Migrationen beim Laden.
-* **Weiche**: `isUsingFallback` — Router rufen generische Helper auf; die Pfadwahl erfolgt transparent.
+* **JSON-Fallback-Pfad**: Der Fallback schreibt atomar in eine lokale JSON-Datei; In-Memory-Vektorsuche (Cosine Similarity); selbstheilende Migrationen beim Laden.
+* **Weiche**: Router rufen generische Helper auf; die Pfadwahl (Datenbank oder Fallback) erfolgt transparent.
 
 **Regel:** Jede neue Funktion muss beide Pfade unterstützen (Dual-Store-Pflicht).
 
@@ -87,6 +87,6 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 
 ## 5. QA-Hinweise
 
-* **Fixtures**: Workflow-Testdaten werden als idempotente SQL-Fixtures eingespielt (manuell, nicht im `beforeAll`) — Teil des internen QA-Prozesses.
+
 * **Testdaten-Pflicht**: QA nur mit Musterfirma GmbH-Daten und „Test Testkunde“ — niemals echte Kontakte/Unternehmen.
 * **Backups**: Vor DB-Migrationen immer ein Backup erstellen (Ablage in einem separaten Backup-Verzeichnis außerhalb des Repos).

@@ -64,7 +64,7 @@ Danach öffnen Sie im Browser **http://localhost:3000** und melden sich an. Ausf
 
 * **Louis AI Copilot**: ReAct-Entscheidungsloop, 40+ System-Tools (CRM, RAG/Wissen, Kanban, Templates, Workflows, MCP), QA-Critic, Human-in-the-Loop via `proposedChanges` / einheitlichem Draft-Flow.
 * **E-Rechnung**: ZUGFeRD 2.2+ / Factur-X 1.0 Hybrid-PDFs (PDF/A-3b), XRechnung 3.0 (B2G) mit Leitweg-ID-Validierung; zertifizierte, read-only Kernkomponenten.
-* **Dualer Speicher-Layer**: PostgreSQL + `pgvector` (1536-dim. Embeddings) oder lokaler JSON-Fallback (`.local_fallback_db.json`) — beide Pfade durch denselben Code bedient.
+* **Dualer Speicher-Layer**: PostgreSQL + `pgvector` (1536-dim. Embeddings) oder lokaler JSON-Fallback — beide Pfade durch denselben Code bedient.
 * **Workflow-Automatisierung**: DAG-Editor (React Flow), Knoten ACTION/CONDITIONAL/WAIT/HUMAN_GATE/RAG/ASK_USER, Trigger MANUAL/CRM_EVENT/TIMER (inkl. 5-Felder-Cron), Dry-Run, Versionierung, Vorlagen.
 * **Council Engine**: Multi-Model-/Multi-Rollen-Debatten (Gemini, GPT, Claude, Llama …).
 * **MCP**: CRM als MCP-Server (SSE/JSON-RPC, API-Key-Auth) **und** MCP-Client (Tool-Discovery, OAuth, Presets, Namespace `mcp_<server>_<tool>`).
@@ -113,11 +113,10 @@ Details: [Readme Installation](Readme%20Installation.md).
 
 | Gate | Befehl |
 |---|---|
-| Projektregeln (any-Verbot, i18n, Schutz kritischer Systemdateien) | `npm run check:rules` (pre-commit-Hook) |
+| Projektregeln (any-Verbot, i18n, Schutz kritischer Systemdateien) | Automatisierte Code-Gates |
 | Lint / Typen | `npm run lint` |
 | Qualitätssicherung | Interne Test-Suiten (Unit, E2E, ZUGFeRD) — nicht Teil des öffentlichen Repos |
-| E2E (Playwright, 20+ Specs) | `npm run test:e2e` |
-| ZUGFeRD-E2E | `npm run test:zugferd` |
+
 
 Details: [Readme Qualitätssicherung & Tests](Readme%20Qualit%C3%A4tssicherung%20%26%20Tests.md).
 

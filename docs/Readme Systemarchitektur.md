@@ -72,7 +72,7 @@ Im System gibt es einen unsichtbaren „Schwarzen Brett“-Dienst: Sobald etwas 
                                   ▼
 ┌───────────────────────────────────────────────────────────────────────┐
 │ 3. DATENSCHICHT — Dual-Storage (src/server/db.ts)                     │
-│    PostgreSQL + pgvector  ODER  JSON-Fallback (.local_fallback_db)    │
+│    PostgreSQL + pgvector  ODER  JSON-Fallback (lokale Datei)         │
 │    + Daten-Vaults (companies/contacts/knowledge_data_vault)           │
 └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -96,8 +96,8 @@ Im System gibt es einen unsichtbaren „Schwarzen Brett“-Dienst: Sobald etwas 
 ## 4. Duales Speicherkonzept (Resilienz)
 
 * **PostgreSQL-Pfad**: `pg.Pool` mit parametrisierten Queries; `pgvector` für 1536-dimensionale Embeddings (`CREATE EXTENSION IF NOT EXISTS vector;`).
-* **JSON-Fallback-Pfad**: `fallbackStore` + `saveFallbackStore()` schreiben atomar nach `.local_fallback_db.json` — inklusive In-Memory-Vektorsuche (Cosine Similarity) und selbstheilender Migrationen (Legacy-Felder, Mandanten-Normalisierung).
-* **Transparente API**: Router rufen generische Helper auf; die Selektion des Pfads erfolgt automatisch über `isUsingFallback`.
+* **JSON-Fallback-Pfad**: Der Fallback schreibt atomar in eine lokale JSON-Datei — inklusive In-Memory-Vektorsuche (Cosine Similarity) und selbstheilender Migrationen (Legacy-Felder, Mandanten-Normalisierung).
+* **Transparente API**: Router rufen generische Helper auf; die Selektion des Pfads (Datenbank oder Fallback) erfolgt automatisch.
 
 ## 5. Event-System & Workflow-Engine
 

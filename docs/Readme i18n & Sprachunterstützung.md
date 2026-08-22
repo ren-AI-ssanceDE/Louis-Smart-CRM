@@ -36,7 +36,7 @@ Die Sprache wird automatisch erkannt (Browsereinstellung) — Sie können sie ab
 ## 2. i18n-Pflicht (Regel 10)
 
 * **Jede** benutzersichtbare Zeichenkette MUSS über i18n laufen — kein hartkodierter UI-Text.
-* **Gate**: `npm run check:rules` (pre-commit-Hook) blockiert Commits mit hartkodierten UI-Texten oder fehlenden DE/EN-Keys; ein Entwickler-Werkzeug listet fehlende Übersetzungen auf (0 = sauber).
+* **Gate**: Automatisierte Code-Gates blockieren Commits mit hartkodierten UI-Texten oder fehlenden DE/EN-Keys; ein Entwickler-Werkzeug listet fehlende Übersetzungen auf (0 = sauber).
 * **Server-seitige Tool-Beschreibungen** (SYSTEM_TOOL_CATALOG) sind von der i18n-Pflicht ausgenommen, da sie nicht im UI gerendert werden.
 
 ## 3. Bereiche
@@ -50,6 +50,6 @@ Die Sprache wird automatisch erkannt (Browsereinstellung) — Sie können sie ab
 
 ## 4. QA
 
-* `check:rules` prüft DE/EN-Konsistenz bei jedem Commit.
-* E2E-Tests laufen gegen die deutsche Locale (Standard); UI-Gap-Specs decken fehlende Übersetzungen ab.
+* Eine automatisierte Prüfung sichert die DE/EN-Konsistenz bei jedem Commit.
+
 * Neue Funktionen: i18n-Keys in **beiden** Locales anlegen, sonst Gate-Fehler.

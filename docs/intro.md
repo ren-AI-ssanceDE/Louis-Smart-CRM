@@ -43,7 +43,7 @@ Louis Smart CRM ist eine enterprise-fähige, KI-native CRM- und E-Invoicing-Plat
 
 ## Projektprinzipien (verbindlich, per CI erzwungen)
 
-* **Typsicherheit**: TypeScript strict, `any`-Verbot, Zod als Single Source of Truth (`src/lib/schemas.ts`) — `npm run check:rules` + pre-commit-Hook
+* **Typsicherheit**: TypeScript strict, `any`-Verbot, Zod als Single Source of Truth (`src/lib/schemas.ts`) — durchgesetzt durch automatisierte Code-Gates
 * **Kein ORM**: nativer PostgreSQL-Zugriff über `pg` (parametrisierte Queries)
 * **Dual-Store-Pflicht**: jede Funktion mit PostgreSQL **und** JSON-Fallback
 * **Mandantenfähigkeit**: `tenant_id` auf allen Tabellen/Stores
