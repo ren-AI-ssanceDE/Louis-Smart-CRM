@@ -67,9 +67,7 @@ Louis Smart CRM ist ein webbasiertes CRM mit eingebautem KI-Assistenten. Du arbe
 **Wichtige Projektregeln (Auszug):**
 - **Kein ORM** — nur parametrisiertes SQL (`pg`)
 - **zod als Single Source of Truth** — jeder tRPC-Endpunkt mit Input-/Output-Schema
-- **Hybrid-Store-Pflicht** — DB-Pfad + Fallback-Store (JSON) für Tests/Preview
 - **i18n-Pflicht** — alle UI-Texte über `t()` mit `de.json` + `en.json`
-- **🚫 Heilige Dateien** — `src/lib/zugferd.ts` und `docker-entrypoint.sh` dürfen **nicht** verändert werden (mechanischer Guard im pre-commit-Hook, Regel 0)
 
 ### Vault-Architektur (zwei Wissens-Welten)
 
