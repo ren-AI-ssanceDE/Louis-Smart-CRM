@@ -5,7 +5,7 @@
 // Reine Funktionen — in Unit-Tests ohne Server/DOM testbar. Kein any (Regel 4).
 // ============================================================================
 import { IWorkflowDAG, IWorkflowNode } from "../types/workflows.js";
-import { DAG_TOOL_OPTIONS } from "./dagToolOptions.js";
+import { DAG_TOOL_OPTIONS, normalizeToolIdentifier } from "./dagToolOptions.js";
 
 // Tool-Namen mit ECHTEM Seiteneffekt (schreiben/versenden) — der Dry-Run warnt davor.
 const SIDE_EFFECT_TOOL_MARKERS = [
@@ -203,15 +203,18 @@ export function dryRunDag(dag: IWorkflowDAG | null | undefined): DryRunReport {
     const risk = classifyToolRisk(n.tool_identifier || "");
     const warnings: string[] = [];
     const tool = n.tool_identifier || "";
+    // Nachtrag: executeX-Altbestand auf snake_case normalisieren, damit der
+    // Dry-Run beide Schreibweisen akzeptiert (wie der Editor und die Executor-Liste).
+    const normalizedTool = normalizeToolIdentifier(tool);
     // Bekannt = im Tool-Picker-Katalog ODER ein von der DAG-Engine direkt
     // unterstützter Spezial-Bezeichner
     const knownTool =
-      DAG_TOOL_OPTIONS.some((o) => o.value === tool) ||
+      DAG_TOOL_OPTIONS.some((o) => o.value === normalizedTool) ||
       tool === "SendEmail" || tool === "CreateNote" || tool === "TelegramNotify" ||
       tool === "AskUserQuestion" || tool === "ask_user_question" ||
       tool === "DelegateSubtask" || tool === "delegate_subtask" ||
       tool === "ConditionalBranch" || tool === "conditional" ||
-      /^create_kanban_card|^move_kanban_card|^update_kanban_card|^delete_kanban_card/.test(tool);
+      /^create_kanban_card|^move_kanban_card|^update_kanban_card|^delete_kanban_card/.test(normalizedTool);
     if (!tool) {
       warnings.push("Kein Tool zugewiesen.");
       report.unknown_tools.push(n.node_id);

@@ -30,7 +30,7 @@ import {
   createEmptyNode,
   NODE_TYPE_LABELS
 } from "../../lib/dagMappers.js";
-import { DAG_TOOL_OPTIONS, getToolOption } from "../../lib/dagToolOptions.js";
+import { DAG_TOOL_OPTIONS, getToolOption, normalizeToolIdentifier } from "../../lib/dagToolOptions.js";
 import { IWorkflowDAG, IWorkflowNode, NodeConfigType } from "../../types/workflows.js";
 
 // ---------------------------------------------------------------------------
@@ -193,14 +193,16 @@ export function DagWorkflowEditor({
 
  // Option A: Tool + Anweisung eines ausgewählten Knotens aktualisieren
   const updateSelectedTool = useCallback((tool: string) => {
-    const option = getToolOption(tool);
+    // Nachtrag: immer snake_case schreiben (Namenswelt-Vereinheitlichung)
+    const normalizedTool = normalizeToolIdentifier(tool);
+    const option = getToolOption(normalizedTool);
     setNodes((nds) => nds.map((n) => {
       if (n.id !== selectedId) return n;
       const node = (n.data as DagNodeData).node;
       const updated: IWorkflowNode = {
         ...(node || createEmptyNode("ACTION", { x: 0, y: 0 })),
-        tool_identifier: tool,
-        name: option ? option.defaultValue : tool
+        tool_identifier: normalizedTool,
+        name: option ? option.defaultValue : normalizedTool
       };
       return {
         ...n,
@@ -336,7 +338,7 @@ export function DagWorkflowEditor({
                       : t('admin:workflows_tab.dag_field_question_label', { defaultValue: "Rückfrage-Typ" })}
                 </label>
                 <select
-                  value={((selectedNode.data?.node as IWorkflowNode)?.tool_identifier) || ""}
+                  value={normalizeToolIdentifier(((selectedNode.data?.node as IWorkflowNode)?.tool_identifier) || "")}
                   onChange={(e) => updateSelectedTool(e.target.value)}
                   data-testid="dag-node-tool-select"
                   className="w-full bg-primary-dark border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent-blue/40 font-sans"

@@ -4,6 +4,7 @@
 // Linear→DAG-Konvertierung. Kein any (Regel 4), testbar ohne React.
 // ============================================================================
 import { IWorkflowDAG, IWorkflowNode, NodeConfigType } from "../types/workflows.js";
+import { normalizeToolIdentifier } from "./dagToolOptions.js";
 
 // React-Flow-Node (minimale Struktur — keine @xyflow-Importe, damit die
 // Mapper in Unit-Tests ohne DOM laufen)
@@ -62,22 +63,37 @@ export function createEmptyNode(
 }
 
 // React-Flow-Knoten-Typ aus IWorkflowNode ableiten (RAG/ASK_USER sind
-// ACTION-Sonderfälle über tool_identifier)
+// ACTION-Sonderfälle über tool_identifier). Nachtrag: snake_case-Namen
+// (local_knowledge) genauso erkennen wie executeX-/PascalCase-Altbestand.
 export function flowTypeForNode(node: IWorkflowNode): string {
-  if (node.rag_enabled || node.tool_identifier === "LocalKnowledgeSearch" || node.tool_identifier === "RagSearch") return "dagRag";
-  if (node.tool_identifier === "AskUserQuestion" || node.tool_identifier === "ask_user_question") return "dagAskUser";
+  const tool = normalizeToolIdentifier(node.tool_identifier || "");
+  if (node.rag_enabled || tool === "local_knowledge" || node.tool_identifier === "LocalKnowledgeSearch" || node.tool_identifier === "RagSearch") return "dagRag";
+  if (tool === "ask_user_question" || node.tool_identifier === "AskUserQuestion") return "dagAskUser";
   return NODE_TYPE_MAP[node.type] || "dagAction";
 }
 
 // IWorkflowDAG → React-Flow-Graph (deterministisches Auto-Layout via einfacher
 // Zeilen-Spalten-Anordnung; kein dagre-Dependency nötig)
 export function workflowToFlow(dag: IWorkflowDAG): { nodes: FlowNodeLike[]; edges: FlowEdgeLike[] } {
-  const nodes: FlowNodeLike[] = (dag.nodes || []).map((n, idx) => ({
-    id: n.node_id,
-    type: flowTypeForNode(n),
-    position: { x: 140 + (idx % 3) * 240, y: 60 + Math.floor(idx / 3) * 140 },
-    data: { label: n.name || n.node_id, node: n }
-  }));
+  const nodes: FlowNodeLike[] = (dag.nodes || []).map((n, idx) => {
+    const type = flowTypeForNode(n);
+    return {
+      id: n.node_id,
+      type,
+      position: { x: 140 + (idx % 3) * 240, y: 60 + Math.floor(idx / 3) * 140 },
+      data: {
+        label: n.name || n.node_id,
+        // nodeType MUSS gesetzt sein — der Selected-Node-Editor (DagWorkflowEditor)
+        // rendert das Tool-/Anweisungs-Panel nur bei data.nodeType === "dagAction" usw.
+        // Ohne nodeType blieben geladene Workflows komplett uneditierbar.
+        nodeType: type,
+        // Nachtrag: tool_identifier beim Laden auf snake_case normalisieren —
+        // executeX-Altbestand wird so im Editor korrekt angezeigt und beim Speichern
+        // konsistent als snake_case geschrieben (Namenswelt-Vereinheitlichung).
+        node: n.tool_identifier ? { ...n, tool_identifier: normalizeToolIdentifier(n.tool_identifier) } : n
+      }
+    };
+  });
 
   const edges: FlowEdgeLike[] = [];
   for (const n of dag.nodes || []) {

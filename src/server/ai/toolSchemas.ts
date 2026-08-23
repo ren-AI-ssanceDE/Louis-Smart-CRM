@@ -187,7 +187,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   apply_template: queryOnly("Vorlage + Kontext als JSON: { template_name, context: { invoice_number, total_gross, due_date, my_company_name, my_contact_person } }"),
 
   // WORKFLOWS
-  learn_workflow: queryOnly("Workflow-Makro als JSON: { name, description, steps } oder Freitext"),
+  learn_workflow: queryOnly("Workflow-Makro als JSON: { workflow_name, workflow_description, tool_chain_sequence: [{ tool, instruction }] } — Schritte IMMER als Array; tool MUSS ein ausführbares Workflow-Tool sein (z. B. crm_data_analyst, text_generator, web_search, local_knowledge, create_note_draft, create_contact_draft, create_company_draft, create_invoice_draft, create_offer_draft, send_smtp_email, get_templates, apply_template, list_notes, list_mail_drafts, recall_sessions, update_memory, save_skill, knowledge_write, vault_read, ask_user_question, delegate_subtask — KEINE reinen Lese-Tools wie list_contacts/list_companies/list_invoices); instruction = konkrete Anweisung pro Schritt; alternativ steps als Array oder nummerierter String (wird robust geparst)"),
   get_workflows: queryOnly("optional: leerer String oder Suchbegriff"),
   delegate_subtask: {
     type: "object",

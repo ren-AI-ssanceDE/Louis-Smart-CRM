@@ -12,7 +12,6 @@ import { SessionRecallHit } from "../../../types.js";
 import { workflowExecutor } from "../workflowExecutor.js";
 import { evaluateGovernanceRules } from "../governance.js";
 import type { WorkflowRunOutcome, WorkflowStepResult } from "../orchestrator.js";
-import { McpClientEngine } from "../../mcp/mcpClientEngine.js";
 import { ingestFileToRag } from "../../storage.js";
 import { performHybridSearch } from "../ragSearch.js";
 
@@ -1016,7 +1015,31 @@ export async function learnWorkflow(
   skill_tags?: string[],
   skill_category?: string
 ): Promise<CustomWorkflow> {
-  const final_id = id_uuid || uuidv4();
+  // Bestands-ID beim Update laden: ON CONFLICT (tenant_id, workflow_name) behält die
+  // ALTE id_uuid in der DB — ohne diesen Lookup würde finalDag.workflow_id eine NEUE
+  // UUID tragen → FK-Verletzung (workflow_id_fkey) bei jeder Instanz-Erstellung.
+  let final_id = id_uuid || "";
+  if (!final_id) {
+    try {
+      if (isUsingFallback || !pool) {
+        const existingWf = (fallbackStore.customWorkflows || []).find(
+          (w: CustomWorkflow) => w.tenant_id === tenantId && w.workflow_name === name
+        );
+        if (existingWf) final_id = String(existingWf.id_uuid);
+      } else {
+        const existingId = await pool.query(
+          "SELECT id_uuid FROM sys_louis_ai_custom_workflows WHERE tenant_id = $1 AND workflow_name = $2 LIMIT 1",
+          [tenantId, name]
+        );
+        if (existingId.rows.length > 0) {
+          final_id = String(existingId.rows[0].id_uuid);
+        }
+      }
+    } catch {
+      // DB nicht erreichbar — neue UUID unten
+    }
+  }
+  if (!final_id) final_id = uuidv4();
 
   // DAG ist der einzige Workflow-Pfad.
   // Fehlt eine dag_structure, wird sie automatisch aus der linearen Sequenz erzeugt
@@ -1336,6 +1359,8 @@ interface WorkflowArgs {
   tool_chain_sequence?: WorkflowStepArgs[];
   tool_chain?: WorkflowStepArgs[];
   sequence?: WorkflowStepArgs[];
+  /** Schritte als strukturiertes Array ODER nummerierter Freitext-String (Provider-neutral) */
+  steps?: WorkflowStepArgs[] | string;
   trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
   trigger_config?: Record<string, unknown> | null;
   direct_send_email?: boolean;
@@ -1343,6 +1368,98 @@ interface WorkflowArgs {
   skill_description?: string;
   skill_tags?: string[];
   skill_category?: string;
+}
+
+/**
+ * Entfernt Schritt-Präfixe aus einer Instruktion („Schritt 1:“, „Step 2.“, „1.“, „2)“).
+ * Bewusst konservativ: „2 Unternehmen vergleichen“ bleibt unangetastet (kein Trennzeichen).
+ */
+export function cleanStepInstruction(raw: string): string {
+  let cleaned = String(raw || "").trim();
+  cleaned = cleaned.replace(/^(?:Schritt\s+\d+|Step\s+\d+)\s*[.:)]?\s*:?\s*/i, "");
+  cleaned = cleaned.replace(/^\d+\s*[.:)]\s*/, "");
+  return cleaned.trim();
+}
+
+/** Escaped Regex-Sonderzeichen eines Tool-Namens. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Erkennt den ersten bekannten Tool-Namen in einem Text (längste Namen zuerst,
+ * damit get_template_details vor get_templates matcht). Rückgabe: Tool-Name oder null.
+ */
+export function detectToolNameInText(text: string, knownTools: ReadonlySet<string>): string | null {
+  const names = [...knownTools].sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    if (!name) continue;
+    const escaped = escapeRegExp(name);
+    if (new RegExp(`\\b${escaped}\\b`).test(text)) return name;
+  }
+  return null;
+}
+
+/**
+ * Wandelt Workflow-Schritte aus beliebigem LLM-Format in eine tool_chain_sequence um
+ * (provider-neutral):
+ * - Array von { tool, instruction | description } → 1:1 (inkl. Schritt-Präfix-Regex)
+ * - String (nummerierte Liste „1. …\n2. …“) → Zeilen splitten, Tool-Namen erkennen,
+ *   ohne erkennbares Tool → crm_data_analyst
+ * - leer/null/undefined → []
+ * Exportiert (R-AR-10), damit MCP/Test sie direkt nutzen können.
+ */
+export function parseStepsToToolChain(
+  input: unknown,
+  knownTools: ReadonlySet<string>
+): Array<{ tool: string; instruction: string }> {
+  const toolChain: Array<{ tool: string; instruction: string }> = [];
+  if (Array.isArray(input)) {
+    for (const step of input) {
+      if (step && typeof step === "object") {
+        const s = step as WorkflowStepArgs;
+        const tool = s.tool || "crm_data_analyst";
+        const rawInst = s.instruction || s.description || "";
+        toolChain.push({ tool, instruction: cleanStepInstruction(rawInst) });
+      }
+    }
+    return toolChain;
+  }
+  if (typeof input === "string" && input.trim().length > 0) {
+    const lines = input.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    for (const line of lines) {
+      const instruction = cleanStepInstruction(line);
+      toolChain.push({
+        tool: detectToolNameInText(instruction, knownTools) || "crm_data_analyst",
+        instruction
+      });
+    }
+    return toolChain;
+  }
+  return [];
+}
+
+/** Lädt die bekannten Tool-Namen (Executor-Schritt-Tools + Vault-Aliase) — dynamischer Import bricht den Zirkel. */
+export async function loadKnownWorkflowToolNames(): Promise<ReadonlySet<string>> {
+  const known = new Set<string>();
+  try {
+    // Single Source of Truth: NUR Tools, die der WorkflowGraphExecutor wirklich
+    // ausführen kann — der LLM-Katalog ist breiter und würde nicht-ausführbare
+    // Schritte (z. B. list_contacts) als gültig durchlassen.
+    const { WORKFLOW_EXECUTOR_TOOL_NAMES } = await import("../workflowGraphExecutor.js");
+    for (const t of WORKFLOW_EXECUTOR_TOOL_NAMES) known.add(t);
+  } catch {
+    // Executor-Liste nicht ladbar — Erkennung fällt dann auf crm_data_analyst zurück
+  }
+  try {
+    const { INTERNAL_VAULT_TOOL_ALIASES } = await import("../agentRuntime.js");
+    if (INTERNAL_VAULT_TOOL_ALIASES) {
+      for (const alias of INTERNAL_VAULT_TOOL_ALIASES) known.add(alias);
+    }
+  } catch {
+    // Vault-Aliase nicht ladbar — ignorieren
+  }
+  return known;
 }
 
 export async function executeLearnWorkflow(
@@ -1368,7 +1485,7 @@ export async function executeLearnWorkflow(
       const fallbackSeq = [{ tool: "crm_data_analyst", instruction: argsStr }];
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
       return createToolSuccess({
-        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert.`,
+        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (1 Schritt: crm_data_analyst).`,
         workflow: res
       });
     }
@@ -1387,34 +1504,28 @@ export async function executeLearnWorkflow(
     const name = rawArgs.workflow_name || rawArgs.name || "Automated AI Recipe";
     const description = rawArgs.workflow_description || rawArgs.description || name;
     
-    // Parse tool chain sequence
-    const toolChain: { tool: string; instruction: string }[] = [];
-    const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || [];
-    if (Array.isArray(seq) && seq.length > 0) {
-      for (const step of seq) {
-        if (step && typeof step === "object") {
-          const tool = step.tool || "crm_data_analyst";
-          const rawInst = step.instruction || step.description || "";
-          
-          // Clean the instruction: remove prefixes like "Schritt X:", "Step X:", "1.", etc., or system directive patterns.
-          let cleanedInst = rawInst.trim();
-          
-          // Helper string cleanups to remove potential leading step markers
-          cleanedInst = cleanedInst.replace(/^(Schritt\s+\d+|Step\s+\d+|\d+\.)\s*:\s*/i, "");
-          
-          toolChain.push({
-            tool,
-            instruction: cleanedInst
-          });
-        }
-      }
-    }
+    // Parse tool chain sequence — Array (tool_chain_sequence/tool_chain/sequence)
+    // ODER steps als Array/nummerierter String (provider-neutral).
+    const knownTools = await loadKnownWorkflowToolNames();
+    const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
+    const toolChain = parseStepsToToolChain(seq, knownTools);
 
     if (toolChain.length === 0) {
       toolChain.push({
         tool: "crm_data_analyst",
         instruction: description
       });
+    }
+
+    // Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
+    // (bisher lief validateWorkflowTools nur bei der Ausführung; workflowExecutor
+    // behandelt unbekannte Schritt-Tools still als COMPLETED).
+    const unknownTool = await validateWorkflowTools(tenantId, toolChain);
+    if (unknownTool) {
+      return createToolError(
+        `Workflow '${name}' kann nicht gespeichert werden: unbekanntes Tool '${unknownTool}'. ` +
+        `Bitte nur Tools aus der verfügbaren Tool-Liste verwenden.`
+      );
     }
 
     const trigger_type = rawArgs.trigger_type || "MANUAL";
@@ -1442,6 +1553,14 @@ export async function executeLearnWorkflow(
       skill_category
     );
 
+    // Ehrliche Antwort — die Message nennt die TATSÄCHLICH gespeicherten
+    // Schritte (Anzahl + Tool-Namen), damit das LLM aus dem Tool-Ergebnis zitiert
+    // statt aus der Beschreibung zu halluzinieren.
+    const savedStepCount = Array.isArray(toolChain) ? toolChain.length : 0;
+    const savedToolNames = Array.isArray(toolChain) && toolChain.length > 0
+      ? toolChain.map((s) => s.tool).join(", ")
+      : "keine";
+
     // S5: Embedding-Generierung best-effort NACH erfolgreichem Save (Fehler → Feld bleibt NULL → Keyword-Fallback)
     try {
       const embeddingText = [skill_description, description, name].filter(Boolean).join(" | ");
@@ -1468,7 +1587,7 @@ export async function executeLearnWorkflow(
     }
 
     return createToolSuccess({
-      message: `Workflow "${name}" wurde erfolgreich gelernt/gespeichert.`,
+      message: `Workflow "${name}" wurde erfolgreich gelernt/gespeichert (${savedStepCount} ${savedStepCount === 1 ? "Schritt" : "Schritte"}: ${savedToolNames}).`,
       workflow: res
     });
   } catch (err) {
@@ -1625,30 +1744,32 @@ const KNOWN_EXECUTOR_TOOL_ALIASES = new Set<string>([
 ]);
 
 /**
- * Prüft jeden Schritt der tool_chain_sequence gegen bekannte Tool-Namen.
+ * Prüft jeden Schritt der tool_chain_sequence gegen die AUSFÜHRBAREN Workflow-Tools.
  * workflowExecutor behandelt unbekannte Schritt-Tools STILL als COMPLETED — ohne Validierung
  * würde der S6-Pitfall-Loop bei ungültigen Workflows nie greifen. Rückgabe: erster unbekannter Tool-Name oder null.
+ * Maßstab ist die Executor-Tool-Liste (WORKFLOW_EXECUTOR_TOOL_NAMES) — NICHT der
+ * LLM-Katalog: Der Katalog enthält Lese-Tools (list_contacts u. a.), die der Graph-Executor
+ * nicht ausführen kann → Workflow würde gespeichert, crashte aber bei Ausführung.
  */
-async function validateWorkflowTools(tenantId: string, steps: Array<{ tool?: string; instruction?: string }>): Promise<string | null> {
+export async function validateWorkflowTools(tenantId: string, steps: Array<{ tool?: string; instruction?: string }>): Promise<string | null> {
   if (!steps || steps.length === 0) return null;
   const known = new Set<string>();
   try {
-    // Dynamischer Import bricht den zirkulären Import (agentRuntime → tools.js → knowledge.ts)
-    const { SYSTEM_TOOL_CATALOG, INTERNAL_VAULT_TOOL_ALIASES } = await import("../agentRuntime.js");
-    for (const t of SYSTEM_TOOL_CATALOG) known.add(t.name);
- // P1: alte vault_*-Alias-Namen aus dem Katalog sind nicht mehr primär,
+    // Dynamischer Import bricht den zirkulären Import (workflowGraphExecutor → tools.js → knowledge.ts)
+    const { WORKFLOW_EXECUTOR_TOOL_NAMES } = await import("../workflowGraphExecutor.js");
+    for (const t of WORKFLOW_EXECUTOR_TOOL_NAMES) known.add(t);
+  } catch {
+    // Executor-Liste nicht ladbar — Validierung stützt sich dann auf Executor-Aliase
+  }
+  try {
+    const { INTERNAL_VAULT_TOOL_ALIASES } = await import("../agentRuntime.js");
+    // P1: alte vault_*-Alias-Namen aus dem Katalog sind nicht mehr primär,
     // bleiben aber als Workflow-Schritt-Tools gültig (Abwärtskompatibilität).
     if (INTERNAL_VAULT_TOOL_ALIASES) {
       for (const alias of INTERNAL_VAULT_TOOL_ALIASES) known.add(alias);
     }
   } catch {
-    // Katalog nicht ladbar — Validierung stützt sich dann auf MCP-Tools + Executor-Aliase
-  }
-  try {
-    const mcpTools = await McpClientEngine.listToolsForLouis(tenantId, null);
-    for (const t of mcpTools) known.add(t.normalized_tool_name);
-  } catch {
-    // MCP-Liste nicht ladbar — ignorieren
+    // Katalog nicht ladbar — ignorieren
   }
   for (const step of steps) {
     const tool = String(step.tool || "").trim();

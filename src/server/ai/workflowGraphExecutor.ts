@@ -8,6 +8,51 @@ import path from "path";
 import { resolveAttachmentPhysicalPath } from "./tools/messaging.js";
 import { MailDraftAttachment, WorkflowExecutionLogEntry, WorkflowInstance } from "../../types.js";
 
+/**
+ * Single Source of Truth: Tool-Namen, die der DAG-Executor (WorkflowGraphExecutor)
+ * als Workflow-Schritt-Tools tatsächlich ausführen kann. Hintergrund:
+ * validateWorkflowTools prüfte gegen den LLM-Katalog — list_contacts wurde gespeichert,
+ * crashte aber bei der Ausführung mit „Nicht unterstützter Werkzeugbezeichner".
+ *
+ * Gelernte Workflows laufen IMMER über die DAG-Engine (learnWorkflow erzeugt
+ * dag_structure) — daher ist DIESE Liste der Maßstab für learn_workflow.
+ * Enthält: snake_case-Namen der Dispatch-Zweige (Z. 635–777) + Spezialnamen
+ * (SendEmail/CreateNote/TelegramNotify, Kanban-PascalCase). execute*-Präfixe und
+ * workflow_*-Präfixe werden separat als gültig behandelt (generischer Dispatch).
+ */
+export const WORKFLOW_EXECUTOR_TOOL_NAMES: ReadonlySet<string> = new Set([
+  // CRM / Analyse / Text
+  "crm_data_analyst", "data_architect", "text_generator", "web_search", "local_knowledge",
+  // Draft-Tools (Workflow-Pfad schreibt direkt, bypassApproval=true)
+  "create_invoice_draft", "create_company_draft", "create_contact_draft", "create_offer_draft",
+  "update_company_draft", "update_contact_draft", "update_invoice_draft", "update_offer_draft",
+  "finalize_and_send_offer", "send_smtp_email",
+  // Kanban
+  "list_kanban_boards", "get_kanban_board_details", "create_kanban_board",
+  "create_kanban_card", "move_kanban_card", "update_kanban_card", "delete_kanban_card",
+  "CreateKanbanCard", "MoveKanbanCard", "UpdateKanbanCard", "DeleteKanbanCard",
+  // Templates
+  "get_templates", "get_template_details", "apply_template",
+  // Notizen
+  "create_note_draft", "list_notes", "update_note", "delete_note",
+  // Vault / Wissen (interne + vault_-Namen)
+  "vault_search", "vault_read", "vault_write", "vault_update", "vault_delete",
+  "list_vault_files", "list_knowledge_files",
+  "knowledge_search", "knowledge_write", "knowledge_update", "knowledge_delete",
+  // Memory / Skills / Workflows
+  "recall_sessions", "update_memory", "save_skill", "get_workflows", "learn_workflow",
+  // Interaktion / Delegation
+  "ask_user_question", "delegate_subtask",
+  // Mail
+  "list_mail_drafts",
+  // Spezialnamen (dedizierte Zweige Z. 283/391/481)
+  "SendEmail", "CreateNote", "TelegramNotify"
+]);
+// Hinweis: Lineare-Executor-Aliase (EmailClient, AddLabel, wait, delay …) sind hier
+// bewusst NICHT enthalten — sie werden separat via KNOWN_EXECUTOR_TOOL_ALIASES in
+// validateWorkflowTools erlaubt (Bestands-Workflows ohne dag_structure). Die DAG-Engine
+// kann sie nicht ausführen; neue Workflows laufen immer über die DAG-Engine.
+
 export class WorkflowGraphExecutor {
   /**
    * Main entry point to run or resume a Directed Acyclic Graph (DAG) workflow.
@@ -610,6 +655,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
       };
     } else if (
       node.tool_identifier.startsWith("execute") ||
+      WORKFLOW_EXECUTOR_TOOL_NAMES.has(node.tool_identifier) ||
       node.tool_identifier === "AskUserQuestion" || node.tool_identifier === "ask_user_question" ||
       node.tool_identifier === "DelegateSubtask" || node.tool_identifier === "delegate_subtask"
     ) {

@@ -60,7 +60,7 @@ function extractUsedSkills(thoughtLog: string[] | undefined): string[] {
 import { workflowEventBus } from "../ai/workflowEventBus.js";
 import { sanitizeFinalText } from "../ai/toolCallSanitizer.js";
 import { workflowExecutor } from "../ai/workflowExecutor.js";
-import { getLearnedWorkflows, learnWorkflow, deleteWorkflow } from "../ai/tools.js";
+import { getLearnedWorkflows, learnWorkflow, deleteWorkflow, validateWorkflowTools } from "../ai/tools.js";
 import { generateContentSafe, generateContentUniversal } from "../ai/geminiHelper.js";
 import { generateEmbedding, getRagConfig, formatVectorForPostgres } from "../ai/embeddingHelper.js";
 import { forceManualIngest, unindexFileFromRag, isTextBasedFile, mimeTypeFromFilename, intelligentChunkAndProcess, ingestEmailToRag } from "../storage.js";
@@ -2664,6 +2664,24 @@ export const louisAiRouter = router({
         } catch (e) {
           // fallback to Admin
         }
+      }
+
+      // Tool-Validierung AUCH im Editor-Save-Pfad (Router-Endpunkt) —
+      // der Chat-Pfad (executeLearnWorkflow) validiert bereits; ohne diesen Check
+      // könnte der Editor Workflows mit nicht-ausführbaren Tools speichern.
+      const editorSteps = [
+        ...(Array.isArray(input.tool_chain_sequence) ? input.tool_chain_sequence : []),
+        ...(input.dag_structure && Array.isArray((input.dag_structure as { nodes?: unknown[] }).nodes)
+          ? ((input.dag_structure as { nodes: Array<{ tool_identifier?: string }> }).nodes
+              .map((n) => ({ tool: n.tool_identifier || "" })))
+          : [])
+      ].filter((s) => s.tool);
+      const invalidTool = await validateWorkflowTools(tenantId, editorSteps);
+      if (invalidTool) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Workflow '${input.workflow_name}' enthält unbekanntes Tool '${invalidTool}'. Bitte nur ausführbare Workflow-Tools verwenden.`
+        });
       }
 
       const result = await learnWorkflow(
