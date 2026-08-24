@@ -33,7 +33,7 @@ Sie sehen: Der Workflow erledigt die Vorarbeit, aber die **E-Mail geht erst nach
 ## Wie startet ein Workflow? (Trigger)
 
 1. **Manuell** — Sie klicken „Starten“ oder sagen Louis Bescheid.
-2. **Automatisch bei Ereignis** — z. B. wenn eine Rechnung überfällig wird, ein Kontakt angelegt oder eine Kanban-Karte verschoben wird.
+2. **Automatisch bei Ereignis** — z. B. wenn eine Rechnung überfällig wird, ein Kontakt angelegt oder eine Kanban-Karte verschoben wird. Ereignis-Trigger lassen sich mit **Bedingungen eingrenzen** (z. B. nur Dateien einer bestimmten Firma oder nur PDF-Dateien) — Details: [Readme Workflow-Triggers](Readme%20Workflow-Triggers.md).
 3. **Nach Zeitplan** — z. B. jeden Werktag um 08:30 Uhr (oder nach Cron-Regel, z. B. „monatlich am 1. um 9 Uhr“).
 
 ## Fertige Vorlagen nutzen

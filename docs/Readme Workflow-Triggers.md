@@ -25,7 +25,33 @@ Das System „beobachtet“ ständig Ihre Daten. Bei diesen Ereignissen können 
 * **Unternehmen:** angelegt, aktualisiert, gelöscht
 * **Angebote:** angelegt, finalisiert, versendet, Status geändert
 * **Kanban:** Board/Karte/Spalte angelegt, Karte verschoben/gelöscht, Freigabe erteilt/abgelehnt
-* **Sonstiges:** Datei hochgeladen, Council-Fallback
+* **Dateien:** Datei an Kontakt/Unternehmen hochgeladen, Datei ins interne Wissen hochgeladen
+* **Sonstiges:** Council-Fallback
+
+## Trigger eingrenzen: Bedingungen (Filter)
+
+Sie können einen Ereignis-Trigger **eingrenzen**, damit er nur bei passenden
+Ereignissen startet — statt bei jedem Ereignis dieses Typs:
+
+* **Bedingung hinzufügen:** Wählen Sie ein Feld (z. B. Unternehmen, Dateiname,
+  Entitätstyp), einen Operator (gleich, ungleich, enthält, beginnt mit, endet mit)
+  und einen Wert.
+* **Verknüpfung:** Mehrere Bedingungen werden mit **UND** (alle müssen passen)
+  oder **ODER** (mindestens eine muss passen) verbunden.
+* **Ohne Bedingungen** startet der Workflow bei **jedem** Ereignis dieses Typs.
+
+**Beispiel:** „Wenn eine Datei an das Unternehmen *Musterfirma* hochgeladen wird
+**und** der Dateiname auf `.pdf` endet“ → nur passende Uploads starten den
+Workflow. Fehlt das Feld im Ereignis (z. B. kein Unternehmen zugeordnet), wird
+die Bedingung als nicht erfüllt gewertet — der Workflow startet nicht.
+
+## Workflows von Louis lernen lassen
+
+Sie können Louis im Chat bitten, einen Workflow **mit Trigger** zu speichern,
+z. B.: *„Merke dir: Wenn eine Datei an die Firma X hochgeladen wird, lege eine
+Notiz an.“* Louis speichert den Workflow mit dem passenden Ereignis-Trigger
+und optionalen Bedingungen — Sie sehen ihn danach im Admin-Bereich und können
+ihn dort anpassen oder deaktivieren.
 
 ## Typische Beispiele
 
@@ -69,7 +95,40 @@ Das System emittiert Events bei Datenbewegungen; Workflows mit passendem `event_
 * **Unternehmen**: `company.created`, `company.updated`, `company.deleted`
 * **Angebote**: `offer.created`, `offer.finalized`, `offer.sent`, `offer.status_updated`
 * **Kanban**: `kanban.board_created`, `kanban.card_created`, `kanban.card_updated`, `kanban.card_moved`, `kanban.card_deleted`, `kanban.column_created`, `kanban.approval_approved`, `kanban.approval_rejected`
-* **Weitere**: `file.uploaded`, `council.session_degraded_fallback`
+* **Dateien**: `file.uploaded` (Datei an Kontakt/Unternehmen), `knowledge.file_uploaded` (Datei ins interne Wissen)
+* **Weitere**: `council.session_degraded_fallback`
+
+### Trigger-Bedingungen (Filter) & Verknüpfung
+
+Ereignis-Trigger können über `trigger_config` eingegrenzt werden:
+
+```json
+{
+  "event_name": "file.uploaded",
+  "logic": "AND",
+  "conditions": [
+    { "field": "company_id", "operator": "equals", "value": "<id>" },
+    { "field": "file_name", "operator": "ends_with", "value": ".pdf" }
+  ]
+}
+```
+
+* **`logic`**: `AND` (alle Bedingungen müssen erfüllt sein, Default) oder
+  `OR` (mindestens eine). Ohne `conditions`-Feld greift das Altverhalten:
+  jedes Ereignis des Typs startet.
+* **`field`** (Whitelist): `entity_type`, `entity_id`, `entity_name`,
+  `file_name`, `company_id`, `company_name`, `invoice_status`,
+  `kanban_column_id`.
+* **`operator`**: `equals`, `not_equals`, `contains`, `starts_with`,
+  `ends_with`.
+* **Fehlendes Feld im Payload** → Bedingung gilt als nicht erfüllt (kein
+  stiller Start). Der angereicherte Payload enthält für Uploads zusätzlich
+  `company_id`/`company_name` (bei Firmen direkt, bei Kontakten über die
+  zugeordnete Firma).
+* **Louis-Lernen**: `learn_workflow` akzeptiert optional `trigger_type` und
+  `trigger_config` (siehe oben) — Louis kann Trigger-Workflows per Chat
+  speichern; unstrukturierte Lern-Inputs mit Trigger-Hinweisen (z. B.
+  „wenn eine Datei hochgeladen wird“) werden deterministisch erkannt.
 
 ### Klassische Trigger-Ereignisse
 * 🟢 **`invoice.paid`** — Zahlungseingang gebucht → Zahlungsbestätigung senden, Timeline-Notiz, Label „Zahlung ausstehend“ entfernen
