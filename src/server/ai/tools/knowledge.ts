@@ -1359,7 +1359,7 @@ interface WorkflowArgs {
   tool_chain_sequence?: WorkflowStepArgs[];
   tool_chain?: WorkflowStepArgs[];
   sequence?: WorkflowStepArgs[];
-  /** Schritte als strukturiertes Array ODER nummerierter Freitext-String (Provider-neutral) */
+  /** Schritte als strukturiertes Array ODER nummerierter Freitext-String (Provider-neutral, 058) */
   steps?: WorkflowStepArgs[] | string;
   trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
   trigger_config?: Record<string, unknown> | null;
@@ -1396,6 +1396,62 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
     if (!name) continue;
     const escaped = escapeRegExp(name);
     if (new RegExp(`\\b${escaped}\\b`).test(text)) return name;
+  }
+  // Fix: Natürliche-Sprache-Erkennung — echte User schreiben
+  // "Leg eine Notiz an", "warte 5 Sekunden", "schick eine E-Mail", nicht die
+  // Tool-Namen. Vorher fiel jeder Klartext-Schritt auf crm_data_analyst zurück
+  // (generisches Tool → Workflow "lief" ohne Wirkung). Deterministische
+  // Schlüsselwort-Mapping-Tabelle (bewusst KEIN LLM-Call im Workflow-Pfad).
+  return detectNaturalLanguageTool(text, knownTools);
+}
+
+// Fix: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
+// Reihenfolge = Priorität (spezifisch zuerst). Geprüft wird immer gegen
+// knownTools, damit keine Tools gemappt werden, die der Executor nicht kennt.
+const NATURAL_LANGUAGE_PATTERNS: Array<{ pattern: RegExp; tool: string }> = [
+  // Reihenfolge = Spezifität: Entity-Patterns VOR generischen. Sonst matcht
+  // "Lege einen Kontakt mit E-Mail X an" fälschlich den Mail-Pattern.
+  // Notizen — häufigster Fall, zuerst
+  { pattern: /notiz|notizen|note\b|notat|vermerk|anmerkung|protokoll/i, tool: "create_note_draft" },
+  // Kontakt — Aktions-Form ("Lege einen Kontakt ... an") UND Kurz-Form ("Kontakt anlegen")
+  { pattern: /\b(?:lege|leg|erstelle|erstellen|anlegen|anlege|create|new|add)\b[^.\n]{0,60}?\bkontakt\b|\bkontakt\b[^.\n]{0,60}?\b(?:anlegen|anlege|erstellen|erstell|neu|neuen)\b/i, tool: "create_contact_draft" },
+  // Firma — analog
+  { pattern: /\b(?:lege|leg|erstelle|erstellen|anlegen|anlege|create|new|add)\b[^.\n]{0,60}?\b(?:firma|unternehmen|company)\b|\b(?:firma|unternehmen|company)\b[^.\n]{0,60}?\b(?:anlegen|anlege|erstellen|erstell|neu|neues|neue)\b/i, tool: "create_company_draft" },
+  // Rechnung
+  { pattern: /rechnung|invoice|rechnungs/i, tool: "create_invoice_draft" },
+  // Angebot
+  { pattern: /angebot|offer\b|offerte/i, tool: "create_offer_draft" },
+  // Warten / Verzögerung
+  { pattern: /warte?|warten\b|verzöger|delay|paus|schlaf|slee|(?:für|für)\s*\d+\s*(?:sekunden?|minuten?|stunden?)/i, tool: "wait" },
+  // E-Mail NUR bei expliziter Sende-Aktion — "E-Mail" als reine Adress-Erwähnung
+  // ("Kontakt mit E-Mail X") darf NICHT matchen. "nachricht" als
+  // Wortbestandteil erlaubt Komposita (Willkommensnachricht, Erinnerungsnachricht).
+  { pattern: /(?:sende?|schicke?|versende?|send)\w*\s*(?:eine\s+|die\s+)?\w*(?:e-?mail|mail|nachricht)\w*|(?:sende?|schicke?|versende?|send)\w*\s*(?:eine\s+|die\s+)?(?:e-?mail|mail|nachricht)|nachricht senden|(?:e-?mail|mail)\s+(?:an|an\s+den|an\s+die)\s+/i, tool: "send_smtp_email" },
+  // Wissensvault / Datei schreiben
+  { pattern: /wissensvault|knowledge|vault|datei (?:schreib|anleg|erstell)|dokument (?:schreib|anleg|erstell|speicher)/i, tool: "knowledge_write" },
+  // Vault lesen / suchen
+  { pattern: /vault (?:such|lese|lesen)|wissensvault (?:such|lese)|knowledge_search|suche.*(?:vault|wissen)/i, tool: "knowledge_search" },
+  // Erinnerungen / Memory
+  { pattern: /erinner|memory|merke dir|präferenz speicher/i, tool: "update_memory" },
+  // Vorlagen
+  { pattern: /vorlage|template/i, tool: "get_templates" },
+  // Delegation
+  { pattern: /delegier|sub.?aufgabe|subtask|parallel/i, tool: "delegate_subtask" },
+  // Rückfrage
+  { pattern: /frag.*nach|rückfrage|nachfrag|klärung benötigt|frage den user/i, tool: "ask_user_question" }
+];
+
+function detectNaturalLanguageTool(text: string, knownTools: ReadonlySet<string>): string | null {
+  const lower = text.toLowerCase();
+  for (const { pattern, tool } of NATURAL_LANGUAGE_PATTERNS) {
+    if (!pattern.test(lower)) continue;
+    // wait/delay sind lineare Executor-Aliase — nicht in WORKFLOW_EXECUTOR_TOOL_NAMES,
+    // aber legitime Workflow-Schritt-Tools (DAG-Executor erkennt sie via isWaitToolNode)
+    if (tool === "wait") return tool;
+    // Nur mappen, wenn der Executor das Tool wirklich kennt (bzw. Aliase)
+    if (knownTools.has(tool) || knownTools.has(`execute${tool.replace(/(^|_)(\w)/g, (_, p, c) => c.toUpperCase())}`)) {
+      return tool;
+    }
   }
   return null;
 }
@@ -1439,6 +1495,64 @@ export function parseStepsToToolChain(
   return [];
 }
 
+// deterministisch: Deterministische Schritt-Extraktion aus dem User-Quelltext.
+// Zerlegt nummerierte/aufgezählte Lern-Prompts ("(a) ...", "1. ...", "- ...")
+// in einzelne Schritte und mappt sie auf ausführbare Workflow-Tools
+// (detectToolNameInText inkl. natürlicher Sprache). KEIN LLM-Call — der
+// ReAct-Loop erkennt nur den Lern-Wunsch, die Struktur kommt deterministisch.
+export async function buildStepChainFromText(
+  source: string,
+  _tenantId: string,
+  fallbackInstruction: string
+): Promise<Array<{ tool: string; instruction: string }>> {
+  const text = String(source || "").trim();
+  if (!text) return [{ tool: "crm_data_analyst", instruction: fallbackInstruction }];
+  const knownTools = await loadKnownWorkflowToolNames();
+  const chain: Array<{ tool: string; instruction: string }> = [];
+
+  // 1) Zeilenweise Marker: "(a) ", "1. ", "1) ", "- ", "* ", "• "
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  for (const line of lines) {
+    const hasMarker = /^\([a-zA-Z0-9]\)\s+/.test(line) || /^\d+[.)]\s+/.test(line) || /^[-*•]\s+/.test(line);
+    if (!hasMarker) continue;
+    const instruction = cleanStepInstruction(line);
+    if (!instruction) continue;
+    const tool = detectToolNameInText(instruction, knownTools) || "crm_data_analyst";
+    chain.push({ tool, instruction });
+  }
+
+  // 2) Inline-Marker in EINER Zeile: "(a) … (b) …" → an den Markern splitten.
+  //    Gewinnt, wenn er mehr Schritte liefert als die Zeilen-Logik (einzeilige
+  //    Lern-Prompts mit "(a)"/"(b)"-Aufzählung).
+  if (/\([a-zA-Z0-9]\)\s+/.test(text)) {
+    const inlineParts = text.split(/(?=\([a-zA-Z0-9]\)\s+)/);
+    const inlineChain: Array<{ tool: string; instruction: string }> = [];
+    for (const part of inlineParts) {
+      // Vorspann VOR dem ersten Marker (z.B. "Lerne diesen Ablauf als Workflow:")
+      // verwerfen — nur Marker-Teile sind echte Schritte.
+      if (!/^\([a-zA-Z0-9]\)\s+/.test(part.trim())) continue;
+      const instruction = cleanStepInstruction(part.trim());
+      if (!instruction) continue;
+      const tool = detectToolNameInText(instruction, knownTools) || "crm_data_analyst";
+      inlineChain.push({ tool, instruction });
+    }
+    if (inlineChain.length > chain.length) {
+      chain.length = 0;
+      chain.push(...inlineChain);
+    }
+  }
+
+  if (chain.length === 0) {
+    // Keine Marker gefunden — gesamten Text als EINEN Schritt (Tool-Erkennung)
+    const tool = detectToolNameInText(text, knownTools) || "crm_data_analyst";
+    chain.push({ tool, instruction: cleanStepInstruction(text) || fallbackInstruction });
+  }
+  return chain;
+}
+
 /** Lädt die bekannten Tool-Namen (Executor-Schritt-Tools + Vault-Aliase) — dynamischer Import bricht den Zirkel. */
 export async function loadKnownWorkflowToolNames(): Promise<ReadonlySet<string>> {
   const known = new Set<string>();
@@ -1465,14 +1579,15 @@ export async function loadKnownWorkflowToolNames(): Promise<ReadonlySet<string>>
 export async function executeLearnWorkflow(
   tenantId: string,
   argsStr: string,
-  actor: string = "ai_assistant"
+  actor: string = "ai_assistant",
+  sourceText?: string | null
 ): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: WorkflowArgs | null = null;
     let cleanedArgsStr = (argsStr || "").trim();
     if (cleanedArgsStr.startsWith("```")) {
       cleanedArgsStr = cleanedArgsStr.replace(/^```[a-zA-Z0-9]*\s*/, "");
-      cleanedArgsStr = cleanedArgsStr.replace(/\s*```$/, "");
+      cleanedArgsStr = cleanedArgsStr.replace(/\s*```$/, "").trim();
     }
     cleanedArgsStr = cleanedArgsStr.trim();
 
@@ -1480,12 +1595,17 @@ export async function executeLearnWorkflow(
       rawArgs = JSON.parse(cleanedArgsStr) as WorkflowArgs;
     } catch {
       // Fallback if the AI passes unstructured string
+      // deterministisch: Deterministische Extraktion aus dem Quelltext — der User-Prompt
+      // ("(a) Lege einen Kontakt an, (b) sende eine Mail, ...") wird Schritt für
+      // Schritt zerlegt und auf Tools gemappt. Vorher: pauschal 1 crm_data_analyst-
+      // Schritt (Schritt-Struktur ging verloren → Workflow "lief" ohne Wirkung).
       const fallbackName = "Automated AI Recipe";
       const fallbackDesc = argsStr;
-      const fallbackSeq = [{ tool: "crm_data_analyst", instruction: argsStr }];
+      const source = sourceText || argsStr;
+      const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
       return createToolSuccess({
-        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (1 Schritt: crm_data_analyst).`,
+        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
         workflow: res
       });
     }
@@ -1493,10 +1613,11 @@ export async function executeLearnWorkflow(
     if (!rawArgs || typeof rawArgs !== "object") {
       const fallbackName = "Automated AI Recipe";
       const fallbackDesc = argsStr;
-      const fallbackSeq = [{ tool: "crm_data_analyst", instruction: argsStr }];
+      const source = sourceText || argsStr;
+      const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
       return createToolSuccess({
-        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert.`,
+        message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
         workflow: res
       });
     }
@@ -1508,7 +1629,19 @@ export async function executeLearnWorkflow(
     // ODER steps als Array/nummerierter String (provider-neutral).
     const knownTools = await loadKnownWorkflowToolNames();
     const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
-    const toolChain = parseStepsToToolChain(seq, knownTools);
+    let toolChain = parseStepsToToolChain(seq, knownTools);
+
+    // deterministisch: Deterministische Extraktion gewinnt, wenn der User-Prompt explizit
+    // nummerierte/aufgezählte Schritte enthält UND die LLM-Sequenz weniger Schritte
+    // liefert (LLM fasst gern zusammen → Schrittzahl-Varianz: mal 4, mal 5 Schritte).
+    // Der User hat die Schritte klar benannt — die Struktur kommt aus dem Prompt,
+    // nicht aus dem LLM-Zusammenfassen.
+    if (sourceText && sourceText.trim().length > 0) {
+      const deterministicChain = await buildStepChainFromText(sourceText, tenantId, description);
+      if (deterministicChain.length > 1 && deterministicChain.length > toolChain.length) {
+        toolChain = deterministicChain;
+      }
+    }
 
     if (toolChain.length === 0) {
       toolChain.push({
@@ -1517,7 +1650,7 @@ export async function executeLearnWorkflow(
       });
     }
 
-    // Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
+    // P0-3 : Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
     // (bisher lief validateWorkflowTools nur bei der Ausführung; workflowExecutor
     // behandelt unbekannte Schritt-Tools still als COMPLETED).
     const unknownTool = await validateWorkflowTools(tenantId, toolChain);
@@ -1553,7 +1686,7 @@ export async function executeLearnWorkflow(
       skill_category
     );
 
-    // Ehrliche Antwort — die Message nennt die TATSÄCHLICH gespeicherten
+    // P0-4 : Ehrliche Antwort — die Message nennt die TATSÄCHLICH gespeicherten
     // Schritte (Anzahl + Tool-Namen), damit das LLM aus dem Tool-Ergebnis zitiert
     // statt aus der Beschreibung zu halluzinieren.
     const savedStepCount = Array.isArray(toolChain) ? toolChain.length : 0;

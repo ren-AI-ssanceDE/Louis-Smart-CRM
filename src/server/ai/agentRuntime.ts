@@ -52,12 +52,13 @@ import {
   executeVaultUpdate,
   executeVaultDelete
 } from "./tools.js";
-import { safeParseReActDecision, truncateResult, classifyIntentFastPath } from "./orchestrator.js";
+import { safeParseReActDecision, truncateResult, classifyIntentFastPath, detectWorkflowStartIntent } from "./orchestrator.js";
 import { WorkflowLearnSuggestionSchema, SubTaskSpecSchema, VerifySubtaskArgsSchema, AskUserQuestionArgsSchema } from "../../lib/schemas.js";
 import { ModelUsageMetadata, ConversationMessage, GovernanceAction, SubTaskResult, TenantAiConfig } from "../../types.js";
 import { vaultToolKind, vaultWriteBaseName, VAULT_WRITE_ACTION_MAP } from "./vaultToolClassification.js";
 import { ToolCall } from "../../types/inference.js";
 import { McpClientEngine } from "../mcp/mcpClientEngine.js";
+import { buildPromptTokensBreakdown } from "./tokenBreakdown.js";
 import { evaluateGovernanceRules } from "./governance.js";
 import { vaultSearch, vaultReadText, readUserMemoryVault, writeUserMemoryVault, resolveSkillFiles, normalizeQueryValue } from "./vaultStore.js";
 import type { VaultSkillFile } from "./vaultStore.js";
@@ -747,7 +748,20 @@ export class AgentRuntime {
           cachedTokens: context.cachedTokens,
           totalTokens: context.inputTokens + context.outputTokens,
           durationMs: executionTimeMs,
-          activeTools: activeTools.length
+          activeTools: activeTools.length,
+          // Token-Zerlegung: Zerlegung über alle Iterationen aggregiert (Summen je Anteil)
+          promptTokensBreakdown: context.promptBreakdownParts && context.promptBreakdownParts.length > 0
+            ? {
+                system_prompt: context.promptBreakdownParts.reduce((s, p) => s + p.system_prompt, 0),
+                history: context.promptBreakdownParts.reduce((s, p) => s + p.history, 0),
+                tool_schemas: context.promptBreakdownParts.reduce((s, p) => s + p.tool_schemas, 0),
+                tool_results: context.promptBreakdownParts.reduce((s, p) => s + p.tool_results, 0),
+                user_message: context.promptBreakdownParts.reduce((s, p) => s + p.user_message, 0),
+                other: context.promptBreakdownParts.reduce((s, p) => s + p.other, 0),
+                estimated_total: context.promptBreakdownSum || 0,
+                iterations: context.promptBreakdownParts.length
+              }
+            : null
         });
       } catch (err) {
         console.warn("[B2] recordAgentRun fehlgeschlagen (ignoriert):", err);
@@ -859,21 +873,22 @@ export class AgentRuntime {
     const preferredLanguageName = context.language === 'de' ? 'German / Deutsch' : 'English';
 
     // === S3: Zone 1 (statischer System-Prefix) — EINMAL pro Request vor der Schleife ===
-    // Timestamp kommt aus context.temporalAnchor (im Orchestrator 1x pro Request gesetzt) — KEIN new Date in der Schleife.
+    // Datum kommt aus context.temporalAnchor (im Orchestrator 1x pro Request gesetzt) — KEIN new Date in der Schleife.
+    // : Date-only — Minute-Präzision würde den byte-stabilen
+    // Prefix brechen und damit das automatische Prefix-Caching invalidieren.
     const temporalAnchor = context.temporalAnchor || new Date().toISOString();
-    const weekdaysGerman = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-    const weekdayName = weekdaysGerman[new Date(temporalAnchor).getDay()];
     const dateIsoStr = temporalAnchor;
-    const formattedTimestamp = `${dateIsoStr.slice(0, 10)} ${dateIsoStr.slice(11, 19)} UTC (${weekdayName})`;
 
     // Workflow- und MCP-Tools GENAU EINMAL laden (nicht pro Iteration — Voraussetzung für Cache-Hits)
-    // S5: statt ALLER Workflows nur die Top-K relevanten Skills (Embedding/Keyword) — gleicher Block-Aufbau
-    let learnedWorkflows: Array<{ id_uuid: string; workflow_name: string; workflow_description?: string; description?: string }> = [];
+    // Fix: getLearnedWorkflows statt searchRelevantSkills —
+    // die Skill-Suche matcht "Starte X" nicht (Query ≠ workflow_name, Keyword-ILIKE
+    // greift nicht) und liefert ohne Embedding nichts → gelernte Workflows
+    // erschienen NIE im Prompt → Louis erfand die Ausführungsmeldung.
+    let learnedWorkflows: Array<{ id_uuid?: string; workflow_name?: string; workflow_description?: string; description?: string; is_active?: boolean }> = [];
     try {
-      const skills = await searchRelevantSkills(context.tenantId, context.userMessage, 5);
-      learnedWorkflows = skills as unknown as typeof learnedWorkflows;
+      learnedWorkflows = await getLearnedWorkflows(context.tenantId);
     } catch (err) {
-      console.warn("Failed to get relevant skills:", err);
+      console.warn("Failed to get learned workflows:", err);
     }
 
     let mcpDiscoveredTools: Array<{ normalized_tool_name: string; description?: string; original_tool_name: string; input_schema?: unknown }> = [];
@@ -894,8 +909,15 @@ export class AgentRuntime {
         ? rawCatalogTools.filter(t => !SUBAGENT_CORE_EXCLUDED.has(t.name))
         : rawCatalogTools
     );
+    // Kompaktierung: Text-Liste gestrafft — Name + Kurzbeschreibung (80 Zeichen).
+    // Die nativen Tool-Deklarationen (tools-Parameter) liefern die vollen
+    // Schemata; die Text-Liste dient nur der Tool-Erkennung + Ehrlichkeits-Regel.
+    // Spart ~2.000 Tokens Fixkosten je Iteration, ohne native Fähigkeit zu ändern.
     const activeToolsStr = allCatalogTools
-      .map((td, idx) => `${idx + 1}. ${td.desc}`)
+      .map((td, idx) => {
+        const shortDesc = td.desc.length > 80 ? td.desc.slice(0, 80).trimEnd() + "…" : td.desc;
+        return `${idx + 1}. ${shortDesc}`;
+      })
       .join("\n");
 
     const mcpToolsStr = mcpDiscoveredTools.length > 0
@@ -920,7 +942,8 @@ export class AgentRuntime {
 
     const learnedWorkflowsStr = learnedWorkflows.length > 0
       ? "\n## Learned Workflow Custom Macro-Tools:\n" + learnedWorkflows
-          .map((w, idx) => `${idx + allCatalogTools.length + mcpDiscoveredTools.length + 1}. 'workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, '_')}': ${w.workflow_description || w.description || 'Custom workflow'}`).join('\n')
+          .map((w, idx) => `${idx + allCatalogTools.length + mcpDiscoveredTools.length + 1}. 'workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, '_')}': ${w.workflow_description || w.description || 'Custom workflow'}`).join('\n') +
+        "\n\n### VERBINDLICH: Wenn der Nutzer einen gelernten Workflow starten will (z. B. \"Starte <Name>\" oder \"Führe <Name> aus\"), rufe IMMER das zugehörige 'workflow_<name>'-Tool auf — führe die Workflow-Schritte NIEMALS einzeln als create_*/send_*-Tools aus. Ein einzelner Schritt ohne den Workflow-Mechanismus erzeugt nur einen Entwurf ohne Ausführung."
       : '';
 
     // 2026-08-18: Text-Fallback-Kanal AUS → strikt natives Tool-Calling (kein XML/JSON-Textweg)
@@ -974,7 +997,7 @@ ${isToolAccessQuestion(context.userMessage) ? `
     - KEINE Stub-/Ankündigungs-Antworten (z.B. „wird gleich ergänzt", „ich suche gleich…"): Formuliere die finale Antwort erst, wenn sie vollständig ist.
 
     ## Available Tools (Deterministically Sorted):
-    ${activeToolsStr}
+    ${context.toolCallMode === 'json' || context.textFallbackEnabled === true ? activeToolsStr : ''}
     ${mcpToolsStr}
     ${learnedWorkflowsStr}
 
@@ -1087,8 +1110,9 @@ ${isToolAccessQuestion(context.userMessage) ? `
     // hase 1 (#1/#2/#4): Cache-Tier-Architektur — CONTEXT-Tier 1x pro Request.
     // STABLE = context.systemPrefix (oben, 1x gebaut): Identität, CRM-Regeln, Tool-Katalog
     // (deterministisch sortiert), ReAct-/Draft-Direktiven, #7 Task-Completion.
-    // CONTEXT = Request-gebundene, pro Iteration UNVERÄNDERTE Blöcke: Timestamp (#4),
-    // #6 Parallel-Tool-Guidance (Toggle prompt_parallel_tool_guidance),
+    // CONTEXT = Request-gebundene, pro Iteration UNVERÄNDERTE Blöcke: Datum (#4,
+    // date-only für byte-stabilen Prefix), #6 Parallel-Tool-
+    // Guidance (Toggle prompt_parallel_tool_guidance),
     // ShortTermSummary, #3 Memory-Snapshot (1x gerendert — frozen), offene
     // Rückfragen, Attachments.
     // VOLATILE = pro Iteration wechselnd (unten in der Schleife): Iteration, Tool-Ergebnisse,
@@ -1104,9 +1128,8 @@ ${isToolAccessQuestion(context.userMessage) ? `
  // Phase 3 (#18): Prefetch-Reihenfolge beibehalten, wenn Prefetch aktiv ist
       const memBlock = buildMemoryInjectionBlock(context.userMemory, context.aiConfig.memory_budget_tokens ?? 800, context.memoryPrefetchEnabled ?? true);
       return `${context.systemPrefix || ""}
-Current System Timestamp: ${formattedTimestamp}
 Current Date: ${dateIsoStr.slice(0, 10)}
-System Temporal Anchor: ${formattedTimestamp}
+System Temporal Anchor: ${dateIsoStr.slice(0, 10)}
 
 ${parallelToolGuidanceBlock}
 
@@ -1181,6 +1204,33 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
 
       const executedToolNames = new Set(context.toolResults.map(r => r.toolName));
       const intent = classifyIntentFastPath(context.userMessage);
+
+      // deterministisch: Deterministischer Workflow-Start — "Starte <Name>" wird OHNE
+      // LLM-Entscheidung auf workflow_<Name> gemappt und sofort ausgeführt.
+      // Vorher: Louis wählte teils die Einzelschritte statt des workflow_-Tools
+      // → Drafts statt Persistenz (Varianz beim Starten). Der User hat den
+      // Workflow explizit benannt — keine Tool-Wahl nötig.
+      if (context.toolResults.length === 0) {
+        const wfToolName = detectWorkflowStartIntent(
+          context.userMessage,
+          learnedWorkflows.map((w) => String(w.workflow_name || ""))
+        );
+        if (wfToolName) {
+          context.thoughtLog.push(`[Deterministischer Workflow-Start] Erkannt: "${context.userMessage.trim()}" → ${wfToolName}`);
+          try {
+            const wfResult = await executeWorkflowMacro(context.tenantId, wfToolName, "{}");
+            const resultText = wfResult && typeof wfResult === "object" && "success" in wfResult
+              ? (wfResult as { success: boolean; data?: unknown; error?: string }).success
+                ? JSON.stringify((wfResult as { data?: unknown }).data ?? {})
+                : String((wfResult as { error?: string }).error ?? "Workflow-Start fehlgeschlagen")
+              : JSON.stringify(wfResult ?? {});
+            context.toolResults.push({ toolName: wfToolName, query: "{}", result: resultText });
+          } catch (wfErr) {
+            const msg = wfErr instanceof Error ? wfErr.message : String(wfErr);
+            context.toolResults.push({ toolName: wfToolName, query: "{}", result: `Workflow-Start fehlgeschlagen: ${msg}` });
+          }
+        }
+      }
 
       // ============================================================================
       // B4-Nachfolge (2026-08-16, provider-agnostisch): Ankündigungs-Schutz
@@ -1265,6 +1315,18 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
+          // Fix: gelernte Workflows ALS NATIVE TOOLS deklarieren —
+          // vorher nur Prompt-Text → im strikt nativen Modus nicht aufrufbar → Louis
+          // halluzinierte "wurde gestartet". Dispatch (workflow_-Prefix) + Executor
+          // existierten bereits (agentRuntime Z.2749, executeWorkflowMacro).
+          ...buildNativeTools(
+            learnedWorkflows
+              .filter((w) => w.is_active !== false)
+              .map((w) => ({
+                name: `workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+                desc: `'workflow_${w.workflow_name.replace(/[^a-zA-Z0-9_]/g, "_")}': Führt den gelernten Workflow '${w.workflow_name}' aus. Query JSON: { query: "optionale Start-Parameter oder Anweisung" }`
+              }))
+          ),
           ...buildNativeTools([
             { name: "finalize_response", desc: "'finalize_response': Beendet den ReAct-Loop mit der finalen Antwort an den Nutzer. Query JSON: { finalDraftText }" },
             { name: "propose_crm_changes", desc: "'propose_crm_changes': Schlägt CRM-Änderungen zur Freigabe vor. Query JSON: { entity_type, action, id_uuid?, proposed_state, explanation_rational }" }
@@ -1297,6 +1359,27 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
           context.outputTokens += metadata.completionTokens || metadata.candidatesTokenCount || metadata.candidates_token_count || 0;
           context.cachedTokens += metadata.cachedInputTokens || metadata.cacheReadInputTokens || 0;
         }
+
+        // Token-Zerlegung: Token-Zerlegung je Iteration erfassen (Schätzung der Anteile).
+        // Wird bei recordAgentRun als prompt_tokens_breakdown persistiert.
+        const iterBreakdown = buildPromptTokensBreakdown({
+          systemInstruction,
+          optimizedHistory: JSON.stringify(optimizedHistory),
+          nativeToolDecls,
+          dynamicPayload,
+          userMessage: context.userMessage,
+          toolResultsText: buildToolResultsSection(
+            context.toolResults,
+            context.lastInjectedToolResults ?? 0,
+            context.toolResultTruncateChars,
+            context.language === "en" ? "en" : "de",
+            context.reactKeepLastResults,
+            loopCount >= context.reactCompactionFromIteration
+          )
+        });
+        context.promptBreakdownSum = (context.promptBreakdownSum || 0) + iterBreakdown.estimated_total;
+        context.promptBreakdownParts = (context.promptBreakdownParts || []);
+        context.promptBreakdownParts.push(iterBreakdown);
 
  // Phase 4 (#31): Empty-Response-Guard — leere Antwort → Retry (bounded);
         // deterministischer Streak + Kostenbudget → Abbruch (Muster empty_response_guard.py).
@@ -2466,7 +2549,10 @@ ${toolTrace}`;
     } else if (toolName === "crm_data_analyst" || toolName === "data_architect") {
       result = await executeCrmDataAnalyst(context.tenantId, toolQuery);
     } else if (toolName === "learn_workflow") {
-      result = await executeLearnWorkflow(context.tenantId, toolQuery, context.userId);
+      // deterministisch: source_text (Original-User-Prompt) mitgeben — bei fehlender/
+      // inkonsistenter tool_chain_sequence extrahiert learn_workflow die Schritte
+      // deterministisch daraus (kein LLM-Raten, keine Schrittzahl-Varianz).
+      result = await executeLearnWorkflow(context.tenantId, toolQuery, context.userId, context.userMessage);
     } else if (toolName === "verify_subtask") {
       result = await this.verifySubtask(context, toolQuery);
     } else if (toolName === "ask_user_question") {
