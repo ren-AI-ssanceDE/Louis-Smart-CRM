@@ -1,3 +1,15 @@
+## 🚀 Release v2.1.4: Präzise Automatisierung mit Trigger-Bedingungen
+
+Mit **2.1.4** werden eure automatisierten Workflows deutlich **präziser**: Ereignis-Trigger lassen sich jetzt mit **Bedingungen eingrenzen**. Statt bei jedem Datei-Upload zu starten, könnt ihr festlegen: „Nur wenn die Datei an ein bestimmtes Unternehmen geht **und** der Dateiname auf `.pdf` endet“. Mehrere Bedingungen verbindet ihr wahlweise mit **UND** (alle müssen passen) oder **ODER** (mindestens eine reicht).
+
+Neu ist auch der Trigger **„Datei ins interne Wissen hochgeladen“** — so reagieren Workflows gezielt auf neue Wissensdokumente. Und **Louis kann solche Trigger-Workflows direkt aus dem Chat lernen**: Sagt ihm einfach „Wenn eine Datei an die Firma X hochgeladen wird, lege eine Notiz an“ — Ereignis, Bedingungen und Verknüpfung übernimmt er automatisch.
+
+Zudem wurde die **Testtiefe** weiter erhöht: Die Absicherung der Anmelde- und Sitzungslogik erreicht jetzt die Zielschwelle von 60 % bei den Mutationstests — Louis wird mit jeder Version gründlicher geprüft.
+
+Louis Smart CRM ist und bleibt ein Projekt für Alle: offen, individualisierbar und mit wachsender Qualität — jede Version wird gründlich geprüft, damit Louis im Alltag zuverlässig für euch arbeitet. Viel Freude damit!
+
+---
+
 ## 🚀 Release v2.1.3: Runder, konsistenter, schneller bedienbar
 
 Mit **2.1.3** wird Louis Smart CRM in der Bedienung noch runder und konsistenter. Das Herzstück dieser Version: Der **LLM Council** — euer eigenes Multi-KI-Diskussionsforum für strategische Entscheidungen — tritt jetzt im gewohnten Look des gesamten CRM auf. Gleiche Seitenstruktur, gleiche Karten, gleiche Buttons: Wer Louis kennt, findet sich sofort zurecht. Eure vergangenen Debatten bleiben dabei selbstverständlich in der Seitenleiste sichtbar.

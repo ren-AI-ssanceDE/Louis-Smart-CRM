@@ -2,6 +2,25 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.4] — 2026-08-24
+
+### 🎯 Fokus: Präzise Automatisierung (Trigger-Bedingungen, Wissens-Upload) & Testtiefe
+
+#### ⚡ Workflow-Trigger mit Bedingungen
+* Ereignis-Trigger lassen sich jetzt **eingrenzen**: Bedingungen wie „Unternehmen gleich X“ oder „Dateiname endet auf .pdf“ bestimmen, wann ein Workflow startet.
+* **UND/ODER-Verknüpfung**: Mehrere Bedingungen werden wahlweise mit „alle müssen passen“ (UND) oder „mindestens eine reicht“ (ODER) verbunden.
+* Der angereicherte Ereignis-Payload enthält für Uploads zusätzlich die zugeordnete Firma — Bedingungen auf Unternehmensebene funktionieren damit für Kontakt- und Firmen-Dateien gleichermaßen.
+
+#### 🧠 Internes Wissen als Trigger
+* Neues Ereignis `knowledge.file_uploaded`: Workflows können auf Uploads **ins interne Wissen** reagieren (z. B. „bei neuer Markdown-Datei eine Notiz anlegen“).
+
+#### 🤖 Louis lernt Workflows mit Triggern
+* Louis kann im Chat Workflows **mit Trigger** speichern (z. B. „Wenn eine Datei an die Firma X hochgeladen wird, lege eine Notiz an“) — Ereignis, Bedingungen und Verknüpfung werden übernommen.
+* Unstrukturierte Lern-Inputs mit Trigger-Hinweisen („wenn … hochgeladen“, „sobald … bezahlt“) werden automatisch erkannt.
+
+#### 🧪 Qualität
+* Mutation-Test-Abdeckung der Authentifizierungs-Logik deutlich erhöht (Zielschwelle von 60 % erreicht) — Login, Token- und Session-Pfade sowie die Schlüsselverwaltung sind jetzt testseitig abgesichert.
+
 ## [2.1.3] — 2026-08-22
 
 ### 🎯 Fokus: Bedienbarkeit & Konsistenz (Council, E-Mail-Anhänge, Rückfragen)
