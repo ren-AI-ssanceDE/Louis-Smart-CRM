@@ -1463,7 +1463,7 @@ function detectNaturalLanguageTool(text: string, knownTools: ReadonlySet<string>
  * - String (nummerierte Liste „1. …\n2. …“) → Zeilen splitten, Tool-Namen erkennen,
  *   ohne erkennbares Tool → crm_data_analyst
  * - leer/null/undefined → []
- * Exportiert (R-AR-10), damit MCP/Test sie direkt nutzen können.
+ * Exportiert, damit MCP/Test sie direkt nutzen können.
  */
 export function parseStepsToToolChain(
   input: unknown,
