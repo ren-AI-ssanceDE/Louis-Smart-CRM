@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getSession } from "@auth/express";
 import { authConfig } from "../auth.js";
 import { forceManualIngest, intelligentChunkAndProcess } from "../storage.js";
+import { workflowEventBus } from "../ai/workflowEventBus.js";
 
 export const chatUploadRouter = Router();
 
@@ -134,6 +135,13 @@ chatUploadRouter.post("/upload", upload.single("file"), async (req: Request, res
         if (!isIndexed) {
           console.warn(`[chatUpload] forceManualIngest produced no chunks for "${safeName}" — metadata may still be recorded.`);
         }
+        // Projektarbeit P1-3: Internes-Wissen-Upload als Event emittieren (Trigger-Basis) —
+        // Payload analog MCP crm_upload_vault_document (mcpServer.ts).
+        workflowEventBus.emitEvent(tenantId, "knowledge.file_uploaded", {
+          file_name: safeName,
+          file_size_bytes: buffer.length,
+          mime_type: "text/plain",
+        });
       } catch (ingestErr) {
         console.error(`[chatUpload] Knowledge base indexing failed for "${safeName}":`, ingestErr);
         isIndexed = false;

@@ -383,7 +383,22 @@ export interface CustomWorkflow {
     instruction: string;
   }[];
   trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
-  trigger_config?: Record<string, unknown> | null;
+  trigger_config?: {
+    event_name: string;
+    delay_seconds?: number;
+    logic?: 'AND' | 'OR';
+    conditions?: {
+      field: 'entity_type' | 'entity_id' | 'entity_name' | 'file_name' | 'company_id' | 'company_name' | 'invoice_status' | 'kanban_column_id';
+      operator: 'equals' | 'not_equals' | 'contains' | 'starts_with' | 'ends_with';
+      value: string;
+    }[];
+  } | Record<string, unknown> | null;
+  created_by_identity?: string | null;
+  skill_description?: string | null;
+  skill_tags?: string[] | null;
+  skill_category?: string | null;
+  skill_version?: number | null;
+  skill_pitfalls?: string[] | null;
   is_active?: boolean;
   direct_send_email?: boolean;
   dag_structure?: Record<string, unknown> | null;

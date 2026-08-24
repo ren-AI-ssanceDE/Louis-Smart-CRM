@@ -1006,7 +1006,7 @@ export async function learnWorkflow(
   toolChain: { tool: string; instruction: string }[], 
   created_by_identity: string = "ai_assistant",
   trigger_type: 'MANUAL' | 'CRM_EVENT' | 'TIMER' = "MANUAL",
-  trigger_config: Record<string, unknown> | null = null,
+  trigger_config: { event_name: string; delay_seconds?: number; conditions?: unknown[] } | Record<string, unknown> | null = null,
   is_active: boolean = true,
   id_uuid?: string,
   direct_send_email: boolean = false,
@@ -1068,7 +1068,7 @@ export async function learnWorkflow(
   if (!fallbackStore.customWorkflows) {
     fallbackStore.customWorkflows = [];
   }
-  const record = {
+  const record: CustomWorkflow = {
     id_uuid: final_id,
     tenant_id: tenantId,
     workflow_name: name,
@@ -1362,12 +1362,51 @@ interface WorkflowArgs {
   /** Schritte als strukturiertes Array ODER nummerierter Freitext-String (Provider-neutral, 058) */
   steps?: WorkflowStepArgs[] | string;
   trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
-  trigger_config?: Record<string, unknown> | null;
+  // Projektarbeit P3-3: strukturierte Trigger-Config (conditions + logic wie Admin-Editor)
+  trigger_config?: {
+    event_name?: string;
+    delay_seconds?: number;
+    logic?: 'AND' | 'OR';
+    conditions?: Array<{ field: string; operator: string; value: string }>;
+  } | Record<string, unknown> | null;
   direct_send_email?: boolean;
   is_active?: boolean;
   skill_description?: string;
   skill_tags?: string[];
   skill_category?: string;
+}
+
+/**
+ * Projektarbeit P3-2: Erkennt Trigger-Hinweise deterministisch aus dem Quelltext
+ * (Fallback-Pfad, wenn der LLM keine strukturierte Query liefert).
+ * - „wenn … hochgeladen" → file.uploaded (CRM_EVENT)
+ * - „wenn … angelegt/neu" → contact.created/company.created (Kontext-abhängig)
+ * - „wenn … aktualisiert/geändert" → contact.updated/company.updated
+ * - „wenn … bezahlt" → invoice.paid; „wenn … überfällig" → invoice.overdue
+ * - „wenn … versendet/verschickt" → offer.sent
+ * Ohne Treffer → MANUAL (Altverhalten).
+ */
+export function detectTriggerFromText(source: string): { trigger_type: 'MANUAL' | 'CRM_EVENT' | 'TIMER'; trigger_config: Record<string, unknown> | null } {
+  const text = (source || "").toLowerCase();
+  const hasTrigger = /wenn|sobald|bei (jedem|einem)?\s*(datei|upload|neu|änder|änderung|bezahlt|überfällig|versendet)/.test(text)
+    || /trigger|automatisch bei|bei.*wird/.test(text);
+
+  if (!hasTrigger) return { trigger_type: "MANUAL", trigger_config: null };
+
+  let event_name: string | null = null;
+  if (/hochgeladen|upload|datei.*wird|datei.*gelegt/.test(text)) event_name = "file.uploaded";
+  else if (/bezahlt|zahlung.*eingegangen/.test(text)) event_name = "invoice.paid";
+  else if (/überfällig|fällig/.test(text)) event_name = "invoice.overdue";
+  else if (/versendet|verschickt|angebot.*gesendet/.test(text)) event_name = "offer.sent";
+  else if (/aktualisiert|geändert|geaendert|änderung/.test(text)) event_name = /kontakt/.test(text) ? "contact.updated" : "company.updated";
+  else if (/angelegt|neu|neu.*kontakt|neues unternehmen/.test(text)) event_name = /kontakt/.test(text) ? "contact.created" : "company.created";
+
+  if (!event_name) return { trigger_type: "MANUAL", trigger_config: null };
+
+  return {
+    trigger_type: "CRM_EVENT",
+    trigger_config: { event_name, delay_seconds: 0, logic: "AND", conditions: [] },
+  };
 }
 
 /**
@@ -1397,7 +1436,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
     const escaped = escapeRegExp(name);
     if (new RegExp(`\\b${escaped}\\b`).test(text)) return name;
   }
-  // Fix: Natürliche-Sprache-Erkennung — echte User schreiben
+  // FIX Regelwerk (060 P0): Natürliche-Sprache-Erkennung — echte User schreiben
   // "Leg eine Notiz an", "warte 5 Sekunden", "schick eine E-Mail", nicht die
   // Tool-Namen. Vorher fiel jeder Klartext-Schritt auf crm_data_analyst zurück
   // (generisches Tool → Workflow "lief" ohne Wirkung). Deterministische
@@ -1405,7 +1444,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
   return detectNaturalLanguageTool(text, knownTools);
 }
 
-// Fix: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
+// FIX Regelwerk: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
 // Reihenfolge = Priorität (spezifisch zuerst). Geprüft wird immer gegen
 // knownTools, damit keine Tools gemappt werden, die der Executor nicht kennt.
 const NATURAL_LANGUAGE_PATTERNS: Array<{ pattern: RegExp; tool: string }> = [
@@ -1458,7 +1497,7 @@ function detectNaturalLanguageTool(text: string, knownTools: ReadonlySet<string>
 
 /**
  * Wandelt Workflow-Schritte aus beliebigem LLM-Format in eine tool_chain_sequence um
- * (provider-neutral):
+ * (Projektarbeit, Projektregel provider-neutral):
  * - Array von { tool, instruction | description } → 1:1 (inkl. Schritt-Präfix-Regex)
  * - String (nummerierte Liste „1. …\n2. …“) → Zeilen splitten, Tool-Namen erkennen,
  *   ohne erkennbares Tool → crm_data_analyst
@@ -1495,7 +1534,7 @@ export function parseStepsToToolChain(
   return [];
 }
 
-// deterministisch: Deterministische Schritt-Extraktion aus dem User-Quelltext.
+// 061 P1-2: Deterministische Schritt-Extraktion aus dem User-Quelltext.
 // Zerlegt nummerierte/aufgezählte Lern-Prompts ("(a) ...", "1. ...", "- ...")
 // in einzelne Schritte und mappt sie auf ausführbare Workflow-Tools
 // (detectToolNameInText inkl. natürlicher Sprache). KEIN LLM-Call — der
@@ -1595,7 +1634,7 @@ export async function executeLearnWorkflow(
       rawArgs = JSON.parse(cleanedArgsStr) as WorkflowArgs;
     } catch {
       // Fallback if the AI passes unstructured string
-      // deterministisch: Deterministische Extraktion aus dem Quelltext — der User-Prompt
+      // 061 P1-2: Deterministische Extraktion aus dem Quelltext — der User-Prompt
       // ("(a) Lege einen Kontakt an, (b) sende eine Mail, ...") wird Schritt für
       // Schritt zerlegt und auf Tools gemappt. Vorher: pauschal 1 crm_data_analyst-
       // Schritt (Schritt-Struktur ging verloren → Workflow "lief" ohne Wirkung).
@@ -1603,7 +1642,9 @@ export async function executeLearnWorkflow(
       const fallbackDesc = argsStr;
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
+      // Projektarbeit P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
+      const detected = detectTriggerFromText(source);
+      const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
         message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
         workflow: res
@@ -1615,7 +1656,9 @@ export async function executeLearnWorkflow(
       const fallbackDesc = argsStr;
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, "MANUAL", null);
+      // Projektarbeit P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
+      const detected = detectTriggerFromText(source);
+      const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
         message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
         workflow: res
@@ -1626,12 +1669,12 @@ export async function executeLearnWorkflow(
     const description = rawArgs.workflow_description || rawArgs.description || name;
     
     // Parse tool chain sequence — Array (tool_chain_sequence/tool_chain/sequence)
-    // ODER steps als Array/nummerierter String (provider-neutral).
+    // ODER steps als Array/nummerierter String (Projektarbeit, provider-neutral).
     const knownTools = await loadKnownWorkflowToolNames();
     const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
     let toolChain = parseStepsToToolChain(seq, knownTools);
 
-    // deterministisch: Deterministische Extraktion gewinnt, wenn der User-Prompt explizit
+    // 061 P1-2: Deterministische Extraktion gewinnt, wenn der User-Prompt explizit
     // nummerierte/aufgezählte Schritte enthält UND die LLM-Sequenz weniger Schritte
     // liefert (LLM fasst gern zusammen → Schrittzahl-Varianz: mal 4, mal 5 Schritte).
     // Der User hat die Schritte klar benannt — die Struktur kommt aus dem Prompt,
@@ -1650,7 +1693,7 @@ export async function executeLearnWorkflow(
       });
     }
 
-    // P0-3 : Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
+    // P0-3 (058): Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
     // (bisher lief validateWorkflowTools nur bei der Ausführung; workflowExecutor
     // behandelt unbekannte Schritt-Tools still als COMPLETED).
     const unknownTool = await validateWorkflowTools(tenantId, toolChain);
@@ -1686,7 +1729,7 @@ export async function executeLearnWorkflow(
       skill_category
     );
 
-    // P0-4 : Ehrliche Antwort — die Message nennt die TATSÄCHLICH gespeicherten
+    // P0-4 (058): Ehrliche Antwort — die Message nennt die TATSÄCHLICH gespeicherten
     // Schritte (Anzahl + Tool-Namen), damit das LLM aus dem Tool-Ergebnis zitiert
     // statt aus der Beschreibung zu halluzinieren.
     const savedStepCount = Array.isArray(toolChain) ? toolChain.length : 0;

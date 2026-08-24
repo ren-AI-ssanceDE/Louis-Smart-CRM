@@ -791,6 +791,7 @@ export const LouisAiWorkflowsTab = () => {
                         <option value="contact.updated">{t('admin:workflows_tab.event_contact_updated_option', { defaultValue: 'Kontakt wurde aktualisiert' })}</option>
                         <option value="company.updated">{t('admin:workflows_tab.event_company_updated_option', { defaultValue: 'Unternehmen wurde aktualisiert' })}</option>
                         <option value="file.uploaded">{t('admin:workflows_tab.event_file_uploaded_option', { defaultValue: 'Datei wurde hochgeladen (Kontakt / Unternehmen)' })}</option>
+                        <option value="knowledge.file_uploaded">{t('admin:workflows_tab.event_knowledge_uploaded_option', { defaultValue: 'Datei ins interne Wissen hochgeladen' })}</option>
                         {/* 4A T2: neue Trigger-Events */}
                         <option value="offer.created">{t('admin:workflows_tab.event_offer_created_option', { defaultValue: 'Angebot wurde erstellt' })}</option>
                         <option value="offer.finalized">{t('admin:workflows_tab.event_offer_finalized_option', { defaultValue: 'Angebot wurde finalisiert' })}</option>
@@ -815,6 +816,112 @@ export const LouisAiWorkflowsTab = () => {
                         onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, delay_seconds: Math.max(0, parseInt(e.target.value || '0', 10)) })}
                         className="w-full bg-primary-dark border border-white/5 p-2.5 rounded-xl text-xs text-white focus:outline-none focus:border-accent-orange/30 font-mono font-semibold h-11"
                       />
+                    </div>
+
+                    {/* Projektarbeit P0-5: Bedingungs-Editor — Whitelist-Felder, Operatoren ohne Regex */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+                        {t('admin:workflows_tab.trigger_conditions_label', { defaultValue: 'Bedingungen (Filter)' })}
+                      </label>
+                      {(() => {
+                        const conds = Array.isArray(formTriggerConfig.conditions)
+                          ? (formTriggerConfig.conditions as Array<{ field: string; operator: string; value: string }>)
+                          : [];
+                        return (
+                          <>
+                            <div className="flex gap-2 items-center">
+                              <label className="text-[10px] text-slate-500 font-semibold">
+                                {t('admin:workflows_tab.cond_logic_label', { defaultValue: 'Verknüpfung:' })}
+                              </label>
+                              <select
+                                value={formTriggerConfig.logic || 'AND'}
+                                onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, logic: e.target.value as 'AND' | 'OR' })}
+                                data-testid="trigger-condition-logic"
+                                className="w-32 bg-primary-dark border border-white/5 p-2 rounded-lg text-xs text-white focus:outline-none focus:border-accent-orange/30 font-semibold h-8"
+                              >
+                                <option value="AND">{t('admin:workflows_tab.cond_logic_and', { defaultValue: 'UND (alle)' })}</option>
+                                <option value="OR">{t('admin:workflows_tab.cond_logic_or', { defaultValue: 'ODER (mind. eine)' })}</option>
+                              </select>
+                            </div>
+                            {conds.length === 0 && (
+                              <p className="text-[10px] text-slate-500">
+                                {t('admin:workflows_tab.trigger_conditions_hint', { defaultValue: 'Kein Filter — reagiert auf ALLE Ereignisse dieses Typs' })}
+                              </p>
+                            )}
+                            {conds.map((c, idx) => (
+                              <div key={idx} className="flex gap-2 items-center" data-testid="trigger-condition-row">
+                                <select
+                                  value={c.field}
+                                  onChange={(e) => {
+                                    const next = [...conds];
+                                    next[idx] = { ...next[idx], field: e.target.value };
+                                    setFormTriggerConfig({ ...formTriggerConfig, conditions: next });
+                                  }}
+                                  className="w-1/3 bg-primary-dark border border-white/5 p-2 rounded-lg text-xs text-white focus:outline-none focus:border-accent-orange/30 font-semibold h-10"
+                                >
+                                  <option value="entity_type">{t('admin:workflows_tab.cond_field_entity_type', { defaultValue: 'Entitätstyp' })}</option>
+                                  <option value="entity_id">{t('admin:workflows_tab.cond_field_entity_id', { defaultValue: 'Entitäts-ID' })}</option>
+                                  <option value="entity_name">{t('admin:workflows_tab.cond_field_entity_name', { defaultValue: 'Entitätsname' })}</option>
+                                  <option value="file_name">{t('admin:workflows_tab.cond_field_file_name', { defaultValue: 'Dateiname' })}</option>
+                                  <option value="company_id">{t('admin:workflows_tab.cond_field_company_id', { defaultValue: 'Unternehmens-ID' })}</option>
+                                  <option value="company_name">{t('admin:workflows_tab.cond_field_company_name', { defaultValue: 'Unternehmensname' })}</option>
+                                  <option value="invoice_status">{t('admin:workflows_tab.cond_field_invoice_status', { defaultValue: 'Rechnungsstatus' })}</option>
+                                  <option value="kanban_column_id">{t('admin:workflows_tab.cond_field_kanban_column', { defaultValue: 'Kanban-Spalte' })}</option>
+                                </select>
+                                <select
+                                  value={c.operator}
+                                  onChange={(e) => {
+                                    const next = [...conds];
+                                    next[idx] = { ...next[idx], operator: e.target.value };
+                                    setFormTriggerConfig({ ...formTriggerConfig, conditions: next });
+                                  }}
+                                  className="w-1/4 bg-primary-dark border border-white/5 p-2 rounded-lg text-xs text-white focus:outline-none focus:border-accent-orange/30 font-semibold h-10"
+                                >
+                                  <option value="equals">{t('admin:workflows_tab.cond_op_equals', { defaultValue: 'gleich' })}</option>
+                                  <option value="not_equals">{t('admin:workflows_tab.cond_op_not_equals', { defaultValue: 'ungleich' })}</option>
+                                  <option value="contains">{t('admin:workflows_tab.cond_op_contains', { defaultValue: 'enthält' })}</option>
+                                  <option value="starts_with">{t('admin:workflows_tab.cond_op_starts_with', { defaultValue: 'beginnt mit' })}</option>
+                                  <option value="ends_with">{t('admin:workflows_tab.cond_op_ends_with', { defaultValue: 'endet mit' })}</option>
+                                </select>
+                                <input
+                                  type="text"
+                                  value={c.value}
+                                  onChange={(e) => {
+                                    const next = [...conds];
+                                    next[idx] = { ...next[idx], value: e.target.value };
+                                    setFormTriggerConfig({ ...formTriggerConfig, conditions: next });
+                                  }}
+                                  placeholder={t('admin:workflows_tab.cond_value_placeholder', { defaultValue: 'Wert…' })}
+                                  className="flex-1 bg-primary-dark border border-white/5 p-2 rounded-lg text-xs text-white focus:outline-none focus:border-accent-orange/30 font-mono font-semibold h-10"
+                                />
+                                <button
+                                  type="button"
+                                  data-testid="trigger-condition-remove"
+                                  onClick={() => {
+                                    const next = conds.filter((_, i) => i !== idx);
+                                    setFormTriggerConfig({ ...formTriggerConfig, conditions: next });
+                                  }}
+                                  className="text-slate-500 hover:text-red-400 text-sm px-1"
+                                  title={t('admin:workflows_tab.cond_remove', { defaultValue: 'Bedingung entfernen' })}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              data-testid="trigger-condition-add"
+                              onClick={() => {
+                                const next = [...conds, { field: 'company_id', operator: 'equals', value: '' }];
+                                setFormTriggerConfig({ ...formTriggerConfig, conditions: next });
+                              }}
+                              className="text-[10px] text-accent-orange/80 hover:text-accent-orange border border-white/10 rounded-lg px-3 py-1.5 font-semibold"
+                            >
+                              + {t('admin:workflows_tab.cond_add', { defaultValue: 'Bedingung hinzufügen' })}
+                            </button>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1341,6 +1448,7 @@ export const LouisAiWorkflowsTab = () => {
                                   <option value="contact.updated">{t('admin:workflows_tab.event_contact_updated_option', { defaultValue: 'Kontakt wurde aktualisiert' })}</option>
                                   <option value="company.updated">{t('admin:workflows_tab.event_company_updated_option', { defaultValue: 'Unternehmen wurde aktualisiert' })}</option>
                                   <option value="file.uploaded">{t('admin:workflows_tab.event_file_uploaded_option', { defaultValue: 'Datei wurde hochgeladen (Kontakt / Unternehmen)' })}</option>
+                        <option value="knowledge.file_uploaded">{t('admin:workflows_tab.event_knowledge_uploaded_option', { defaultValue: 'Datei ins interne Wissen hochgeladen' })}</option>
                                   {/* 4A T2: neue Trigger-Events */}
                                   <option value="offer.created">{t('admin:workflows_tab.event_offer_created_option', { defaultValue: 'Angebot wurde erstellt' })}</option>
                                   <option value="offer.finalized">{t('admin:workflows_tab.event_offer_finalized_option', { defaultValue: 'Angebot wurde finalisiert' })}</option>

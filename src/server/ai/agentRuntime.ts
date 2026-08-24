@@ -538,7 +538,7 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   { name: "apply_template", desc: "'apply_template': Wendet eine Vorlage an und befüllt Platzhalter mit Daten. Query JSON: { template_name, context: { invoice_number, total_gross, due_date, my_company_name, my_contact_person } }.", domain: 'TEMPLATES' },
   
   // WORKFLOWS
-  { name: "learn_workflow", desc: "'learn_workflow': Erlernt ein neues Workflow-Makro. Query JSON: { workflow_name, workflow_description, tool_chain_sequence: [{ tool, instruction }] } — tool MUSS ein ausführbares Workflow-Tool sein (crm_data_analyst, text_generator, web_search, local_knowledge, create_note_draft, create_contact_draft, create_company_draft, create_invoice_draft, create_offer_draft, send_smtp_email, get_templates, apply_template, list_notes, list_mail_drafts, recall_sessions, update_memory, save_skill, knowledge_write, vault_read, ask_user_question, delegate_subtask — KEINE reinen Lese-Tools wie list_contacts/list_companies/list_invoices), instruction = konkrete Anweisung pro Schritt; steps als Array oder nummerierter String wird ebenfalls akzeptiert. Die Bestätigung muss die tatsächlich gespeicherten Schritte aus dem Tool-Ergebnis nennen.", domain: 'WORKFLOWS' },
+  { name: "learn_workflow", desc: "'learn_workflow': Erlernt ein neues Workflow-Makro. Query JSON: { workflow_name, workflow_description, tool_chain_sequence: [{ tool, instruction }], trigger_type?, trigger_config? } — tool MUSS ein ausführbares Workflow-Tool sein (crm_data_analyst, text_generator, web_search, local_knowledge, create_note_draft, create_contact_draft, create_company_draft, create_invoice_draft, create_offer_draft, send_smtp_email, get_templates, apply_template, list_notes, list_mail_drafts, recall_sessions, update_memory, save_skill, knowledge_write, vault_read, ask_user_question, delegate_subtask — KEINE reinen Lese-Tools wie list_contacts/list_companies/list_invoices), instruction = konkrete Anweisung pro Schritt; steps als Array oder nummerierter String wird ebenfalls akzeptiert. OPTIONALER TRIGGER (Projektarbeit): trigger_type = 'MANUAL' (Default) | 'CRM_EVENT' | 'TIMER'. Bei 'CRM_EVENT' zusätzlich trigger_config = { event_name: z. B. 'file.uploaded' | 'contact.created' | 'company.updated' | 'invoice.paid' | 'knowledge.file_uploaded', logic: 'AND' (alle, Default) | 'OR' (mind. eine), conditions: [{ field: 'entity_type'|'entity_id'|'entity_name'|'file_name'|'company_id'|'company_name'|'invoice_status'|'kanban_column_id', operator: 'equals'|'not_equals'|'contains'|'starts_with'|'ends_with', value: string }] }. Beispiele: 'Wenn eine Datei an die Firma X hochgeladen wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'file.uploaded', conditions: [{ field: 'company_id', operator: 'equals', value: '<id>' }] } }; 'Wenn ein Angebot versendet wird ODER eine Rechnung bezahlt wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'offer.sent', logic: 'OR', conditions: [...] } }. Die Bestätigung muss die tatsächlich gespeicherten Schritte aus dem Tool-Ergebnis nennen.", domain: 'WORKFLOWS' },
   { name: "get_workflows", desc: "'get_workflows': Ruft gelernte Workflows ab.", domain: 'WORKFLOWS' },
   { name: "delegate_subtask", desc: "'delegate_subtask': Delegiert Teilaufgaben an isolierte Sub-Agents (max. 3 parallel, read-only). Query JSON: { tasks: [{ subtask_id, task_prompt, required_tools, max_turns }] }", domain: 'WORKFLOWS' },
   { name: "steer_subtask", desc: "'steer_subtask': Lenkt einen LAUFENDEN Sub-Agenten um (Nachricht wird im nächsten Schritt eingearbeitet). Query JSON: { subtask_id, message }", domain: 'WORKFLOWS' },
@@ -749,7 +749,7 @@ export class AgentRuntime {
           totalTokens: context.inputTokens + context.outputTokens,
           durationMs: executionTimeMs,
           activeTools: activeTools.length,
-          // Token-Zerlegung: Zerlegung über alle Iterationen aggregiert (Summen je Anteil)
+          // 063 P0-2: Zerlegung über alle Iterationen aggregiert (Summen je Anteil)
           promptTokensBreakdown: context.promptBreakdownParts && context.promptBreakdownParts.length > 0
             ? {
                 system_prompt: context.promptBreakdownParts.reduce((s, p) => s + p.system_prompt, 0),
@@ -874,13 +874,13 @@ export class AgentRuntime {
 
     // === S3: Zone 1 (statischer System-Prefix) — EINMAL pro Request vor der Schleife ===
     // Datum kommt aus context.temporalAnchor (im Orchestrator 1x pro Request gesetzt) — KEIN new Date in der Schleife.
-    // : Date-only — Minute-Präzision würde den byte-stabilen
+    // 063: Date-only — Minute-Präzision würde den byte-stabilen
     // Prefix brechen und damit das automatische Prefix-Caching invalidieren.
     const temporalAnchor = context.temporalAnchor || new Date().toISOString();
     const dateIsoStr = temporalAnchor;
 
     // Workflow- und MCP-Tools GENAU EINMAL laden (nicht pro Iteration — Voraussetzung für Cache-Hits)
-    // Fix: getLearnedWorkflows statt searchRelevantSkills —
+    // FIX Regelwerk (Projektarbeit): getLearnedWorkflows statt searchRelevantSkills —
     // die Skill-Suche matcht "Starte X" nicht (Query ≠ workflow_name, Keyword-ILIKE
     // greift nicht) und liefert ohne Embedding nichts → gelernte Workflows
     // erschienen NIE im Prompt → Louis erfand die Ausführungsmeldung.
@@ -909,7 +909,7 @@ export class AgentRuntime {
         ? rawCatalogTools.filter(t => !SUBAGENT_CORE_EXCLUDED.has(t.name))
         : rawCatalogTools
     );
-    // Kompaktierung: Text-Liste gestrafft — Name + Kurzbeschreibung (80 Zeichen).
+    // 063 P1-1: Text-Liste gestrafft — Name + Kurzbeschreibung (80 Zeichen).
     // Die nativen Tool-Deklarationen (tools-Parameter) liefern die vollen
     // Schemata; die Text-Liste dient nur der Tool-Erkennung + Ehrlichkeits-Regel.
     // Spart ~2.000 Tokens Fixkosten je Iteration, ohne native Fähigkeit zu ändern.
@@ -1205,7 +1205,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       const executedToolNames = new Set(context.toolResults.map(r => r.toolName));
       const intent = classifyIntentFastPath(context.userMessage);
 
-      // deterministisch: Deterministischer Workflow-Start — "Starte <Name>" wird OHNE
+      // 061 P1-2: Deterministischer Workflow-Start — "Starte <Name>" wird OHNE
       // LLM-Entscheidung auf workflow_<Name> gemappt und sofort ausgeführt.
       // Vorher: Louis wählte teils die Einzelschritte statt des workflow_-Tools
       // → Drafts statt Persistenz (Varianz beim Starten). Der User hat den
@@ -1315,7 +1315,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
-          // Fix: gelernte Workflows ALS NATIVE TOOLS deklarieren —
+          // FIX Regelwerk (Projektarbeit): gelernte Workflows ALS NATIVE TOOLS deklarieren —
           // vorher nur Prompt-Text → im strikt nativen Modus nicht aufrufbar → Louis
           // halluzinierte "wurde gestartet". Dispatch (workflow_-Prefix) + Executor
           // existierten bereits (agentRuntime Z.2749, executeWorkflowMacro).
@@ -1360,7 +1360,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
           context.cachedTokens += metadata.cachedInputTokens || metadata.cacheReadInputTokens || 0;
         }
 
-        // Token-Zerlegung: Token-Zerlegung je Iteration erfassen (Schätzung der Anteile).
+        // 063 P0-2: Token-Zerlegung je Iteration erfassen (Schätzung der Anteile).
         // Wird bei recordAgentRun als prompt_tokens_breakdown persistiert.
         const iterBreakdown = buildPromptTokensBreakdown({
           systemInstruction,
@@ -2549,7 +2549,7 @@ ${toolTrace}`;
     } else if (toolName === "crm_data_analyst" || toolName === "data_architect") {
       result = await executeCrmDataAnalyst(context.tenantId, toolQuery);
     } else if (toolName === "learn_workflow") {
-      // deterministisch: source_text (Original-User-Prompt) mitgeben — bei fehlender/
+      // 061 P1-2: source_text (Original-User-Prompt) mitgeben — bei fehlender/
       // inkonsistenter tool_chain_sequence extrahiert learn_workflow die Schritte
       // deterministisch daraus (kein LLM-Raten, keine Schrittzahl-Varianz).
       result = await executeLearnWorkflow(context.tenantId, toolQuery, context.userId, context.userMessage);

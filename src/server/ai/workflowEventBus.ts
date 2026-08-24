@@ -18,6 +18,7 @@ export type CRMEventType =
   | 'offer.sent'
   | 'email.draft_created'
   | 'file.uploaded'
+  | 'knowledge.file_uploaded'
   | 'kanban.board_created'
   | 'kanban.column_created'
   | 'kanban.card_created'

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import { execFile } from "child_process";
 import { workflowEventBus } from "./workflowEventBus.js";
+import { matchesEventConditions, type EventCondition } from "./eventConditions.js";
 import { workflowExecutor } from "./workflowExecutor.js";
 import { getLearnedWorkflows } from "./tools.js";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent, pruneAuditLogs, pruneSessions } from "../db.js";
@@ -1299,6 +1300,9 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
             enriched.associated_company_id = row.associated_company_id || null;
 
             if (row.associated_company_id) {
+              // Projektarbeit P0-3: company_id aus associated_company_id (Entscheidung 4) —
+              // fehlt die Zuordnung, bleibt company_id ungesetzt → Bedingung failt.
+              enriched.company_id = row.associated_company_id;
               const compRes = await pool.query(
                 "SELECT full_legal_name FROM core_registry_companies WHERE id_uuid = $1 LIMIT 1",
                 [row.associated_company_id]
@@ -1317,6 +1321,8 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
         const company = fallbackStore.companies.find(c => c.id_uuid === entityId);
         if (company) {
           enriched.id_uuid = company.id_uuid;
+          // Projektarbeit P0-3: company_id für Firmen-Uploads (Filter-Basis, Fallback-Modus)
+          enriched.company_id = company.id_uuid;
           enriched.company_name = company.full_legal_name || "";
           enriched.full_legal_name = company.full_legal_name || "";
           enriched.email_address = company.email_address || "";
@@ -1331,6 +1337,8 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
           if (res.rows.length > 0) {
             const row = res.rows[0];
             enriched.id_uuid = row.id_uuid;
+            // Projektarbeit P0-3: company_id/company_name für Firmen-Uploads (Filter-Basis)
+            enriched.company_id = row.id_uuid;
             enriched.company_name = row.full_legal_name || "";
             enriched.full_legal_name = row.full_legal_name || "";
             enriched.email_address = row.email_address || "";
@@ -1471,8 +1479,9 @@ export function initWorkflowEngine() {
       const matching = workflows.filter((w: CustomWorkflow) => {
         const triggerType = w.trigger_type || "MANUAL";
         const isActive = w.is_active !== undefined ? w.is_active : true;
-        const config = w.trigger_config || {};
-        const matched = triggerType === "CRM_EVENT" && isActive && config.event_name === eventName;
+        const config = (w.trigger_config || {}) as { event_name?: string; delay_seconds?: number; logic?: "AND" | "OR"; conditions?: EventCondition[] };
+        const matched = triggerType === "CRM_EVENT" && isActive && config.event_name === eventName
+          && matchesEventConditions(config.conditions ?? [], enrichedData, config.logic ?? "AND");
         
         console.log(`[WorkflowEngine] ⚡ Prüfe Workflow "${w.workflow_name}" (Trigger: ${triggerType}, Aktiv: ${isActive}, EventName: ${config.event_name}) gegen Event "${eventName}". Treffer? ${matched}`);
         return matched;
