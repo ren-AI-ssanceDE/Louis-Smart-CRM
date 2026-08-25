@@ -1,3 +1,13 @@
+## 🚀 Release v2.1.5: Zuverlässige Workflow-Trigger & stabiles Workflow-Lernen
+
+Mit **2.1.5** werden die automatisierten Abläufe endlich **lückenlos auslösbar**: Werden Dateien direkt über die **Kontakt- oder Firmen-Seite** hochgeladen, feuern die hinterlegten Workflow-Trigger jetzt zuverlässig — etwa „Wenn eine Datei mit dem Namen *Businessplan* hochgeladen wird, befülle die Mailvorlage und erstelle eine Draft-Mail“. Zuvor blieb genau dieser direkte Upload stumm, während andere Wege funktionierten.
+
+Zudem lernt **Louis Workflows jetzt zuverlässig per Chat**: Der Auftrag „Lerne einen Workflow: Wenn … hochgeladen, bezahlt oder fällig wird → …“ führt garantiert zum Anlegen des Workflows. Früher konnte Louis die Anweisung gelegentlich nur als Notiz ablegen, ohne den eigentlichen Workflow anzulegen — der Trigger fehlte dann.
+
+Louis Smart CRM ist und bleibt ein Projekt für Alle: offen, individualisierbar und mit wachsender Qualität — jede Version wird gründlich geprüft, damit Louis im Alltag zuverlässig für euch arbeitet. Viel Freude damit!
+
+---
+
 ## 🚀 Release v2.1.4: Präzise Automatisierung mit Trigger-Bedingungen
 
 Mit **2.1.4** werden eure automatisierten Workflows deutlich **präziser**: Ereignis-Trigger lassen sich jetzt mit **Bedingungen eingrenzen**. Statt bei jedem Datei-Upload zu starten, könnt ihr festlegen: „Nur wenn die Datei an ein bestimmtes Unternehmen geht **und** der Dateiname auf `.pdf` endet“. Mehrere Bedingungen verbindet ihr wahlweise mit **UND** (alle müssen passen) oder **ODER** (mindestens eine reicht).

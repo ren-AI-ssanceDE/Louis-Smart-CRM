@@ -16,6 +16,7 @@ import { chatUploadRouter } from "./src/server/routers/chatUpload.js";
 import { generateInvoiceFilesOnDisk } from "./src/server/pdfHelper.js";
 import { getEntityStoragePath, multerStorage, ingestFileToRag, syncVaultFilesToRag, COMPANIES_ROOT, CONTACTS_ROOT } from "./src/server/storage.js";
 import { initWorkflowEngine } from "./src/server/ai/workflowEngine.js";
+import { workflowEventBus } from "./src/server/ai/workflowEventBus.js";
 import { executeCreateDraftInvoice, executeCreateDraftCompany, executeCreateDraftContact, executeCrmDataAnalyst } from "./src/server/ai/tools/crm.js";
 import { runLouisAiFlow, executePassiveShortTermCompression, ConversationMessage } from "./src/server/ai/orchestrator.js";
 import { ChatMessage } from "./src/types.js";
@@ -68,7 +69,7 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   // Initialize Database
   await initDatabase();
-  // Auth-Secret aus der DB laden (sys_app_security) — Regel: keine Einstellungen in Dateien
+  // 021-F: Auth-Secret aus der DB laden (sys_app_security) — Regel: keine Einstellungen in Dateien
   await initAuthSecret();
   await seedDatabase();
 
@@ -82,7 +83,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // JSON-Parse-Fehler auf MCP-Pfaden → JSON-RPC -32700 statt HTML 400
+  // BUG-4 (Projektarbeit): JSON-Parse-Fehler auf MCP-Pfaden → JSON-RPC -32700 statt HTML 400
   // (express.json wirft sonst einen SyntaxError, der als HTML "Bad Request" endet)
   app.use("/api/mcp", (err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof SyntaxError && "body" in err) {
@@ -179,6 +180,22 @@ async function startServer() {
       ingestFileToRag(filePath, originalName, tenantId, scope, id).catch((e) => {
         console.error("Failed to index uploaded file to RAG:", e);
       });
+
+      // Projektarbeit P0-1: file.uploaded-Event auf dem UI-Pfad emittieren (Payload wie
+      // saveFile). file_name = originalname (OHNE Date.now()-Präfix), damit
+      // Trigger-Bedingungen wie `file_name contains X` matchen. Best-effort:
+      // ein Event-Fehler darf den Upload nicht abbrechen.
+      try {
+        workflowEventBus.emitEvent(tenantId, "file.uploaded", {
+          file_name: originalName,
+          file_size_bytes: req.file.size,
+          entity_type: type,
+          entity_id: id,
+          entity_name: name
+        });
+      } catch (eventErr) {
+        console.error("[api/upload] Failed to emit file.uploaded event:", eventErr);
+      }
     }
 
     res.json({ success: true, filename: req.file.filename });

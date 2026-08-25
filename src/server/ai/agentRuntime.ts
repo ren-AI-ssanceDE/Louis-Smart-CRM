@@ -52,7 +52,7 @@ import {
   executeVaultUpdate,
   executeVaultDelete
 } from "./tools.js";
-import { safeParseReActDecision, truncateResult, classifyIntentFastPath, detectWorkflowStartIntent } from "./orchestrator.js";
+import { safeParseReActDecision, truncateResult, classifyIntentFastPath, detectWorkflowStartIntent, detectLearnWorkflowIntent } from "./orchestrator.js";
 import { WorkflowLearnSuggestionSchema, SubTaskSpecSchema, VerifySubtaskArgsSchema, AskUserQuestionArgsSchema } from "../../lib/schemas.js";
 import { ModelUsageMetadata, ConversationMessage, GovernanceAction, SubTaskResult, TenantAiConfig } from "../../types.js";
 import { vaultToolKind, vaultWriteBaseName, VAULT_WRITE_ACTION_MAP } from "./vaultToolClassification.js";
@@ -538,7 +538,7 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   { name: "apply_template", desc: "'apply_template': Wendet eine Vorlage an und befüllt Platzhalter mit Daten. Query JSON: { template_name, context: { invoice_number, total_gross, due_date, my_company_name, my_contact_person } }.", domain: 'TEMPLATES' },
   
   // WORKFLOWS
-  { name: "learn_workflow", desc: "'learn_workflow': Erlernt ein neues Workflow-Makro. Query JSON: { workflow_name, workflow_description, tool_chain_sequence: [{ tool, instruction }], trigger_type?, trigger_config? } — tool MUSS ein ausführbares Workflow-Tool sein (crm_data_analyst, text_generator, web_search, local_knowledge, create_note_draft, create_contact_draft, create_company_draft, create_invoice_draft, create_offer_draft, send_smtp_email, get_templates, apply_template, list_notes, list_mail_drafts, recall_sessions, update_memory, save_skill, knowledge_write, vault_read, ask_user_question, delegate_subtask — KEINE reinen Lese-Tools wie list_contacts/list_companies/list_invoices), instruction = konkrete Anweisung pro Schritt; steps als Array oder nummerierter String wird ebenfalls akzeptiert. OPTIONALER TRIGGER (Projektarbeit): trigger_type = 'MANUAL' (Default) | 'CRM_EVENT' | 'TIMER'. Bei 'CRM_EVENT' zusätzlich trigger_config = { event_name: z. B. 'file.uploaded' | 'contact.created' | 'company.updated' | 'invoice.paid' | 'knowledge.file_uploaded', logic: 'AND' (alle, Default) | 'OR' (mind. eine), conditions: [{ field: 'entity_type'|'entity_id'|'entity_name'|'file_name'|'company_id'|'company_name'|'invoice_status'|'kanban_column_id', operator: 'equals'|'not_equals'|'contains'|'starts_with'|'ends_with', value: string }] }. Beispiele: 'Wenn eine Datei an die Firma X hochgeladen wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'file.uploaded', conditions: [{ field: 'company_id', operator: 'equals', value: '<id>' }] } }; 'Wenn ein Angebot versendet wird ODER eine Rechnung bezahlt wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'offer.sent', logic: 'OR', conditions: [...] } }. Die Bestätigung muss die tatsächlich gespeicherten Schritte aus dem Tool-Ergebnis nennen.", domain: 'WORKFLOWS' },
+  { name: "learn_workflow", desc: "'learn_workflow': Erlernt ein neues Workflow-Makro. Query JSON: { workflow_name, workflow_description, tool_chain_sequence: [{ tool, instruction }], trigger_type?, trigger_config? } — tool MUSS ein ausführbares Workflow-Tool sein (crm_data_analyst, text_generator, web_search, local_knowledge, create_note_draft, create_contact_draft, create_company_draft, create_invoice_draft, create_offer_draft, send_smtp_email, get_templates, apply_template, list_notes, list_mail_drafts, recall_sessions, update_memory, save_skill, knowledge_write, vault_read, ask_user_question, delegate_subtask — KEINE reinen Lese-Tools wie list_contacts/list_companies/list_invoices), instruction = konkrete Anweisung pro Schritt; steps als Array oder nummerierter String wird ebenfalls akzeptiert. OPTIONALER TRIGGER (064): trigger_type = 'MANUAL' (Default) | 'CRM_EVENT' | 'TIMER'. Bei 'CRM_EVENT' zusätzlich trigger_config = { event_name: z. B. 'file.uploaded' | 'contact.created' | 'company.updated' | 'invoice.paid' | 'knowledge.file_uploaded', logic: 'AND' (alle, Default) | 'OR' (mind. eine), conditions: [{ field: 'entity_type'|'entity_id'|'entity_name'|'file_name'|'company_id'|'company_name'|'invoice_status'|'kanban_column_id', operator: 'equals'|'not_equals'|'contains'|'starts_with'|'ends_with', value: string }] }. Beispiele: 'Wenn eine Datei an die Firma X hochgeladen wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'file.uploaded', conditions: [{ field: 'company_id', operator: 'equals', value: '<id>' }] } }; 'Wenn ein Angebot versendet wird ODER eine Rechnung bezahlt wird' → { trigger_type: 'CRM_EVENT', trigger_config: { event_name: 'offer.sent', logic: 'OR', conditions: [...] } }. Die Bestätigung muss die tatsächlich gespeicherten Schritte aus dem Tool-Ergebnis nennen.", domain: 'WORKFLOWS' },
   { name: "get_workflows", desc: "'get_workflows': Ruft gelernte Workflows ab.", domain: 'WORKFLOWS' },
   { name: "delegate_subtask", desc: "'delegate_subtask': Delegiert Teilaufgaben an isolierte Sub-Agents (max. 3 parallel, read-only). Query JSON: { tasks: [{ subtask_id, task_prompt, required_tools, max_turns }] }", domain: 'WORKFLOWS' },
   { name: "steer_subtask", desc: "'steer_subtask': Lenkt einen LAUFENDEN Sub-Agenten um (Nachricht wird im nächsten Schritt eingearbeitet). Query JSON: { subtask_id, message }", domain: 'WORKFLOWS' },
@@ -880,7 +880,7 @@ export class AgentRuntime {
     const dateIsoStr = temporalAnchor;
 
     // Workflow- und MCP-Tools GENAU EINMAL laden (nicht pro Iteration — Voraussetzung für Cache-Hits)
-    // FIX Regelwerk (Projektarbeit): getLearnedWorkflows statt searchRelevantSkills —
+    // FIX B-059-3 (Projektarbeit): getLearnedWorkflows statt searchRelevantSkills —
     // die Skill-Suche matcht "Starte X" nicht (Query ≠ workflow_name, Keyword-ILIKE
     // greift nicht) und liefert ohne Embedding nichts → gelernte Workflows
     // erschienen NIE im Prompt → Louis erfand die Ausführungsmeldung.
@@ -1233,6 +1233,38 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       }
 
       // ============================================================================
+      // Projektarbeit P1-Kern (Korrektur 3): Deterministischer learn_workflow-Dispatch —
+      // analog detectWorkflowStartIntent (061-P1-2). Wenn der Prompt eine
+      // Workflow-LERN-Absicht hat („neuer Workflow", „lerne als Workflow",
+      // Wenn-Dann-Logik), wird learn_workflow DIREKT ausgeführt — die
+      // LLM-Entscheidung über die Tool-Wahl entfällt (Varianz: mal vault_write,
+      // mal learn_workflow → Workflow wurde nie zuverlässig angelegt).
+      // Kein Prompt-Eingriff (kein Cache-Bruch, 063), 0 Token (reine Regex +
+      // buildStepChainFromText). Governance: learn_workflow selbst folgt dem
+      // Freigabe-/Draft-Flow — umgangen wird NUR die Tool-Wahl.
+      // ============================================================================
+      if (context.toolResults.length === 0 && detectLearnWorkflowIntent(context.userMessage)) {
+        context.thoughtLog.push(`[Workflow-Lernen] Deterministische Lern-Absicht erkannt — learn_workflow wird direkt ausgeführt (keine LLM-Tool-Wahl).`);
+        try {
+          const learnResult = await executeLearnWorkflow(
+            context.tenantId,
+            context.userMessage,
+            context.userId || "ai_assistant",
+            context.userMessage // sourceText: deterministische Chain-Extraktion (064-P3-Fallback)
+          );
+          const resultText = learnResult && typeof learnResult === "object" && "success" in learnResult
+            ? (learnResult as { success: boolean; data?: unknown; error?: string }).success
+              ? JSON.stringify((learnResult as { data?: unknown }).data ?? {})
+              : String((learnResult as { error?: string }).error ?? "Workflow-Lernen fehlgeschlagen")
+            : JSON.stringify(learnResult ?? {});
+          context.toolResults.push({ toolName: "learn_workflow", query: context.userMessage, result: resultText });
+        } catch (learnErr) {
+          const msg = learnErr instanceof Error ? learnErr.message : String(learnErr);
+          context.toolResults.push({ toolName: "learn_workflow", query: context.userMessage, result: `Workflow-Lernen fehlgeschlagen: ${msg}` });
+        }
+      }
+
+      // ============================================================================
       // B4-Nachfolge (2026-08-16, provider-agnostisch): Ankündigungs-Schutz
       // Das Modell darf den Loop NICHT mit einer Ankündigung ("Ich durchsuche gleich…")
       // beenden, wenn die Anfrage eindeutig Tools erfordert (Intent ≠ GENERAL) und noch
@@ -1315,7 +1347,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
-          // FIX Regelwerk (Projektarbeit): gelernte Workflows ALS NATIVE TOOLS deklarieren —
+          // FIX B-059-3 (Projektarbeit): gelernte Workflows ALS NATIVE TOOLS deklarieren —
           // vorher nur Prompt-Text → im strikt nativen Modus nicht aufrufbar → Louis
           // halluzinierte "wurde gestartet". Dispatch (workflow_-Prefix) + Executor
           // existierten bereits (agentRuntime Z.2749, executeWorkflowMacro).

@@ -2,6 +2,27 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.5] — 2026-08-24
+
+### 🎯 Fokus: Zuverlässige Workflow-Trigger & stabiles Workflow-Lernen
+
+#### ⚡ Datei-Upload-Trigger funktionieren jetzt überall
+* Dateien, die direkt über die **Kontakt- oder Firmen-Seite** hochgeladen werden,
+  lösen jetzt zuverlässig Workflow-Trigger aus (z. B. „Wenn eine Datei mit dem
+  Namen Businessplan hochgeladen wird → …“). Zuvor griff der Trigger nur bei
+  einem Teil der Upload-Wege — der direkte Upload in Kontakt/Unternehmen blieb
+  stumm.
+
+#### 🤖 Louis lernt Workflows zuverlässig per Chat
+* Der Auftrag „Lerne einen Workflow: Wenn … hochgeladen/bezahlt/fällig wird →
+  …“ führt jetzt **deterministisch** zum Anlegen des Workflows — unabhängig
+  von der Modell-Entscheidung. Zuvor konnte Louis den Auftrag gelegentlich nur
+  als Notiz „merken“, ohne den Workflow tatsächlich anzulegen (der Trigger
+  fehlte dann).
+
+#### 🧪 Qualität
+* E2E-Absicherung für den echten Upload-Pfad ergänzt.
+
 ## [2.1.4] — 2026-08-24
 
 ### 🎯 Fokus: Präzise Automatisierung (Trigger-Bedingungen, Wissens-Upload) & Testtiefe
