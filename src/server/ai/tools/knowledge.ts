@@ -1087,6 +1087,30 @@ export async function learnWorkflow(
     updated_at_utc: new Date().toISOString()
   };
 
+  // P1-1: trigger_config gegen das 064-Schema validieren (Feld- +
+  // Operator-Whitelist). Ungültige Bedingungen verwerfen (conditions: [])
+  // statt roh zu speichern — sonst rendert die UI Selects ohne passende
+  // Option (verzogene/unsichtbare Bedingungen). conditions: [] bleibt
+  // erhalten (schema-gültig, semantisch „keine Bedingung").
+  if (trigger_config && typeof trigger_config === "object" && !Array.isArray(trigger_config)) {
+    const rawCfg = trigger_config as Record<string, unknown>;
+    const TRIGGER_FIELD_WHITELIST = new Set(["entity_type", "entity_id", "entity_name", "file_name", "company_id", "company_name", "invoice_status", "kanban_column_id"]);
+    const TRIGGER_OPERATOR_WHITELIST = new Set(["equals", "not_equals", "contains", "starts_with", "ends_with"]);
+    if (Array.isArray(rawCfg.conditions)) {
+      const cleaned = rawCfg.conditions.filter((c) => {
+        if (!c || typeof c !== "object") return false;
+        const cc = c as Record<string, unknown>;
+        return typeof cc.field === "string" && TRIGGER_FIELD_WHITELIST.has(cc.field)
+          && typeof cc.operator === "string" && TRIGGER_OPERATOR_WHITELIST.has(cc.operator)
+          && typeof cc.value === "string";
+      });
+      if (cleaned.length !== rawCfg.conditions.length) {
+        rawCfg.conditions = cleaned;
+        record.trigger_config = rawCfg;
+      }
+    }
+  }
+
   // Synchronise or replace same duplicate workflow if newly proposed
   fallbackStore.customWorkflows = fallbackStore.customWorkflows.filter(
     (w: CustomWorkflow) => !(w.tenant_id === tenantId && w.workflow_name === name)
@@ -1173,6 +1197,29 @@ async function healWorkflows(tenantId: string, workflows: unknown[]): Promise<un
         w.dag_structure = JSON.parse(w.dag_structure);
       } catch (err) {
         console.warn("[healWorkflows] Failed to parse dag_structure string JSON representation", err);
+      }
+    }
+
+    // P1-Nacharbeit: Ungültige conditions (LLM-typisch: field/operator
+    // außerhalb der Whitelist) lassen den Workflow im Zod-Output scheitern →
+    // er VERSCHWINDET aus der Liste. Hier bereinigen (wie P1-1 beim
+    // Speichern) — Altbestand wird beim Lesen repariert.
+    if (w.trigger_config && typeof w.trigger_config === "object" && !Array.isArray(w.trigger_config)) {
+      const cfg = w.trigger_config as Record<string, unknown>;
+      if (Array.isArray(cfg.conditions)) {
+        const TRIGGER_FIELD_WHITELIST = new Set(["entity_type", "entity_id", "entity_name", "file_name", "company_id", "company_name", "invoice_status", "kanban_column_id"]);
+        const TRIGGER_OPERATOR_WHITELIST = new Set(["equals", "not_equals", "contains", "starts_with", "ends_with"]);
+        const cleaned = cfg.conditions.filter((c) => {
+          if (!c || typeof c !== "object") return false;
+          const cc = c as Record<string, unknown>;
+          return typeof cc.field === "string" && TRIGGER_FIELD_WHITELIST.has(cc.field)
+            && typeof cc.operator === "string" && TRIGGER_OPERATOR_WHITELIST.has(cc.operator)
+            && typeof cc.value === "string";
+        });
+        if (cleaned.length !== cfg.conditions.length) {
+          cfg.conditions = cleaned;
+          changed = true;
+        }
       }
     }
 
@@ -1362,7 +1409,7 @@ interface WorkflowArgs {
   /** Schritte als strukturiertes Array ODER nummerierter Freitext-String (Provider-neutral, 058) */
   steps?: WorkflowStepArgs[] | string;
   trigger_type?: 'MANUAL' | 'CRM_EVENT' | 'TIMER';
-  // Projektarbeit P3-3: strukturierte Trigger-Config (conditions + logic wie Admin-Editor)
+  // 064 P3-3: strukturierte Trigger-Config (conditions + logic wie Admin-Editor)
   trigger_config?: {
     event_name?: string;
     delay_seconds?: number;
@@ -1377,7 +1424,26 @@ interface WorkflowArgs {
 }
 
 /**
- * Projektarbeit P3-2: Erkennt Trigger-Hinweise deterministisch aus dem Quelltext
+ * P0-4: Neutralisiert eine Workflow-Beschreibung (Regel-7).
+ * Rohe User-Prompts / LLM-Strings können interne Marker enthalten (Auftrags-
+ * IDs, Regel-IDs, Testbegriffe) — die dürfen nicht als workflow_description
+ * in die DB (das LLM liest sie via „Learned Workflow Custom Macro-Tools").
+ * NUR für die Beschreibung — der sourceText für Chain-/Trigger-Erkennung
+ * bleibt unverfälscht (Plan-Review-Korrektur 3/3).
+ */
+export function neutralizeWorkflowDescription(text: string): string {
+  const t = String(text || "").trim();
+  if (!t) return "Automatisierter Workflow";
+  return t
+    .replace(/\b0\d\d(?:-[A-Z][A-Za-z0-9-]*)?\b/g, "Projektarbeit")
+    .replace(/\b(?:QA|B-\d{3}|R-(?:DS|AR|MCP|QA|DO|ZU))-[A-Za-z0-9-]*\b/g, "Test")
+    .replace(/\b(?:Agent|Assistent|Testumgebung|Referenzumgebung)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim() || "Automatisierter Workflow";
+}
+
+/**
+ * 064 P3-2: Erkennt Trigger-Hinweise deterministisch aus dem Quelltext
  * (Fallback-Pfad, wenn der LLM keine strukturierte Query liefert).
  * - „wenn … hochgeladen" → file.uploaded (CRM_EVENT)
  * - „wenn … angelegt/neu" → contact.created/company.created (Kontext-abhängig)
@@ -1436,7 +1502,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
     const escaped = escapeRegExp(name);
     if (new RegExp(`\\b${escaped}\\b`).test(text)) return name;
   }
-  // FIX Regelwerk (060 P0): Natürliche-Sprache-Erkennung — echte User schreiben
+  // FIX Regel-8 (060 P0): Natürliche-Sprache-Erkennung — echte User schreiben
   // "Leg eine Notiz an", "warte 5 Sekunden", "schick eine E-Mail", nicht die
   // Tool-Namen. Vorher fiel jeder Klartext-Schritt auf crm_data_analyst zurück
   // (generisches Tool → Workflow "lief" ohne Wirkung). Deterministische
@@ -1444,7 +1510,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
   return detectNaturalLanguageTool(text, knownTools);
 }
 
-// FIX Regelwerk: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
+// FIX Regel-8: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
 // Reihenfolge = Priorität (spezifisch zuerst). Geprüft wird immer gegen
 // knownTools, damit keine Tools gemappt werden, die der Executor nicht kennt.
 const NATURAL_LANGUAGE_PATTERNS: Array<{ pattern: RegExp; tool: string }> = [
@@ -1497,7 +1563,7 @@ function detectNaturalLanguageTool(text: string, knownTools: ReadonlySet<string>
 
 /**
  * Wandelt Workflow-Schritte aus beliebigem LLM-Format in eine tool_chain_sequence um
- * (Projektarbeit, Projektregel provider-neutral):
+ * (Auftrag 058, Regel provider-neutral):
  * - Array von { tool, instruction | description } → 1:1 (inkl. Schritt-Präfix-Regex)
  * - String (nummerierte Liste „1. …\n2. …“) → Zeilen splitten, Tool-Namen erkennen,
  *   ohne erkennbares Tool → crm_data_analyst
@@ -1638,11 +1704,13 @@ export async function executeLearnWorkflow(
       // ("(a) Lege einen Kontakt an, (b) sende eine Mail, ...") wird Schritt für
       // Schritt zerlegt und auf Tools gemappt. Vorher: pauschal 1 crm_data_analyst-
       // Schritt (Schritt-Struktur ging verloren → Workflow "lief" ohne Wirkung).
+      // P0-4: fallbackDesc wird neutralisiert (Regel-7); source bleibt der
+      // ROH-Prompt für Chain-/Trigger-Erkennung (Plan-Review-Korrektur 3/3).
       const fallbackName = "Automated AI Recipe";
-      const fallbackDesc = argsStr;
+      const fallbackDesc = neutralizeWorkflowDescription(argsStr);
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      // Projektarbeit P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
+      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
       const detected = detectTriggerFromText(source);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
@@ -1653,10 +1721,11 @@ export async function executeLearnWorkflow(
 
     if (!rawArgs || typeof rawArgs !== "object") {
       const fallbackName = "Automated AI Recipe";
-      const fallbackDesc = argsStr;
+      // P0-4: Beschreibung neutralisiert, source bleibt roh (s. o.)
+      const fallbackDesc = neutralizeWorkflowDescription(argsStr);
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      // Projektarbeit P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
+      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
       const detected = detectTriggerFromText(source);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
@@ -1669,7 +1738,7 @@ export async function executeLearnWorkflow(
     const description = rawArgs.workflow_description || rawArgs.description || name;
     
     // Parse tool chain sequence — Array (tool_chain_sequence/tool_chain/sequence)
-    // ODER steps als Array/nummerierter String (Projektarbeit, provider-neutral).
+    // ODER steps als Array/nummerierter String (Auftrag 058, provider-neutral).
     const knownTools = await loadKnownWorkflowToolNames();
     const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
     let toolChain = parseStepsToToolChain(seq, knownTools);

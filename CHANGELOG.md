@@ -2,6 +2,34 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.6] — 2026-08-25
+
+### 🎯 Fokus: Stabile Workflows & vollständige Kontrolle über automatisierte Abläufe
+
+#### 📋 Workflow-Liste mit Pagination
+* Die Liste der erlernten Workflows ist jetzt paginiert (5/10/20 pro Seite) —
+  auch bei vielen Workflows bleiben alle Abläufe sichtbar und auffindbar.
+
+#### 🔒 Keine internen Bezeichnungen mehr im Workflow-Lernen
+* Wenn Louis einen Workflow per Chat lernt, wird nur noch eine **saubere,
+  verständliche Beschreibung** gespeichert — keine technischen/rohen
+  Prompt-Anteile mehr, die den Workflow in der Übersicht unlesbar machten.
+
+#### 🛡️ Workflow-Lernen zuverlässig & ohne Duplikate
+* Der Lern-Auftrag per Chat legt den Workflow jetzt **genau einmal** an —
+  zuvor konnte Louis den Ablauf zusätzlich ein zweites Mal mit eigenem Namen
+  speichern.
+
+#### 🔧 Bedingungen (Trigger-Filter) robuster
+* Ungültige Bedingungs-Einträge (z. B. aus früheren Versionen oder
+  automatisiert angelegt) werden beim Anzeigen bereinigt — Workflows mit
+  solchen Bedingungen **verschwinden nicht mehr** aus der Liste und lassen
+  sich wieder bearbeiten.
+
+#### 🧪 Qualität
+* Umfangreiche Absicherung aller Workflow-Pfade (Lernen, Trigger, Bedingungen,
+  Pagination, Ausführung) in den automatisierten Tests ergänzt.
+
 ## [2.1.5] — 2026-08-24
 
 ### 🎯 Fokus: Zuverlässige Workflow-Trigger & stabiles Workflow-Lernen

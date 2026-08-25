@@ -102,6 +102,9 @@ export const LouisAiWorkflowsTab = () => {
   // Audit-Trail-Pagination (wie Kontakte/Unternehmen: 5/10/20 pro Seite)
   const [auditPage, setAuditPage] = useState(1);
   const [auditLimit, setAuditLimit] = useState(10);
+  // P2: Workflow-Listen-Pagination (wie Audit-Trail: 5/10/20 pro Seite)
+  const [workflowPage, setWorkflowPage] = useState(1);
+  const [workflowLimit, setWorkflowLimit] = useState(10);
 
   // Sync state when details pane loads a new workflow template selection
 
@@ -380,6 +383,11 @@ export const LouisAiWorkflowsTab = () => {
     (w.workflow_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (w.workflow_description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // P2: Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail)
+  const workflowTotalPages = Math.max(1, Math.ceil(filteredWorkflows.length / workflowLimit));
+  const safeWorkflowPage = Math.min(workflowPage, workflowTotalPages);
+  const pageWorkflows = filteredWorkflows.slice((safeWorkflowPage - 1) * workflowLimit, safeWorkflowPage * workflowLimit);
 
   const getToolBadgeStyle = (toolName: string) => {
     switch (toolName) {
@@ -818,7 +826,7 @@ export const LouisAiWorkflowsTab = () => {
                       />
                     </div>
 
-                    {/* Projektarbeit P0-5: Bedingungs-Editor — Whitelist-Felder, Operatoren ohne Regex */}
+                    {/* 064 P0-5: Bedingungs-Editor — Whitelist-Felder, Operatoren ohne Regex */}
                     <div className="space-y-2">
                       <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
                         {t('admin:workflows_tab.trigger_conditions_label', { defaultValue: 'Bedingungen (Filter)' })}
@@ -827,6 +835,13 @@ export const LouisAiWorkflowsTab = () => {
                         const conds = Array.isArray(formTriggerConfig.conditions)
                           ? (formTriggerConfig.conditions as Array<{ field: string; operator: string; value: string }>)
                           : [];
+                        // P1-2: UI-Härtung — ungültige Feld-/Operator-Werte aus
+                        // Altbestand/LLM liefern einen leeren Select (verzogene UI).
+                        // Fallback auf erste gültige Option statt Crash/Leere.
+                        const VALID_FIELDS = ["entity_type", "entity_id", "entity_name", "file_name", "company_id", "company_name", "invoice_status", "kanban_column_id"];
+                        const VALID_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with"];
+                        const safeField = (f: string) => VALID_FIELDS.includes(f) ? f : VALID_FIELDS[0];
+                        const safeOp = (o: string) => VALID_OPS.includes(o) ? o : VALID_OPS[0];
                         return (
                           <>
                             <div className="flex gap-2 items-center">
@@ -851,7 +866,7 @@ export const LouisAiWorkflowsTab = () => {
                             {conds.map((c, idx) => (
                               <div key={idx} className="flex gap-2 items-center" data-testid="trigger-condition-row">
                                 <select
-                                  value={c.field}
+                                  value={safeField(c.field)}
                                   onChange={(e) => {
                                     const next = [...conds];
                                     next[idx] = { ...next[idx], field: e.target.value };
@@ -869,7 +884,7 @@ export const LouisAiWorkflowsTab = () => {
                                   <option value="kanban_column_id">{t('admin:workflows_tab.cond_field_kanban_column', { defaultValue: 'Kanban-Spalte' })}</option>
                                 </select>
                                 <select
-                                  value={c.operator}
+                                  value={safeOp(c.operator)}
                                   onChange={(e) => {
                                     const next = [...conds];
                                     next[idx] = { ...next[idx], operator: e.target.value };
@@ -1067,7 +1082,7 @@ export const LouisAiWorkflowsTab = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredWorkflows.map((workflow: Workflow) => {
+                {pageWorkflows.map((workflow: Workflow) => {
                   let parsedSteps: ToolChainStep[] = [];
                   if (Array.isArray(workflow.tool_chain_sequence)) {
                     parsedSteps = sanitizeSteps(workflow.tool_chain_sequence);
@@ -1244,6 +1259,58 @@ export const LouisAiWorkflowsTab = () => {
                     </div>
                   );
                 })}
+                {/* P2: Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail) */}
+                {filteredWorkflows.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-primary-dark/40 border border-white/5 rounded-2xl">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 bg-primary-light border border-white/10 px-3 py-1.5 rounded-xl text-xs text-white">
+                        <span className="text-slate-500 uppercase tracking-widest font-black text-[10px]">
+                          {t('common:show', { defaultValue: 'Anzeigen' })}
+                        </span>
+                        <select
+                          value={workflowLimit}
+                          onChange={(e) => {
+                            setWorkflowLimit(Number(e.target.value));
+                            setWorkflowPage(1);
+                          }}
+                          className="bg-transparent text-white font-black uppercase text-xs focus:outline-none cursor-pointer border-none p-0 outline-none"
+                        >
+                          <option value={5} className="bg-primary-dark">5</option>
+                          <option value={10} className="bg-primary-dark">10</option>
+                          <option value={20} className="bg-primary-dark">20</option>
+                        </select>
+                      </div>
+                      <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+                        {t('common:pagination_entries', {
+                          from: Math.min(filteredWorkflows.length, (safeWorkflowPage - 1) * workflowLimit + 1),
+                          to: Math.min(filteredWorkflows.length, safeWorkflowPage * workflowLimit),
+                          count: filteredWorkflows.length
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowPage(p => Math.max(1, p - 1))}
+                        disabled={safeWorkflowPage <= 1}
+                        className="p-2 text-slate-400 hover:text-white bg-primary-light border border-white/5 disabled:opacity-30 disabled:hover:text-slate-400 rounded-lg cursor-pointer transition-all active:scale-95"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-xs text-slate-300 font-mono font-bold bg-primary-dark/80 px-3 py-1.5 rounded-lg border border-white/5 min-w-[50px] text-center">
+                        {safeWorkflowPage} / {workflowTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowPage(p => Math.min(workflowTotalPages, p + 1))}
+                        disabled={safeWorkflowPage >= workflowTotalPages}
+                        className="p-2 text-slate-400 hover:text-white bg-primary-light border border-white/5 disabled:opacity-30 disabled:hover:text-slate-400 rounded-lg cursor-pointer transition-all active:scale-95"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

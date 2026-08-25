@@ -52,7 +52,7 @@ import {
   executeVaultUpdate,
   executeVaultDelete
 } from "./tools.js";
-import { safeParseReActDecision, truncateResult, classifyIntentFastPath, detectWorkflowStartIntent, detectLearnWorkflowIntent } from "./orchestrator.js";
+import { safeParseReActDecision, truncateResult, classifyIntentFastPath, detectWorkflowStartIntent, detectLearnWorkflowIntent, buildLearnWorkflowArgs } from "./orchestrator.js";
 import { WorkflowLearnSuggestionSchema, SubTaskSpecSchema, VerifySubtaskArgsSchema, AskUserQuestionArgsSchema } from "../../lib/schemas.js";
 import { ModelUsageMetadata, ConversationMessage, GovernanceAction, SubTaskResult, TenantAiConfig } from "../../types.js";
 import { vaultToolKind, vaultWriteBaseName, VAULT_WRITE_ACTION_MAP } from "./vaultToolClassification.js";
@@ -880,7 +880,7 @@ export class AgentRuntime {
     const dateIsoStr = temporalAnchor;
 
     // Workflow- und MCP-Tools GENAU EINMAL laden (nicht pro Iteration — Voraussetzung für Cache-Hits)
-    // FIX B-059-3 (Projektarbeit): getLearnedWorkflows statt searchRelevantSkills —
+    // FIX Regel-3 (Auftrag 060): getLearnedWorkflows statt searchRelevantSkills —
     // die Skill-Suche matcht "Starte X" nicht (Query ≠ workflow_name, Keyword-ILIKE
     // greift nicht) und liefert ohne Embedding nichts → gelernte Workflows
     // erschienen NIE im Prompt → Louis erfand die Ausführungsmeldung.
@@ -1233,7 +1233,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       }
 
       // ============================================================================
-      // Projektarbeit P1-Kern (Korrektur 3): Deterministischer learn_workflow-Dispatch —
+      // 067 P1-Kern (Korrektur 3): Deterministischer learn_workflow-Dispatch —
       // analog detectWorkflowStartIntent (061-P1-2). Wenn der Prompt eine
       // Workflow-LERN-Absicht hat („neuer Workflow", „lerne als Workflow",
       // Wenn-Dann-Logik), wird learn_workflow DIREKT ausgeführt — die
@@ -1246,9 +1246,20 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       if (context.toolResults.length === 0 && detectLearnWorkflowIntent(context.userMessage)) {
         context.thoughtLog.push(`[Workflow-Lernen] Deterministische Lern-Absicht erkannt — learn_workflow wird direkt ausgeführt (keine LLM-Tool-Wahl).`);
         try {
+          // P0-1: Saubere Query statt rohem Prompt (Regel-7: keine internen
+          // Begriffe als workflow_description in DB/Prompt). Trigger-Erhalt via
+          // detectTriggerFromText (Plan-Review-Korrektur 3/1). sourceText bleibt
+          // der Prompt für die deterministische Chain-Erkennung.
+          const learnArgs = buildLearnWorkflowArgs(context.userMessage);
+          const learnQuery = JSON.stringify({
+            workflow_name: learnArgs.workflow_name,
+            workflow_description: learnArgs.workflow_description,
+            trigger_type: learnArgs.trigger_type,
+            trigger_config: learnArgs.trigger_config
+          });
           const learnResult = await executeLearnWorkflow(
             context.tenantId,
-            context.userMessage,
+            learnQuery,
             context.userId || "ai_assistant",
             context.userMessage // sourceText: deterministische Chain-Extraktion (064-P3-Fallback)
           );
@@ -1257,7 +1268,16 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
               ? JSON.stringify((learnResult as { data?: unknown }).data ?? {})
               : String((learnResult as { error?: string }).error ?? "Workflow-Lernen fehlgeschlagen")
             : JSON.stringify(learnResult ?? {});
-          context.toolResults.push({ toolName: "learn_workflow", query: context.userMessage, result: resultText });
+          context.toolResults.push({ toolName: "learn_workflow", query: learnQuery, result: resultText });
+          // P0-Nacharbeit: Nach dem deterministischen Lernen den Loop BEENDEN —
+          // sonst ruft das LLM learn_workflow erneut auf und legt ein Duplikat mit
+          // eigenem Namen an. Wie B5-Draft-Early-Exit: Antwort aus dem Tool-
+          // Ergebnis statt weiterer LLM-Runde.
+          if (learnResult && typeof learnResult === "object" && "success" in learnResult && (learnResult as { success: boolean }).success) {
+            context.isComplete = true;
+            context.finalDraftText = "Workflow wurde gelernt und gespeichert.";
+            break;
+          }
         } catch (learnErr) {
           const msg = learnErr instanceof Error ? learnErr.message : String(learnErr);
           context.toolResults.push({ toolName: "learn_workflow", query: context.userMessage, result: `Workflow-Lernen fehlgeschlagen: ${msg}` });
@@ -1347,7 +1367,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
-          // FIX B-059-3 (Projektarbeit): gelernte Workflows ALS NATIVE TOOLS deklarieren —
+          // FIX Regel-3 (Auftrag 060): gelernte Workflows ALS NATIVE TOOLS deklarieren —
           // vorher nur Prompt-Text → im strikt nativen Modus nicht aufrufbar → Louis
           // halluzinierte "wurde gestartet". Dispatch (workflow_-Prefix) + Executor
           // existierten bereits (agentRuntime Z.2749, executeWorkflowMacro).

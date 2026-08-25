@@ -8,6 +8,10 @@ import { generateContentSafe, generateContentUniversal } from "./geminiHelper.js
 import { containsToolCallXml, normalizeToolCallText } from "./toolCallSanitizer.js";
 import { globalAgentRuntime } from "./agentRuntime.js";
 import { registerChatRun, markChatRunEnded } from "./liveStatusRegistry.js";
+// P0-1: detectTriggerFromText für Trigger-Erhalt in der Lern-Query.
+// Nur Laufzeit-Funktionsimport — knowledge.ts importiert orchestrator nur
+// type-only (Z.14), daher kein Laufzeit-Zyklus.
+import { detectTriggerFromText } from "./tools/knowledge.js";
 import { AgentPipelineContext, AgentAttachmentContext, AgentUserMemory, ToolDomain } from "./agentTypes.js";
 import { 
   executeWebSearch, 
@@ -491,7 +495,7 @@ export function detectWorkflowStartIntent(
 }
 
 /**
- * Projektarbeit P1-Fix: Erkennt Workflow-LERN-Absicht deterministisch (0 Token, reine
+ * 067 P1-Fix: Erkennt Workflow-LERN-Absicht deterministisch (0 Token, reine
  * Regex — 063-Muster, KEIN LLM). Analog detectWorkflowStartIntent (061-P1-2).
  * Löst das Varianz-Problem: Bei „neuer Workflow / lerne / merke dir als
  * Workflow" + Wenn-Dann-Logik wählt das LLM teils vault_write (Memory) statt
@@ -511,6 +515,50 @@ export function detectLearnWorkflowIntent(message: string): boolean {
     /\b(wird|werden|hochgeladen|bezahlt|fällig|faellig|angelegt|aktualisiert|versendet|gelöscht|geloescht|erstellt|neu)\b/i.test(msg);
   // Ohne Wenn-Dann trotzdem Lern-Absicht (explizite Signale: lerne/lern/merke)
   return whenThen || /\b(lerne|lern|merke dir als workflow|merke .*workflow)\b/i.test(msg);
+}
+
+/**
+ * P0-1: Baut aus einem Workflow-Lern-Prompt eine SAUBERE learn_workflow-Query.
+ * Der rohe User-Prompt darf NICHT als workflow_description in die DB (Regel-7:
+ * interne Begriffe/Auftrags-IDs würden via „Learned Workflow Custom Macro-Tools"
+ * an das LLM gehen). Extrahiert Name + neutrale Beschreibung deterministisch.
+ * Plan-Review-Korrektur 3/1: trigger_type + trigger_config werden aus
+ * detectTriggerFromText übernommen — der strukturierte Zweig (knowledge.ts
+ * Z.1707-1708) liest sie aus rawArgs, sonst entstünde ein Workflow OHNE Trigger.
+ */
+export function buildLearnWorkflowArgs(prompt: string): { workflow_name: string; workflow_description: string; trigger_type: 'MANUAL' | 'CRM_EVENT' | 'TIMER'; trigger_config: Record<string, unknown> | null } {
+  const msg = String(prompt || "").trim();
+  // Name: „mit dem Namen X" / „als Workflow mit dem Namen X" / „Name X"
+  let workflow_name = "";
+  const nameMatch = msg.match(/\b(?:mit dem Namen|mit dem namen|namen)\s+["']?([A-Za-z0-9][A-Za-z0-9 _\-]{1,60})["']?/i);
+  if (nameMatch) workflow_name = nameMatch[1].trim();
+  if (!workflow_name) {
+    // Fallback: erster sinnvoller Satzteil nach „Workflow" (max. 6 Wörter)
+    const afterWf = msg.replace(/^.*?\b(?:workflow|ablauf)\b\s*[:.]?\s*/i, "");
+    workflow_name = afterWf.split(/\s+/).slice(0, 6).join(" ").replace(/[,;:!?]$/, "").trim() || "Automatisierter Ablauf";
+  }
+  // Beschreibung: Präfix („Louis neuer Workflow:" / „Lerne … als Workflow:") entfernen,
+  // interne Marker neutralisieren (Auftrags-IDs 0\d\d, Regel-IDs, Testbegriffe)
+  let description = msg
+    .replace(/^(?:louis\s+)?(?:neuer|neue|neuen)?\s*workflow\s*[:.]?\s*/i, "")
+    .replace(/^(?:lerne|lern)\s+(?:diesen\s+)?ablauf\s+als\s+workflow\s*[:.]?\s*/i, "")
+    .replace(/^.*?\bmit dem namen\s+["']?[A-Za-z0-9 _\-]{1,60}["']?\s*[:.]?\s*/i, "")
+    .trim();
+  description = description.replace(/\b0\d\d(?:-[A-Z][A-Za-z0-9-]*)?\b/g, "Projektarbeit")
+    .replace(/\b(?:QA|B-\d{3}|R-(?:DS|AR|MCP|QA|DO|ZU))-[A-Za-z0-9-]*\b/g, "Test")
+    .replace(/\b(?:Agent|Assistent|Testumgebung|Referenzumgebung)\b/gi, "");
+  description = description.replace(/\s{2,}/g, " ").trim();
+  // Nicht-leer-Garant (Plan-Review-Korrektur 3/2: Schema verlangt min(1), sonst stiller Verlust)
+  if (!description) description = "Automatisierter Workflow";
+  // Trigger-Erhalt (Plan-Review-Korrektur 3/1): detectTriggerFromText liefert
+  // MANUAL + null ohne Treffer — das ist der korrekte Default.
+  const detected = detectTriggerFromText(msg);
+  return {
+    workflow_name,
+    workflow_description: description,
+    trigger_type: detected.trigger_type,
+    trigger_config: detected.trigger_config,
+  };
 }
 
 export interface QueryComplexityResult {
@@ -885,7 +933,7 @@ export function safeParseReActDecision(
     const thoughtMatch = res.text.match(/<think>([\s\S]*?)<\/think>/);
     const thought = thoughtMatch ? thoughtMatch[1].trim() : (res.text.trim() || "Native tool call invoked.");
 
- // 6-08-15 (P3): Robustheit gegen malformed Tool-Calls. DeepSeek/andere
+ // 6-08-15 : Robustheit gegen malformed Tool-Calls. DeepSeek/andere
     // Provider liefern gelegentlich Calls ohne 'function'-Objekt (oder ohne name/
     // arguments) — vorher crashte t.function.name mit "Cannot read properties of
     // undefined (reading 'id'/'name')" bei Löschversuchen. Jetzt: malformed Calls

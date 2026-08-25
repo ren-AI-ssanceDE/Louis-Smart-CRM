@@ -1,3 +1,13 @@
+## 🚀 Release v2.1.6: Stabile Workflows & vollständige Kontrolle
+
+Mit **2.1.6** bekommt ihr die volle Kontrolle über eure automatisierten Abläufe. Die **Workflow-Liste ist jetzt paginiert** (5/10/20 pro Seite) — auch wer viele Abläufe angelegt hat, behält den Überblick, ohne dass Workflows aus der Sicht verschwinden.
+
+Beim **Workflow-Lernen per Chat** speichert Louis jetzt nur noch eine **saubere, verständliche Beschreibung** statt technischer Prompt-Anteile — und legt den Ablauf **genau einmal** an, ohne versehentliche Duplikate. Bedingungs-Einträge (Trigger-Filter), die aus früheren Versionen oder automatisiert entstanden sind, werden beim Anzeigen **bereinigt**: Workflows mit solchen Bedingungen verschwinden nicht mehr aus der Liste und lassen sich wieder ganz normal bearbeiten.
+
+Louis Smart CRM ist und bleibt ein Projekt für Alle: offen, individualisierbar und mit wachsender Qualität — jede Version wird gründlich geprüft, damit Louis im Alltag zuverlässig für euch arbeitet. Viel Freude damit!
+
+---
+
 ## 🚀 Release v2.1.5: Zuverlässige Workflow-Trigger & stabiles Workflow-Lernen
 
 Mit **2.1.5** werden die automatisierten Abläufe endlich **lückenlos auslösbar**: Werden Dateien direkt über die **Kontakt- oder Firmen-Seite** hochgeladen, feuern die hinterlegten Workflow-Trigger jetzt zuverlässig — etwa „Wenn eine Datei mit dem Namen *Businessplan* hochgeladen wird, befülle die Mailvorlage und erstelle eine Draft-Mail“. Zuvor blieb genau dieser direkte Upload stumm, während andere Wege funktionierten.
