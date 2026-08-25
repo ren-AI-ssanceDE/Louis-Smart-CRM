@@ -315,7 +315,15 @@ export async function executeApplyTemplate(
       ).trim();
       contextData = (parsed.context || parsed.variables || parsed.data || {}) as Record<string, unknown>;
     } catch {
-      templateIdOrName = inputPayload.trim();
+      // Vorlagen-Namen deterministisch aus natürlicher Sprache extrahieren
+      // (analog SMTP-Extraktor): 'name', "name", Vorlage: <name>, oder Wort NACH
+      // "Vorlage <name>" (auch ohne Quotes — LLM-typische Workflow-Instruktionen).
+      const raw = inputPayload.trim();
+      const quoted = raw.match(/['"]([^'"]+)['"]/);
+      const labeled = raw.match(/(?:Vorlage|Template)\s*:\s*([^\s,;]+)/i);
+      const afterKeyword = raw.match(/(?:Vorlage|Template)\s+([A-Za-z0-9_-]+)/i);
+      templateIdOrName = quoted?.[1]?.trim() || labeled?.[1]?.trim() || afterKeyword?.[1]?.trim() || raw;
+      contextData = {};
     }
 
     if (!templateIdOrName) {

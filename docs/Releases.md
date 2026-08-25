@@ -1,3 +1,11 @@
+## 🚀 Release v2.1.7: Zuverlässige Workflow-E-Mails & saubere Bedingungen
+
+Mit **2.1.7** bekommen eure automatisierten Abläufe endlich die richtigen Inhalte: **E-Mails, die Louis nach einem Ereignis (z. B. Datei-Upload) erstellt, enthalten jetzt den befüllten Text eurer Vorlage** — statt einer leeren oder fehlerhaften Nachricht. Der Entwurf erscheint wie gewohnt zur Freigabe, sofern kein Sofortversand eingestellt ist.
+
+Dazu wird die **Workflow-Ausführung zuverlässiger**: Ergebnisse vorheriger Schritte fließen automatisch in die nachfolgenden Schritte ein, während Warte- und Bedingungs-Schritte exakt wie konfiguriert laufen. Auch Kontakt-Bezüge wie „Lege eine Notiz am Kontakt … an" finden jetzt zuverlässig den richtigen Kontakt.
+
+Und ein kleines Ärgernis ist behoben: Die **Bedingungs-Editoren** im Workflow-Formular nutzen wieder die volle Breite — Auswahlfelder zeigen ihre Beschriftung, Eingabefelder laufen nicht mehr über den Rand hinaus.
+
 ## 🚀 Release v2.1.6: Stabile Workflows & vollständige Kontrolle
 
 Mit **2.1.6** bekommt ihr die volle Kontrolle über eure automatisierten Abläufe. Die **Workflow-Liste ist jetzt paginiert** (5/10/20 pro Seite) — auch wer viele Abläufe angelegt hat, behält den Überblick, ohne dass Workflows aus der Sicht verschwinden.

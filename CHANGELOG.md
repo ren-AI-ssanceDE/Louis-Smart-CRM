@@ -2,6 +2,13 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.7] — 2026-08-25
+
+- **Workflow-E-Mails enthalten jetzt den echten Inhalt:** E-Mails aus automatisierten Abläufen (z. B. nach einem Datei-Upload) werden mit dem befüllten Vorlagen-Inhalt erstellt statt mit einer leeren oder fehlerhaften Nachricht — als Entwurf zur Freigabe, sofern kein Sofortversand eingestellt ist.
+- **Zuverlässigere Workflow-Ausführung:** Ergebnisse vorheriger Schritte fließen in nachfolgende Schritte ein; Warte- und Bedingungs-Schritte bleiben davon unberührt und laufen exakt wie konfiguriert.
+- **Kontakt-Bezüge in Workflows verbessert:** „Lege eine Notiz am Kontakt … an" findet den richtigen Kontakt auch bei ausführlichen Formulierungen.
+- **Kleinere UI-Korrektur:** Die Bedingungs-Editoren im Workflow-Formular nutzen die volle Breite — Auswahlfelder zeigen ihre Beschriftung, Eingabefelder laufen nicht mehr über den Rand.
+
 ## [2.1.6] — 2026-08-25
 
 ### 🎯 Fokus: Stabile Workflows & vollständige Kontrolle über automatisierte Abläufe

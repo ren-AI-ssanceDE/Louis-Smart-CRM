@@ -102,7 +102,7 @@ export const LouisAiWorkflowsTab = () => {
   // Audit-Trail-Pagination (wie Kontakte/Unternehmen: 5/10/20 pro Seite)
   const [auditPage, setAuditPage] = useState(1);
   const [auditLimit, setAuditLimit] = useState(10);
-  // P2: Workflow-Listen-Pagination (wie Audit-Trail: 5/10/20 pro Seite)
+  // P P2: Workflow-Listen-Pagination (wie Audit-Trail: 5/10/20 pro Seite)
   const [workflowPage, setWorkflowPage] = useState(1);
   const [workflowLimit, setWorkflowLimit] = useState(10);
 
@@ -384,7 +384,7 @@ export const LouisAiWorkflowsTab = () => {
     (w.workflow_description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // P2: Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail)
+  // P P2: Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail)
   const workflowTotalPages = Math.max(1, Math.ceil(filteredWorkflows.length / workflowLimit));
   const safeWorkflowPage = Math.min(workflowPage, workflowTotalPages);
   const pageWorkflows = filteredWorkflows.slice((safeWorkflowPage - 1) * workflowLimit, safeWorkflowPage * workflowLimit);
@@ -777,11 +777,12 @@ export const LouisAiWorkflowsTab = () => {
                 </select>
               </div>
 
-              {/* Dynamic trigger config parameters */}
-              <div className="md:col-span-1">
+              {/* Dynamic trigger config parameters — volle Breite (Bedingungen brauchen Platz) */}
+              <div className="md:col-span-4">
                 {formTriggerType === 'CRM_EVENT' && (
                   <div className="space-y-4">
-                    <div className="space-y-1.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
                       <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
                         {t('admin:workflows_tab.crm_event_label', { defaultValue: 'CRM Ereignis' })}
                       </label>
@@ -812,18 +813,19 @@ export const LouisAiWorkflowsTab = () => {
                         <option value="kanban.card_updated">{t('admin:workflows_tab.event_kanban_card_updated_option', { defaultValue: 'Kanban-Karte aktualisiert' })}</option>
                         <option value="kanban.card_deleted">{t('admin:workflows_tab.event_kanban_card_deleted_option', { defaultValue: 'Kanban-Karte gelöscht' })}</option>
                       </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
-                        {t('admin:workflows_tab.delay_seconds_label', { defaultValue: 'Verzögerung (Sekunden)' })}
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formTriggerConfig.delay_seconds || 0}
-                        onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, delay_seconds: Math.max(0, parseInt(e.target.value || '0', 10)) })}
-                        className="w-full bg-primary-dark border border-white/5 p-2.5 rounded-xl text-xs text-white focus:outline-none focus:border-accent-orange/30 font-mono font-semibold h-11"
-                      />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+                          {t('admin:workflows_tab.delay_seconds_label', { defaultValue: 'Verzögerung (Sekunden)' })}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formTriggerConfig.delay_seconds || 0}
+                          onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, delay_seconds: Math.max(0, parseInt(e.target.value || '0', 10)) })}
+                          className="w-full bg-primary-dark border border-white/5 p-2.5 rounded-xl text-xs text-white focus:outline-none focus:border-accent-orange/30 font-mono font-semibold h-11"
+                        />
+                      </div>
                     </div>
 
                     {/* 064 P0-5: Bedingungs-Editor — Whitelist-Felder, Operatoren ohne Regex */}
@@ -835,7 +837,7 @@ export const LouisAiWorkflowsTab = () => {
                         const conds = Array.isArray(formTriggerConfig.conditions)
                           ? (formTriggerConfig.conditions as Array<{ field: string; operator: string; value: string }>)
                           : [];
-                        // P1-2: UI-Härtung — ungültige Feld-/Operator-Werte aus
+                        // P P1-2: UI-Härtung — ungültige Feld-/Operator-Werte aus
                         // Altbestand/LLM liefern einen leeren Select (verzogene UI).
                         // Fallback auf erste gültige Option statt Crash/Leere.
                         const VALID_FIELDS = ["entity_type", "entity_id", "entity_name", "file_name", "company_id", "company_name", "invoice_status", "kanban_column_id"];
@@ -1259,7 +1261,7 @@ export const LouisAiWorkflowsTab = () => {
                     </div>
                   );
                 })}
-                {/* P2: Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail) */}
+                {/* Workflow-Listen-Pagination (5/10/20 pro Seite, wie Audit-Trail) */}
                 {filteredWorkflows.length > 0 && (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-primary-dark/40 border border-white/5 rounded-2xl">
                     <div className="flex items-center gap-3">

@@ -363,7 +363,7 @@ async function resolveAttachments(tenantId: string, recipient: string, attachmen
  * Prepares an email draft with recipient, subject, body, optional invoice attachment, and other files.
  * Under GoBD human-in-the-loop restrictions, it does NOT send immediately but returns instructions to formulate a proposedChange.
  */
-export async function executeSendSmtpEmail(tenantId: string, argsStr: string, actor: string = "system", aiClient?: GoogleGenAI): Promise<ToolResult<Record<string, unknown>>> {
+export async function executeSendSmtpEmail(tenantId: string, argsStr: string, actor: string = "system", aiClient?: GoogleGenAI, options?: { forceDraft?: boolean }): Promise<ToolResult<Record<string, unknown>>> {
   try {
     let rawArgs: unknown;
     try {
@@ -692,7 +692,9 @@ Antworte AUSSCHLIESSLICH im puren JSON-Format ohne Markdown-Blockierungen.`;
     // Resolve attachments on disk
     const resolvedAttachments = await resolveAttachments(tenantId, recipient, rawAttachments);
 
-    if (!isDataComplete) {
+    // 2.1.7: forceDraft (DAG-Workflows ohne Sofortversand) → IMMER Dashboard-Draft,
+    // auch wenn alle Daten vollständig sind. Standard: Draft, außer Sofortversand.
+    if (!isDataComplete || options?.forceDraft) {
       // Missing data case: create Dashboard draft ONLY, no Chat approval card
       const draftId = uuidv4();
       if (isUsingFallback) {
