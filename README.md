@@ -2,8 +2,8 @@
 
 <img width="2064" height="1110" alt="louis_smart_crm_release" src="https://github.com/user-attachments/assets/8033d26b-97c3-4587-868e-033392c28694" />
 
-> **Version 2.1.8** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
-> Highlight der Version: Moderne MCP Server, Rückfragen deines Agenten beantwortest du direkt im Kontext oder klassisch im Adminpanel. Dazu kleinere Anpassungen am Design des LLM Council und Bug-Fixes.
+> **Version 2.1.9** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
+> Highlight der Version: Der Anzeigename von Kontakten wird bei Namensänderungen jetzt automatisch synchron gehalten — konsistente Kontaktdaten über die Oberfläche, Schnittstellen und automatisierte Abläufe hinweg.
 > Probier's aus - einfach herunterladen und installieren!
 ---
 

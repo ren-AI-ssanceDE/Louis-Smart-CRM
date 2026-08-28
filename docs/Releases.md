@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.9: Anzeigename folgt Namensänderungen zuverlässig
+
+Mit **2.1.9** bleibt der Anzeigename eines Kontakts immer konsistent: **Ändert ihr Vor- oder Nachnamen — in der Oberfläche, über eine Schnittstelle oder in einem automatisierten Ablauf — wird der Anzeigename automatisch neu zusammengesetzt.** Namenskorrekturen sind damit überall sichtbar, nicht nur in den Einzelfeldern.
+
+**Was sich verbessert:** Bisher blieb der Anzeigename nach einer Namensänderung über Schnittstellen unverändert stehen. Zusätzlich ist abgesichert, dass ein übergebener Anzeigename die Namensfelder nicht ungewollt überschreiben kann.
+
 ## 🚀 Release v2.1.8: Kontakte mit allen Details — auch über MCP
 
 Mit **2.1.8** können externe Anbindungen — etwa KI-Assistenten oder andere Systeme über MCP — Kontakte jetzt **vollständig anlegen und bearbeiten**: Anrede, Geburtsdatum, Adresse, Zweit-E-Mail, Telefon, Fax und Mobilnummer, Sprache, Labels, Opt-ins für die verschiedenen Kommunikationswege, USt-IdNr., IBAN und BIC, Zahlungsziel, Preisliste und weitere Details — genau die Felder, die auch in der Oberfläche gepflegt werden können.

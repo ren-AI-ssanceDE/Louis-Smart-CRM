@@ -2,6 +2,11 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.9] — 2026-08-28
+
+- **Anzeigename wird bei Namensänderungen synchron gehalten:** Ändert ihr Vor- oder Nachnamen eines Kontakts, wird der Anzeigename automatisch mitgeführt — in der Oberfläche, über Schnittstellen und in automatisierten Abläufen.
+- **Namensfelder vor versehentlicher Überschreibung geschützt:** Ein übergebener Anzeigename kann die Vor-/Nachnamensfelder nicht mehr ungewollt verändern.
+
 ## [2.1.8] — 2026-08-28
 
 - **Kontakte über MCP mit allen Feldern anlegen und bearbeiten:** Externe Anbindungen (z. B. KI-Assistenten) können jetzt sämtliche Kontaktdaten übergeben — von Anrede, Adresse und Telefon bis zu Bankdaten, USt-IdNr., Opt-ins und Labels. Bisher gingen weitergehende Angaben verloren.
