@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.8: Kontakte mit allen Details — auch über MCP
+
+Mit **2.1.8** können externe Anbindungen — etwa KI-Assistenten oder andere Systeme über MCP — Kontakte jetzt **vollständig anlegen und bearbeiten**: Anrede, Geburtsdatum, Adresse, Zweit-E-Mail, Telefon, Fax und Mobilnummer, Sprache, Labels, Opt-ins für die verschiedenen Kommunikationswege, USt-IdNr., IBAN und BIC, Zahlungsziel, Preisliste und weitere Details — genau die Felder, die auch in der Oberfläche gepflegt werden können.
+
+**Was sich verbessert:** Bisher gingen weitergehende Angaben bei der automatisierten Anlage verloren — das ist jetzt behoben. Alle Felder werden zuverlässig gespeichert, bestehende Kontakte lassen sich mit denselben Details nachpflegen, und Labels können über die Anbindung gesetzt und bei Bedarf auch wieder geleert werden.
+
 ## 🚀 Release v2.1.7: Zuverlässige Workflow-E-Mails & saubere Bedingungen
 
 Mit **2.1.7** bekommen eure automatisierten Abläufe endlich die richtigen Inhalte: **E-Mails, die Louis nach einem Ereignis (z. B. Datei-Upload) erstellt, enthalten jetzt den befüllten Text eurer Vorlage** — statt einer leeren oder fehlerhaften Nachricht. Der Entwurf erscheint wie gewohnt zur Freigabe, sofern kein Sofortversand eingestellt ist.

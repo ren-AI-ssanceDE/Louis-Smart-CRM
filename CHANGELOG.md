@@ -2,6 +2,11 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.8] — 2026-08-28
+
+- **Kontakte über MCP mit allen Feldern anlegen und bearbeiten:** Externe Anbindungen (z. B. KI-Assistenten) können jetzt sämtliche Kontaktdaten übergeben — von Anrede, Adresse und Telefon bis zu Bankdaten, USt-IdNr., Opt-ins und Labels. Bisher gingen weitergehende Angaben verloren.
+- **Vollständige Kontaktdaten bei Anlage und Änderung:** Alle Eingaben werden zuverlässig gespeichert — auch verantwortliche Person, Preisliste und weitere Detailfelder.
+
 ## [2.1.7] — 2026-08-25
 
 - **Workflow-E-Mails enthalten jetzt den echten Inhalt:** E-Mails aus automatisierten Abläufen (z. B. nach einem Datei-Upload) werden mit dem befüllten Vorlagen-Inhalt erstellt statt mit einer leeren oder fehlerhaften Nachricht — als Entwurf zur Freigabe, sofern kein Sofortversand eingestellt ist.
