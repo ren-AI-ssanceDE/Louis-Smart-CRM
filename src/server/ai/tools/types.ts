@@ -292,7 +292,7 @@ export const CreateContactArgsZodSchema = z.preprocess((val) => {
     let first_name = obj.first_name ? String(obj.first_name).trim() : undefined;
     let last_name = obj.last_name ? String(obj.last_name).trim() : undefined;
 
-    const nameField = (obj.full_name || obj.name || obj.full_legal_name || obj.contact_name) as string | undefined;
+    const nameField = (obj.full_name || obj.name || obj.contact_name) as string | undefined;
 
     if (!last_name) {
       if (nameField && typeof nameField === 'string' && nameField.trim()) {
@@ -375,7 +375,7 @@ export const UpdateContactArgsZodSchema = z.preprocess((val) => {
 
     const first_name = obj.first_name ? String(obj.first_name).trim() : undefined;
     let last_name = obj.last_name ? String(obj.last_name).trim() : undefined;
-    const nameField = (obj.full_name || obj.name || obj.full_legal_name || obj.contact_name) as string | undefined;
+    const nameField = (obj.full_name || obj.name || obj.contact_name) as string | undefined;
     if (!last_name && nameField && typeof nameField === "string" && nameField.trim()) {
       const parts = nameField.trim().split(/\s+/);
       if (parts.length > 1) {

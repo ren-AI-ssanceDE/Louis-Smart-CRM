@@ -1772,6 +1772,30 @@ export async function executeUpdateDraftContact(
       }
     }
 
+    // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+    if (updates.first_name !== undefined || updates.last_name !== undefined) {
+      let curFirst: unknown = undefined;
+      let curLast: unknown = undefined;
+      if (isUsingFallback) {
+        const cur = ((fallbackStore.contacts || []).find((c) => c.id_uuid === contactId) || {}) as {
+          first_name?: unknown;
+          last_name?: unknown;
+        };
+        curFirst = cur.first_name;
+        curLast = cur.last_name;
+      } else {
+        const row = await pool.query(
+          "SELECT first_name, last_name FROM core_registry_contacts WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')",
+          [contactId, tenantId]
+        );
+        const cur = (row.rows[0] || {}) as { first_name?: unknown; last_name?: unknown };
+        curFirst = cur.first_name;
+        curLast = cur.last_name;
+      }
+      updates.full_legal_name =
+        [updates.first_name ?? curFirst ?? "", updates.last_name ?? curLast ?? ""].filter(Boolean).join(" ").trim();
+    }
+
     if (Object.keys(updates).length === 0) {
       throw new Error("Keine änderbaren Felder angegeben.");
     }

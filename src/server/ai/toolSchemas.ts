@@ -54,7 +54,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   },
  // G2 : Update-Tools
   update_company_draft: queryOnly("Firmen-ID + zu ändernde Felder als JSON: { id_uuid, full_legal_name?, street?, house_number?, postal_code?, city?, email_address?, phone_number?, iban?, bic_swift?, payment_term?, language? }"),
-  update_contact_draft: queryOnly("Kontakt-ID + zu ändernde Felder als JSON: { id_uuid, first_name?, last_name?, email_address?, phone_number?, street?, city?, opt_in_marketing?, opt_in_social_media?, opt_in_direct_message?, opt_in_sms?, opt_in_phone? }"),
+  update_contact_draft: queryOnly("Kontakt-ID + zu ändernde Felder als JSON: { id_uuid, first_name?, last_name?, email_address?, phone_number?, street?, city?, opt_in_marketing?, opt_in_social_media?, opt_in_direct_message?, opt_in_sms?, opt_in_phone? }. full_legal_name wird bei Namensänderung automatisch neu berechnet."),
  // G4 : Notizen-Vollverwaltung
   list_notes: queryOnly("Filter als JSON: { entity_type?: 'contact'|'company', entity_id_uuid?, search?, limit? }"),
   update_note: queryOnly("Notiz-ID + Felder als JSON: { id_uuid, note_text?, priority? }"),

@@ -1258,10 +1258,21 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       // undefined-Felder weg, damit nichts auf NULL überschrieben wird).
       const keys = Object.keys(parsed).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k));
       if (keys.length === 0) throw new Error("No valid fields to update");
+      // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+      const recomputeFullLegalName = (curFirst: unknown, curLast: unknown): void => {
+        const first = keys.includes("first_name") ? parsedRec.first_name : curFirst;
+        const last = keys.includes("last_name") ? parsedRec.last_name : curLast;
+        parsedRec.full_legal_name = [first, last].filter(Boolean).join(" ").trim();
+        keys.push("full_legal_name");
+      };
       const hasLabels = keys.includes("labels");
       if (isUsingFallback) {
         const contact = fallbackStore.contacts.find((c) => c.id_uuid === idUuid);
         if (!contact) throw new Error(`Contact ${idUuid} not found`);
+        // Bestandswerte aus dem Store-Kontakt für die Neuberechnung
+        if (keys.includes("first_name") || keys.includes("last_name")) {
+          recomputeFullLegalName(contact.first_name, contact.last_name);
+        }
         // Dual-Store-Parität: gleiche Feldmenge wie der DB-Zweig (Allowlist).
         for (const k of keys) {
           (contact as Record<string, unknown>)[k] = parsedRec[k];
@@ -1272,6 +1283,15 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         await mcpAudit(tenantId, "UPDATE", "CONTACT", idUuid, `MCP: Kontakt aktualisiert: ${(contact as { full_legal_name?: string }).full_legal_name || idUuid} (Felder: ${keys.join(", ")})`);
         return contact;
       } else {
+        // Bestandswerte aus der DB für die Neuberechnung
+        if (keys.includes("first_name") || keys.includes("last_name")) {
+          const nameRes = await pool.query(
+            "SELECT first_name, last_name FROM core_registry_contacts WHERE id_uuid = $1 AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1'))",
+            [idUuid, tenantId]
+          );
+          const cur = nameRes.rows[0] || {};
+          recomputeFullLegalName(cur.first_name, cur.last_name);
+        }
         // labels → labels_json (DB-Spalte); im Fallback direkt labels (Array)
         const dbKeys = hasLabels ? [...keys.filter((k) => k !== "labels"), "labels_json"] : keys;
         const setSql = dbKeys.map((k, idx) => `${k} = $${idx + 3}`).join(", ");
