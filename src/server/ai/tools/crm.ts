@@ -1743,12 +1743,20 @@ export async function executeUpdateDraftContact(
       ["bic_swift", "bic_swift"],
       ["payment_term", "payment_term"],
       ["price_list", "price_list"],
-      ["custom_documents", "custom_documents"]
+      ["custom_documents", "custom_documents"],
+      ["responsible_person", "responsible_person"],
+      // company_id ist nach dem Preprocess normalisiert (deckt
+      // associated_company_id UND company_id ab — Alias-Parität create↔update).
+      ["associated_company_id", "company_id"]
     ];
     for (const [dbCol, argKey] of fieldMap) {
       if (args[argKey] !== undefined && args[argKey] !== null) {
         updates[dbCol] = args[argKey];
       }
+    }
+    // labels → labels_json (DB-Spalte), Fallback hält labels (Array) + labels_json konsistent
+    if (args.labels !== undefined) {
+      updates.labels = args.labels;
     }
     // G1: Opt-in-Felder (boolean — false darf explizit gesetzt werden)
     const optInMap: Array<[string, string]> = [
@@ -1783,16 +1791,24 @@ export async function executeUpdateDraftContact(
     if (isUsingFallback) {
       const idx = (fallbackStore.contacts || []).findIndex(c => c.id_uuid === contactId);
       if (idx === -1) throw new Error(`Kontakt ${contactId} nicht gefunden.`);
-      fallbackStore.contacts[idx] = {
+      const merged: Record<string, unknown> = {
         ...fallbackStore.contacts[idx],
         ...updates,
         updated_at_utc: new Date().toISOString(),
         is_verified_by_human: false
       };
+      // labels_json konsistent zum labels-Array halten (Fallback-Format)
+      if (updates.labels !== undefined) merged.labels_json = JSON.stringify(updates.labels);
+      fallbackStore.contacts[idx] = merged as typeof fallbackStore.contacts[number];
       saveFallbackStore();
     } else {
-      const setClause = Object.keys(updates).map((col, i) => `${col} = $${i + 1}`).join(", ");
-      const values = [...Object.values(updates), contactId, tenantId];
+      // labels → labels_json (DB-Spalte existiert, labels nicht)
+      const dbUpdates: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(updates)) {
+        dbUpdates[k === "labels" ? "labels_json" : k] = k === "labels" ? JSON.stringify(v) : v;
+      }
+      const setClause = Object.keys(dbUpdates).map((col, i) => `${col} = $${i + 1}`).join(", ");
+      const values = [...Object.values(dbUpdates), contactId, tenantId];
       const res = await pool.query(
         `UPDATE core_registry_contacts SET ${setClause}, updated_at_utc = CURRENT_TIMESTAMP, is_verified_by_human = false
          WHERE id_uuid = $${values.length - 1} AND (tenant_id = $${values.length} OR tenant_id = '1')`,
@@ -1860,6 +1876,7 @@ export async function executeCreateDraftContact(
       last_name: args.last_name,
       full_legal_name: fullName,
       salutation: args.salutation || null,
+      responsible_person: args.responsible_person || null,
       gender_identity: args.gender_identity || null,
       date_of_birth: args.date_of_birth || null,
       region: args.region || null,
@@ -1874,8 +1891,9 @@ export async function executeCreateDraftContact(
       fax_number: args.fax_number || null,
       mobile_number: args.mobile_number || null,
       language: args.language || "de",
-      labels: [],
-      labels_json: "[]",
+      // labels aus Args (Agent kann Labels setzen, konsistent mit MCP/UI)
+      labels: args.labels ?? [],
+      labels_json: JSON.stringify(args.labels ?? []),
  // G1 : Opt-ins aus Args (Default false), nicht mehr hart false
       opt_in_marketing: args.opt_in_marketing ?? false,
       opt_in_social_media: args.opt_in_social_media ?? false,
@@ -1919,17 +1937,24 @@ export async function executeCreateDraftContact(
       await pool.query(`
         INSERT INTO core_registry_contacts (
           id_uuid, tenant_id, first_name, last_name, full_legal_name, salutation,
-          street, house_number, city, postal_code, email_address, phone_number,
-          associated_company_id, language,
+          responsible_person, gender_identity, date_of_birth, region, street, house_number, city, postal_code,
+          email_address, email_2, website, phone_number, fax_number, mobile_number,
+          associated_company_id, language, labels_json,
           opt_in_marketing, opt_in_social_media, opt_in_direct_message, opt_in_sms, opt_in_phone,
+          tax_vat_id, iban, bic_swift, payment_term, price_list, custom_documents,
           created_by_identity, ai_confidence_score, is_verified_by_human
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
       `, [
         id, tenantId, args.first_name || null, args.last_name, fullName, args.salutation || null,
-        args.street || null, args.house_number || null, args.city || null, args.postal_code || null, args.email_address || null, args.phone_number || null,
-        resolvedCompanyId, args.language || "de",
+        args.responsible_person || null, args.gender_identity || null, args.date_of_birth || null, args.region || null,
+        args.street || null, args.house_number || null, args.city || null, args.postal_code || null,
+        args.email_address || null, args.email_2 || null, args.website || null,
+        args.phone_number || null, args.fax_number || null, args.mobile_number || null,
+        resolvedCompanyId, args.language || "de", JSON.stringify(args.labels ?? []),
         args.opt_in_marketing ?? false, args.opt_in_social_media ?? false, args.opt_in_direct_message ?? false, args.opt_in_sms ?? false, args.opt_in_phone ?? false,
+        args.tax_vat_id || null, args.iban || null, args.bic_swift || null,
+        args.payment_term || "14", args.price_list || null, args.custom_documents || null,
         "ai_assistant", 0.95, false
       ]);
     }

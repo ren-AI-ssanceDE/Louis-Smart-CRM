@@ -12,6 +12,7 @@ import {
   CreateContactArgsZodSchema,
   CreateInvoiceArgsZodSchema,
   CreateOfferArgsZodSchema,
+  UpdateContactArgsZodSchema,
 } from "../ai/tools/types.js";
 import { executeListCompanies, executeListContacts, executeListInvoices } from "../ai/tools/crm.js";
 import {
@@ -173,14 +174,40 @@ export const MCP_TOOLS_CATALOG = [
   },
   {
     name: "crm_create_contact",
-    description: "Anlegen eines Ansprechpartners",
+    description: "Anlegen eines Ansprechpartners (alle Felder wie manuelle Anlage)",
     inputSchema: {
       type: "object",
       properties: {
-        first_name: { type: "string" },
-        last_name: { type: "string" },
-        email_address: { type: "string" },
-        phone_number: { type: "string" },
+        first_name: { type: "string", description: "Vorname" },
+        last_name: { type: "string", description: "Nachname (Pflicht)" },
+        responsible_person: { type: "string", description: "Verantwortliche Person" },
+        salutation: { type: "string", description: "Anrede (z. B. Herr/Frau)" },
+        gender_identity: { type: "string", description: "Geschlechtsidentität" },
+        date_of_birth: { type: "string", description: "Geburtsdatum (YYYY-MM-DD)" },
+        region: { type: "string", description: "Region" },
+        street: { type: "string", description: "Straße" },
+        house_number: { type: "string", description: "Hausnummer" },
+        postal_code: { type: "string", description: "Postleitzahl" },
+        city: { type: "string", description: "Ort" },
+        email_address: { type: "string", description: "E-Mail-Adresse" },
+        email_2: { type: "string", description: "Zweite E-Mail-Adresse" },
+        website: { type: "string", description: "Webseite" },
+        phone_number: { type: "string", description: "Telefonnummer" },
+        fax_number: { type: "string", description: "Faxnummer" },
+        mobile_number: { type: "string", description: "Mobilnummer" },
+        language: { type: "string", description: "Sprache (Default: de)" },
+        labels: { type: "array", items: { type: "string" }, description: "Labels (Array oder kommagetrennter String)" },
+        opt_in_marketing: { type: "boolean", description: "Marketing-Opt-in" },
+        opt_in_social_media: { type: "boolean", description: "Social-Media-Opt-in" },
+        opt_in_direct_message: { type: "boolean", description: "Direktnachricht-Opt-in" },
+        opt_in_sms: { type: "boolean", description: "SMS-Opt-in" },
+        opt_in_phone: { type: "boolean", description: "Telefon-Opt-in" },
+        tax_vat_id: { type: "string", description: "USt-IdNr." },
+        iban: { type: "string", description: "IBAN" },
+        bic_swift: { type: "string", description: "BIC/SWIFT" },
+        payment_term: { type: "string", description: "Zahlungsziel" },
+        price_list: { type: "string", description: "Preisliste" },
+        custom_documents: { type: "string", description: "Custom-Dokumente" },
         associated_company_id: { type: "string", description: "UUID des verknüpften Unternehmens" }
       },
       required: ["last_name"]
@@ -188,15 +215,41 @@ export const MCP_TOOLS_CATALOG = [
   },
   {
     name: "crm_update_contact",
-    description: "Bearbeiten eines Ansprechpartners",
+    description: "Bearbeiten eines Ansprechpartners (nur gesendete Felder werden geändert; labels: [] leert die Labels)",
     inputSchema: {
       type: "object",
       properties: {
-        id_uuid: { type: "string" },
+        id_uuid: { type: "string", description: "UUID des Kontakts (Pflicht)" },
         first_name: { type: "string" },
         last_name: { type: "string" },
+        responsible_person: { type: "string" },
+        salutation: { type: "string" },
+        gender_identity: { type: "string" },
+        date_of_birth: { type: "string", description: "YYYY-MM-DD" },
+        region: { type: "string" },
+        street: { type: "string" },
+        house_number: { type: "string" },
+        postal_code: { type: "string" },
+        city: { type: "string" },
         email_address: { type: "string" },
+        email_2: { type: "string" },
+        website: { type: "string" },
         phone_number: { type: "string" },
+        fax_number: { type: "string" },
+        mobile_number: { type: "string" },
+        language: { type: "string" },
+        labels: { type: "array", items: { type: "string" }, description: "Labels ersetzen; [] leert" },
+        opt_in_marketing: { type: "boolean" },
+        opt_in_social_media: { type: "boolean" },
+        opt_in_direct_message: { type: "boolean" },
+        opt_in_sms: { type: "boolean" },
+        opt_in_phone: { type: "boolean" },
+        tax_vat_id: { type: "string" },
+        iban: { type: "string" },
+        bic_swift: { type: "string" },
+        payment_term: { type: "string" },
+        price_list: { type: "string" },
+        custom_documents: { type: "string" },
         associated_company_id: { type: "string" }
       },
       required: ["id_uuid"]
@@ -759,15 +812,35 @@ const ALLOWED_CONTACT_UPDATE_COLUMNS = new Set([
   "first_name",
   "last_name",
   "full_legal_name",
+  "responsible_person",
+  "salutation",
+  "gender_identity",
+  "date_of_birth",
+  "region",
+  "street",
+  "house_number",
+  "postal_code",
+  "city",
   "email_address",
+  "email_2",
+  "website",
   "phone_number",
-  "associated_company_id",
+  "fax_number",
+  "mobile_number",
   "language",
+  "labels",
   "opt_in_marketing",
   "opt_in_social_media",
   "opt_in_direct_message",
   "opt_in_sms",
-  "opt_in_phone"
+  "opt_in_phone",
+  "tax_vat_id",
+  "iban",
+  "bic_swift",
+  "payment_term",
+  "price_list",
+  "custom_documents",
+  "associated_company_id"
 ]);
 
 // zentrale Zuordnung: Zentrale Mapping-Tabelle MCP-Tool-Name → Aktions-Typ.
@@ -1036,7 +1109,22 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
           [contactId, tenantId]
         );
         if (ctRes.rows.length === 0) throw new Error(`Contact ${contactId} not found`);
-        const contact = cleanLigatureHacksFromValue(cleanDbRow(ctRes.rows[0])) as { associated_company_id?: string };
+        const contact = cleanLigatureHacksFromValue(cleanDbRow(ctRes.rows[0])) as {
+          associated_company_id?: string;
+          labels_json?: string | null;
+          labels?: string[];
+        };
+        // labels als Array additiv ergänzen (Router-Parität contacts.ts);
+        // labels_json ist jsonb → pg liefert Array (kein String). Beide Fälle behandeln.
+        if (typeof contact.labels_json === "string") {
+          try {
+            contact.labels = JSON.parse(contact.labels_json) as string[];
+          } catch {
+            contact.labels = [];
+          }
+        } else if (Array.isArray(contact.labels_json)) {
+          contact.labels = contact.labels_json as string[];
+        }
 
         let company = null;
         if (contact.associated_company_id) {
@@ -1055,7 +1143,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
     case "crm_create_contact": {
       const parsed = CreateContactArgsZodSchema.parse(args);
       const idUuid = uuidv4();
- // full_legal_name ist DB-NOT-NULL — aus first/last_name zusammensetzen (wie Agent)
+// full_legal_name ist DB-NOT-NULL — aus first/last_name zusammensetzen (wie Agent)
       const fullLegalName = [parsed.first_name, parsed.last_name].filter(Boolean).join(" ").trim() || parsed.last_name || "Unbekannter Kontakt";
       const payload = {
         id_uuid: idUuid,
@@ -1063,16 +1151,35 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         full_legal_name: fullLegalName,
         first_name: parsed.first_name || null,
         last_name: parsed.last_name,
+        responsible_person: parsed.responsible_person || null,
+        salutation: parsed.salutation || null,
+        gender_identity: parsed.gender_identity || null,
+        date_of_birth: parsed.date_of_birth || null,
+        region: parsed.region || null,
+        street: parsed.street || null,
+        house_number: parsed.house_number || null,
+        postal_code: parsed.postal_code || null,
+        city: parsed.city || null,
         email_address: parsed.email_address || null,
+        email_2: parsed.email_2 || null,
+        website: parsed.website || null,
         phone_number: parsed.phone_number || null,
-        associated_company_id: parsed.company_id || parsed.associated_company_id || null,
+        fax_number: parsed.fax_number || null,
+        mobile_number: parsed.mobile_number || null,
         language: parsed.language || "de",
-        labels: [],
-        opt_in_marketing: false,
-        opt_in_social_media: false,
-        opt_in_direct_message: false,
-        opt_in_sms: false,
-        opt_in_phone: false,
+        labels: parsed.labels ?? [],
+        opt_in_marketing: parsed.opt_in_marketing ?? false,
+        opt_in_social_media: parsed.opt_in_social_media ?? false,
+        opt_in_direct_message: parsed.opt_in_direct_message ?? false,
+        opt_in_sms: parsed.opt_in_sms ?? false,
+        opt_in_phone: parsed.opt_in_phone ?? false,
+        tax_vat_id: parsed.tax_vat_id || null,
+        iban: parsed.iban || null,
+        bic_swift: parsed.bic_swift || null,
+        payment_term: parsed.payment_term || null,
+        price_list: parsed.price_list || null,
+        custom_documents: parsed.custom_documents || null,
+        associated_company_id: parsed.company_id || parsed.associated_company_id || null,
         created_by_identity: "ai_assistant" as const,
         ai_confidence_score: 1.0,
         is_verified_by_human: true,
@@ -1086,17 +1193,47 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       } else {
         await pool.query(
           `INSERT INTO core_registry_contacts (
-            id_uuid, tenant_id, full_legal_name, first_name, last_name, email_address, phone_number,
-            associated_company_id, created_by_identity, created_at_utc, updated_at_utc
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ai_assistant', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            id_uuid, tenant_id, full_legal_name, first_name, last_name, responsible_person, salutation,
+            gender_identity, date_of_birth, region, street, house_number, postal_code, city,
+            email_address, email_2, website, phone_number, fax_number, mobile_number,
+            language, labels_json, opt_in_marketing, opt_in_social_media, opt_in_direct_message, opt_in_sms, opt_in_phone,
+            tax_vat_id, iban, bic_swift, payment_term, price_list, custom_documents, associated_company_id,
+            created_by_identity, created_at_utc, updated_at_utc
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, 'ai_assistant', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           [
             idUuid,
             tenantId,
             payload.full_legal_name,
             payload.first_name,
             payload.last_name,
+            payload.responsible_person,
+            payload.salutation,
+            payload.gender_identity,
+            payload.date_of_birth,
+            payload.region,
+            payload.street,
+            payload.house_number,
+            payload.postal_code,
+            payload.city,
             payload.email_address,
+            payload.email_2,
+            payload.website,
             payload.phone_number,
+            payload.fax_number,
+            payload.mobile_number,
+            payload.language,
+            JSON.stringify(payload.labels),
+            payload.opt_in_marketing,
+            payload.opt_in_social_media,
+            payload.opt_in_direct_message,
+            payload.opt_in_sms,
+            payload.opt_in_phone,
+            payload.tax_vat_id,
+            payload.iban,
+            payload.bic_swift,
+            payload.payment_term,
+            payload.price_list,
+            payload.custom_documents,
             payload.associated_company_id,
           ]
         );
@@ -1108,21 +1245,37 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
     }
 
     case "crm_update_contact": {
-      const idUuid = (args.id_uuid || args.id || args.contact_id_uuid) as string;
+      const parsed = UpdateContactArgsZodSchema.parse(args);
+      const idUuid = parsed.id_uuid as string;
       if (!idUuid) throw new Error("id_uuid is required");
+      // company_id-Alias auf associated_company_id mappen (wie Create-Handler),
+      // damit der Alias nicht an der Allowlist vorbeiläuft.
+      const parsedRec = parsed as Record<string, unknown>;
+      if (parsedRec.company_id !== undefined && parsedRec.associated_company_id === undefined) {
+        parsedRec.associated_company_id = parsedRec.company_id;
+      }
+      // Nur gesetzte + erlaubte Felder (Partial-Update; der Preprocess lässt
+      // undefined-Felder weg, damit nichts auf NULL überschrieben wird).
+      const keys = Object.keys(parsed).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k));
+      if (keys.length === 0) throw new Error("No valid fields to update");
+      const hasLabels = keys.includes("labels");
       if (isUsingFallback) {
         const contact = fallbackStore.contacts.find((c) => c.id_uuid === idUuid);
         if (!contact) throw new Error(`Contact ${idUuid} not found`);
-        Object.assign(contact, args, { updated_at_utc: new Date().toISOString() });
+        // Dual-Store-Parität: gleiche Feldmenge wie der DB-Zweig (Allowlist).
+        for (const k of keys) {
+          (contact as Record<string, unknown>)[k] = parsedRec[k];
+        }
+        (contact as Record<string, unknown>).updated_at_utc = new Date().toISOString();
         saveFallbackStore();
         workflowEventBus.emitEvent(tenantId, "contact.updated", contact);
-        await mcpAudit(tenantId, "UPDATE", "CONTACT", idUuid, `MCP: Kontakt aktualisiert: ${contact.full_legal_name} (Felder: ${Object.keys(args).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k)).join(", ") || "keine"})`);
+        await mcpAudit(tenantId, "UPDATE", "CONTACT", idUuid, `MCP: Kontakt aktualisiert: ${(contact as { full_legal_name?: string }).full_legal_name || idUuid} (Felder: ${keys.join(", ")})`);
         return contact;
       } else {
-        const keys = Object.keys(args).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k));
-        if (keys.length === 0) throw new Error("No valid fields to update");
-        const setSql = keys.map((k, idx) => `${k} = $${idx + 3}`).join(", ");
-        const values = keys.map((k) => args[k]);
+        // labels → labels_json (DB-Spalte); im Fallback direkt labels (Array)
+        const dbKeys = hasLabels ? [...keys.filter((k) => k !== "labels"), "labels_json"] : keys;
+        const setSql = dbKeys.map((k, idx) => `${k} = $${idx + 3}`).join(", ");
+        const values = dbKeys.map((k) => (k === "labels_json" ? JSON.stringify(parsedRec.labels) : parsedRec[k]));
         const res = await pool.query(
           `UPDATE core_registry_contacts SET ${setSql}, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $1 AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1')) RETURNING *`,
           [idUuid, tenantId, ...values]

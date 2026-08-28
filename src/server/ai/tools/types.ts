@@ -268,7 +268,9 @@ export const CreateContactObjectSchema = z.object({
   payment_term: z.string().optional().nullable(),
   price_list: z.string().optional().nullable(),
   custom_documents: z.string().optional().nullable(),
- // G1 : Opt-in-Felder — boolean, optional (Default false)
+  labels: z.array(z.string().trim()).optional().nullable(),
+  responsible_person: z.string().trim().max(100).optional().nullable(),
+// G1 : Opt-in-Felder — boolean, optional (Default false)
   opt_in_marketing: z.boolean().optional().nullable(),
   opt_in_social_media: z.boolean().optional().nullable(),
   opt_in_direct_message: z.boolean().optional().nullable(),
@@ -324,7 +326,9 @@ export const CreateContactArgsZodSchema = z.preprocess((val) => {
       city,
       first_name,
       last_name,
- // G1 : Opt-in-Aliase normalisieren (true/false, "ja"/"nein", 1/0, "yes"/"no")
+      //  labels als String („a,b") oder Array normalisieren (wie UI-Formular Komma-getrennt)
+      labels: typeof obj.labels === "string" ? obj.labels.split(",").map((s) => s.trim()).filter(Boolean) : obj.labels,
+// G1 : Opt-in-Aliase normalisieren (true/false, "ja"/"nein", 1/0, "yes"/"no")
       opt_in_marketing: coerceBool(obj.opt_in_marketing ?? obj.marketing_opt_in ?? obj.newsletter_opt_in),
       opt_in_social_media: coerceBool(obj.opt_in_social_media ?? obj.social_media_opt_in),
       opt_in_direct_message: coerceBool(obj.opt_in_direct_message ?? obj.direct_message_opt_in),
@@ -353,16 +357,45 @@ export const UpdateContactArgsZodSchema = z.preprocess((val) => {
   if (typeof val === "object" && val !== null) {
     const obj = val as Record<string, unknown>;
     const id_uuid = obj.id_uuid || obj.id || obj.contact_id_uuid;
-    return {
-      ...obj,
-      id_uuid,
-      // Opt-in-Aliase normalisieren (identisch zu CreateContactArgsZodSchema)
-      opt_in_marketing: coerceBool(obj.opt_in_marketing ?? obj.marketing_opt_in ?? obj.newsletter_opt_in),
-      opt_in_social_media: coerceBool(obj.opt_in_social_media ?? obj.social_media_opt_in),
-      opt_in_direct_message: coerceBool(obj.opt_in_direct_message ?? obj.direct_message_opt_in),
-      opt_in_sms: coerceBool(obj.opt_in_sms ?? obj.sms_opt_in),
-      opt_in_phone: coerceBool(obj.opt_in_phone ?? obj.phone_opt_in ?? obj.telefon_opt_in)
-    };
+    // Create-Aliase + labels-Konvertierung + full_name-Aufteilung
+    // (OHNE first→last-Ableitung — beim Update darf nur first_name nicht last_name überschreiben).
+    // undefined-Felder werden NICHT ins Ergebnis geschrieben (Partial-Update-Sicherheit:
+    // Object.keys(args) im Update-Handler darf keine Leer-Werte enthalten → kein NULL-Überschreiben).
+    const result: Record<string, unknown> = { ...obj, id_uuid };
+    const setIfDefined = (key: string, v: unknown) => { if (v !== undefined) result[key] = v; };
+
+    setIfDefined("company_id", obj.company_id || obj.associated_company_id || obj.company_id_uuid);
+    setIfDefined("email_address", obj.email_address || obj.email || obj.mail);
+    setIfDefined("phone_number", obj.phone_number || obj.phone || obj.mobile || obj.mobile_number || obj.telefon);
+    setIfDefined("street", obj.street || obj.street_address || obj.address || obj.adresse);
+    setIfDefined("house_number", obj.house_number || obj.hausnummer);
+    setIfDefined("postal_code", obj.postal_code || obj.zip || obj.plz || obj.postleitzahl);
+    setIfDefined("city", obj.city || obj.ort || obj.stadt);
+    setIfDefined("labels", typeof obj.labels === "string" ? obj.labels.split(",").map((s) => s.trim()).filter(Boolean) : obj.labels);
+
+    const first_name = obj.first_name ? String(obj.first_name).trim() : undefined;
+    let last_name = obj.last_name ? String(obj.last_name).trim() : undefined;
+    const nameField = (obj.full_name || obj.name || obj.full_legal_name || obj.contact_name) as string | undefined;
+    if (!last_name && nameField && typeof nameField === "string" && nameField.trim()) {
+      const parts = nameField.trim().split(/\s+/);
+      if (parts.length > 1) {
+        setIfDefined("first_name", first_name || parts.slice(0, -1).join(" "));
+        last_name = parts[parts.length - 1];
+      } else {
+        last_name = parts[0];
+      }
+    }
+    setIfDefined("first_name", first_name);
+    setIfDefined("last_name", last_name);
+
+    // Opt-in-Aliase normalisieren (identisch zu CreateContactArgsZodSchema) — false explizit setzbar
+    setIfDefined("opt_in_marketing", coerceBool(obj.opt_in_marketing ?? obj.marketing_opt_in ?? obj.newsletter_opt_in));
+    setIfDefined("opt_in_social_media", coerceBool(obj.opt_in_social_media ?? obj.social_media_opt_in));
+    setIfDefined("opt_in_direct_message", coerceBool(obj.opt_in_direct_message ?? obj.direct_message_opt_in));
+    setIfDefined("opt_in_sms", coerceBool(obj.opt_in_sms ?? obj.sms_opt_in));
+    setIfDefined("opt_in_phone", coerceBool(obj.opt_in_phone ?? obj.phone_opt_in ?? obj.telefon_opt_in));
+
+    return result;
   }
   return val;
 }, CreateContactObjectSchema.partial().extend({
