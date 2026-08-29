@@ -1087,7 +1087,7 @@ export async function learnWorkflow(
     updated_at_utc: new Date().toISOString()
   };
 
-  // P1-1: trigger_config gegen das 064-Schema validieren (Feld- +
+  // 068 P1-1: trigger_config gegen das 064-Schema validieren (Feld- +
   // Operator-Whitelist). Ungültige Bedingungen verwerfen (conditions: [])
   // statt roh zu speichern — sonst rendert die UI Selects ohne passende
   // Option (verzogene/unsichtbare Bedingungen). conditions: [] bleibt
@@ -1200,7 +1200,7 @@ async function healWorkflows(tenantId: string, workflows: unknown[]): Promise<un
       }
     }
 
-    // P1-Nacharbeit: Ungültige conditions (LLM-typisch: field/operator
+    // 068 P1-Nacharbeit: Ungültige conditions (LLM-typisch: field/operator
     // außerhalb der Whitelist) lassen den Workflow im Zod-Output scheitern →
     // er VERSCHWINDET aus der Liste. Hier bereinigen (wie P1-1 beim
     // Speichern) — Altbestand wird beim Lesen repariert.
@@ -1424,7 +1424,7 @@ interface WorkflowArgs {
 }
 
 /**
- * P0-4: Neutralisiert eine Workflow-Beschreibung (Regel-7).
+ * 068 P0-4: Neutralisiert eine Workflow-Beschreibung (B-213-7).
  * Rohe User-Prompts / LLM-Strings können interne Marker enthalten (Auftrags-
  * IDs, Regel-IDs, Testbegriffe) — die dürfen nicht als workflow_description
  * in die DB (das LLM liest sie via „Learned Workflow Custom Macro-Tools").
@@ -1502,7 +1502,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
     const escaped = escapeRegExp(name);
     if (new RegExp(`\\b${escaped}\\b`).test(text)) return name;
   }
-  // FIX Regel-8 (060 P0): Natürliche-Sprache-Erkennung — echte User schreiben
+  // FIX B-059-8 (060 P0): Natürliche-Sprache-Erkennung — echte User schreiben
   // "Leg eine Notiz an", "warte 5 Sekunden", "schick eine E-Mail", nicht die
   // Tool-Namen. Vorher fiel jeder Klartext-Schritt auf crm_data_analyst zurück
   // (generisches Tool → Workflow "lief" ohne Wirkung). Deterministische
@@ -1510,7 +1510,7 @@ export function detectToolNameInText(text: string, knownTools: ReadonlySet<strin
   return detectNaturalLanguageTool(text, knownTools);
 }
 
-// FIX Regel-8: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
+// FIX B-059-8: Schlüsselbegriffe → Workflow-Tool (natürliche Sprache).
 // Reihenfolge = Priorität (spezifisch zuerst). Geprüft wird immer gegen
 // knownTools, damit keine Tools gemappt werden, die der Executor nicht kennt.
 const NATURAL_LANGUAGE_PATTERNS: Array<{ pattern: RegExp; tool: string }> = [
@@ -1651,9 +1651,17 @@ export async function buildStepChainFromText(
   }
 
   if (chain.length === 0) {
-    // Keine Marker gefunden — gesamten Text als EINEN Schritt (Tool-Erkennung)
-    const tool = detectToolNameInText(text, knownTools) || "crm_data_analyst";
-    chain.push({ tool, instruction: cleanStepInstruction(text) || fallbackInstruction });
+    // Trigger-Satz ("Wenn X, dann Y") → nur der Handlungsteil NACH "dann" ist der
+    // Schritt; der Bedingungsteil ("der zur Firma X gehört") gehört in trigger_config,
+    // NICHT in die Schritt-Instruktion — sonst löst die Ziel-Auflösung das falsche
+    // Objekt (die Firma statt des auslösenden Kontakts).
+    let stepText = text;
+    const thenMatch = text.match(/\bdann\s*[:,-]?\s*(.+)$/i);
+    if (thenMatch && thenMatch[1].trim().length > 0) {
+      stepText = thenMatch[1].trim();
+    }
+    const tool = detectToolNameInText(stepText, knownTools) || "crm_data_analyst";
+    chain.push({ tool, instruction: cleanStepInstruction(stepText) || fallbackInstruction });
   }
   return chain;
 }
@@ -1681,6 +1689,54 @@ export async function loadKnownWorkflowToolNames(): Promise<ReadonlySet<string>>
   return known;
 }
 
+/** Löst einen Firmennamen zu seiner id_uuid auf — Auflösung ausschließlich über
+ *  full_legal_name (die Spalte heißt nicht company_name); Fallback-Store + Postgres. */
+async function resolveCompanyIdByName(tenantId: string, name: string): Promise<string | null> {
+  const norm = String(name || "").trim();
+  if (!norm) return null;
+  try {
+    if (isUsingFallback || !pool) {
+      const hit = (fallbackStore.companies || []).find(
+        (c) => c.tenant_id === tenantId && String(c.full_legal_name || "").toLowerCase().includes(norm.toLowerCase())
+      );
+      return hit ? String(hit.id_uuid) : null;
+    }
+    const res = await pool.query(
+      "SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND full_legal_name ILIKE $2 LIMIT 1",
+      [tenantId, `%${norm}%`]
+    );
+    return res.rows.length > 0 ? String(res.rows[0].id_uuid) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ergänzt Trigger-Bedingungen aus dem Quelltext: "…Kontakt…, der zur Firma X gehört"
+ *  → Condition { field: "company_id", operator: "equals", value: <UUID> }. company_id
+ *  wird in enrichWorkflowPayload aus associated_company_id gemappt. Nicht auflösbare
+ *  Firmennamen → Bedingung bleibt leer (Workflow feuert global). */
+export async function enrichTriggerConditions(
+  detected: { trigger_type: "MANUAL" | "CRM_EVENT" | "TIMER"; trigger_config: Record<string, unknown> | null },
+  source: string,
+  tenantId: string
+): Promise<{ trigger_type: "MANUAL" | "CRM_EVENT" | "TIMER"; trigger_config: Record<string, unknown> | null }> {
+  const config = detected.trigger_config;
+  if (detected.trigger_type !== "CRM_EVENT" || !config) return detected;
+
+  const text = source || "";
+  const firmMatch =
+    /(?:zur|für|fuer|an|bei)\s+firma\s+["']?([^"',.;]+?)["']?\s*(?:gehört|gehören|ist|basiert|zugeordnet)?/i.exec(text) ||
+    /(?:zum|für|fuer|an|bei)\s+unternehmen\s+["']?([^"',.;]+?)["']?\s*(?:gehört|gehören|ist|basiert|zugeordnet)?/i.exec(text);
+  if (!firmMatch) return detected;
+
+  const companyId = await resolveCompanyIdByName(tenantId, firmMatch[1]);
+  if (!companyId) return detected;
+
+  const conditions = Array.isArray(config.conditions) ? (config.conditions as unknown[]) : [];
+  conditions.push({ field: "company_id", operator: "equals", value: companyId });
+  return { ...detected, trigger_config: { ...config, conditions } };
+}
+
 export async function executeLearnWorkflow(
   tenantId: string,
   argsStr: string,
@@ -1704,14 +1760,14 @@ export async function executeLearnWorkflow(
       // ("(a) Lege einen Kontakt an, (b) sende eine Mail, ...") wird Schritt für
       // Schritt zerlegt und auf Tools gemappt. Vorher: pauschal 1 crm_data_analyst-
       // Schritt (Schritt-Struktur ging verloren → Workflow "lief" ohne Wirkung).
-      // P0-4: fallbackDesc wird neutralisiert (Regel-7); source bleibt der
+      // 068 P0-4: fallbackDesc wird neutralisiert (B-213-7); source bleibt der
       // ROH-Prompt für Chain-/Trigger-Erkennung (Plan-Review-Korrektur 3/3).
       const fallbackName = "Automated AI Recipe";
       const fallbackDesc = neutralizeWorkflowDescription(argsStr);
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
-      const detected = detectTriggerFromText(source);
+      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch, inkl. Bedingungen)
+      const detected = await enrichTriggerConditions(detectTriggerFromText(source), source, tenantId);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
         message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
@@ -1721,12 +1777,12 @@ export async function executeLearnWorkflow(
 
     if (!rawArgs || typeof rawArgs !== "object") {
       const fallbackName = "Automated AI Recipe";
-      // P0-4: Beschreibung neutralisiert, source bleibt roh (s. o.)
+      // 068 P0-4: Beschreibung neutralisiert, source bleibt roh (s. o.)
       const fallbackDesc = neutralizeWorkflowDescription(argsStr);
       const source = sourceText || argsStr;
       const fallbackSeq = await buildStepChainFromText(source, tenantId, fallbackDesc);
-      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch)
-      const detected = detectTriggerFromText(source);
+      // 064 P3-2: Trigger-Hinweise aus dem Quelltext erkennen (deterministisch, inkl. Bedingungen)
+      const detected = await enrichTriggerConditions(detectTriggerFromText(source), source, tenantId);
       const res = await learnWorkflow(tenantId, fallbackName, fallbackDesc, fallbackSeq, actor, detected.trigger_type, detected.trigger_config);
       return createToolSuccess({
         message: `Workflow "${fallbackName}" wurde erfolgreich gelernt/gespeichert (${fallbackSeq.length} ${fallbackSeq.length === 1 ? "Schritt" : "Schritte"}).`,
@@ -1743,14 +1799,14 @@ export async function executeLearnWorkflow(
     const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
     let toolChain = parseStepsToToolChain(seq, knownTools);
 
-    // 061 P1-2: Deterministische Extraktion gewinnt, wenn der User-Prompt explizit
-    // nummerierte/aufgezählte Schritte enthält UND die LLM-Sequenz weniger Schritte
-    // liefert (LLM fasst gern zusammen → Schrittzahl-Varianz: mal 4, mal 5 Schritte).
-    // Der User hat die Schritte klar benannt — die Struktur kommt aus dem Prompt,
-    // nicht aus dem LLM-Zusammenfassen.
+    // Deterministische Extraktion aus dem Quelltext (der AKTUELLEN User-Nachricht)
+    // gewinnt IMMER, wenn sourceText vorhanden ist: LLM-JSON-Args können Schrittlisten
+    // aus dem Session-Kontext einschleusen (Fremdinhalt statt gelerntem Prompt); die
+    // Struktur kommt aus dem Prompt, nicht aus LLM-Zusammenfassen (061 P1-2).
+    // LLM-Args bleiben nur als Fallback, wenn kein Quelltext verfügbar ist.
     if (sourceText && sourceText.trim().length > 0) {
       const deterministicChain = await buildStepChainFromText(sourceText, tenantId, description);
-      if (deterministicChain.length > 1 && deterministicChain.length > toolChain.length) {
+      if (deterministicChain.length > 0) {
         toolChain = deterministicChain;
       }
     }
@@ -1773,8 +1829,15 @@ export async function executeLearnWorkflow(
       );
     }
 
-    const trigger_type = rawArgs.trigger_type || "MANUAL";
-    const trigger_config = rawArgs.trigger_config || null;
+    let trigger_type = rawArgs.trigger_type || "MANUAL";
+    let trigger_config = rawArgs.trigger_config || null;
+    // Trigger deterministisch aus dem Quelltext (inkl. Bedingungen) — LLM-Trigger-Args
+    // nur als Fallback bei fehlendem Quelltext (sonst Fremdinhalt möglich).
+    if (sourceText && sourceText.trim().length > 0) {
+      const detected = await enrichTriggerConditions(detectTriggerFromText(sourceText), sourceText, tenantId);
+      trigger_type = detected.trigger_type;
+      trigger_config = detected.trigger_config;
+    }
     const direct_send_email = !!rawArgs.direct_send_email;
     const is_active = rawArgs.is_active !== undefined ? !!rawArgs.is_active : true;
     const skill_description = rawArgs.skill_description || "";

@@ -55,18 +55,62 @@ export const WORKFLOW_EXECUTOR_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 // FIX B-059-3 (060 P0): Erkennt WAIT-Schritte, die als ACTION-Tool gelernt wurden
 // (learn_workflow speichert "wait"/"delay" als tool_identifier statt als WAIT-Knoten).
-// Exportiert (P P1-1): workflowExecutor nutzt sie im Resume-Pfad (WAIT-Sprung).
+// Exportiert (061 P1-1): workflowExecutor nutzt sie im Resume-Pfad (WAIT-Sprung).
 export function isWaitToolNode(node: IWorkflowNode): boolean {
   const t = String(node.tool_identifier || "").toLowerCase();
   return t === "wait" || t === "delay" || t === "executewait" || t === "executedelay"
     || t.includes("wait") || t.includes("delay");
 }
 
-// P1-1: Ziel-Entität aus der natürlichen Sprache auflösen (Kontakt/Firma per
+// 061 P1-1: Ziel-Entität aus der natürlichen Sprache auflösen (Kontakt/Firma per
 // Name oder E-Mail → UUID). Workflows werden in natürlicher Sprache gelernt
 // ("am Testkontakt", "an den Kontakt mit der E-Mail X") — ohne Auflösung kann
 // der Schema-Synthesizer keine contact_id_uuid/company_id_uuid erzeugen und der
 // Schritt scheitert still. Deterministisch per DB-Suche, KEIN LLM.
+/**
+ * Event-Subjekt (initial_payload) als Workflow-Ziel auflösen — greift, wenn die
+ * Instruktion keinen expliziten Namen/keine ID nennt: "Wenn ein Kontakt angelegt
+ * wird, lege eine Notiz am Kontakt an" → der auslösende Kontakt ist das Ziel.
+ * Kontakt-Payload (contact.created): first_name/email_address + id_uuid.
+ * Firma: company_id/associated_company_id (contact.created) oder company.created-Payload
+ * (id_uuid + full_legal_name + short_code/street).
+ */
+function resolvePayloadTarget(
+  state: Record<string, unknown> | undefined,
+  hasContactRef: boolean,
+  hasCompanyRef: boolean
+): { contact_id_uuid?: string; company_id_uuid?: string } | null {
+  const rawPayload = state && typeof state === "object" ? state.initial_payload : undefined;
+  const payload =
+    rawPayload && typeof rawPayload === "object"
+      ? (rawPayload as Record<string, unknown>)
+      : null;
+  if (!payload) return null;
+  if (hasContactRef && !hasCompanyRef) {
+    const isContact =
+      typeof payload.first_name === "string" || typeof payload.email_address === "string";
+    if (isContact && typeof payload.id_uuid === "string") {
+      return { contact_id_uuid: payload.id_uuid };
+    }
+  }
+  if (hasCompanyRef) {
+    const companyId =
+      typeof payload.company_id === "string"
+        ? payload.company_id
+        : typeof payload.associated_company_id === "string"
+          ? payload.associated_company_id
+          : null;
+    if (companyId) return { company_id_uuid: companyId };
+    const isCompanyCreated =
+      typeof payload.full_legal_name === "string" &&
+      (typeof payload.short_code === "string" || typeof payload.street === "string");
+    if (isCompanyCreated && typeof payload.id_uuid === "string") {
+      return { company_id_uuid: payload.id_uuid };
+    }
+  }
+  return null;
+}
+
 export async function resolveTargetEntityId(
   instruction: string,
   tenantId: string,
@@ -83,7 +127,7 @@ export async function resolveTargetEntityId(
   const uuidMatch = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
   if (uuidMatch) return { hint };
 
-  // P1-1: Vorherige Schritt-Ergebnisse durchsuchen — wenn ein früherer Schritt
+  // 061 P1-1: Vorherige Schritt-Ergebnisse durchsuchen — wenn ein früherer Schritt
   // einen Kontakt/Firma angelegt hat (z.B. "lege einen Kontakt an" als Schritt 1),
   // steht dessen ID in node_results. Dann braucht die Instruktion keinen Namen:
   // "lege eine Notiz am Kontakt ab" bezieht sich auf den gerade angelegten.
@@ -108,7 +152,8 @@ export async function resolveTargetEntityId(
 
   // E-Mail-Adresse in der Instruktion? (Kontakt- oder Firmen-Ziel)
   const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  const nameMatch = text.match(/(?:namens?|Name)\s+["']?([A-Za-zÀ-ÿ0-9 _-]{3,60})["']?/i);
+  // "namens/Name X" — Lazy-Capture + Stopp vor Satz-Rest ("an/gehört/mit/…")
+  const nameMatch = text.match(/(?:namens?|Name)\s+["']?([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 _-]*?)(?=\s+(?:mit|und|text|inhalt|an|am|bei|auf|gehört|gehören|ist|sind|wird|wurde)\b|$)/i);
 
   // Namens-Fragment: "am Testkontakt" → "Testkontakt", "an Neuer Kunde" → "Neuer Kunde",
   // "am Kontakt Test Testkunde" → "Test Testkunde" (Zielwort "Kontakt/Firma/..." überspringen)
@@ -117,17 +162,23 @@ export async function resolveTargetEntityId(
     searchTerm = emailMatch[0];
   } else if (nameMatch) {
     searchTerm = nameMatch[1].trim();
-  } else if (hasContactRef) {
+  } else if (hasContactRef || hasCompanyRef) {
     // Nach "am/an/dem/den/der" ein optionales Zielwort (Kontakt/Firma/Unternehmen/
     // Person) überspringen und erst das DARAUFFOLGENDE als Namen nehmen:
     // "am Kontakt Test Testkunde" → "Test Testkunde" (nicht "Kontakt").
     // Lazy-Capture + Stopp vor "mit/und/text/inhalt/an" (Satz-Rest nicht mitnehmen).
-    const m = text.match(/(?:am|an|dem|den|der)\s+(?:(?:die|der|das|dem|den)\s+)?(?:(?:kontakt|contact|kunde|firma|unternehmen|company|person|benutzer|user)\s+)?([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 _-]*?)(?=\s+(?:mit|und|text|inhalt|an)\b|$)/i);
-    if (m && !/^(die|der|das|einen?|eine?|einem?|einer?|diesen?|diese|diesem|seine|ihre|unseren?)\b/i.test(m[1])) {
+    const m = text.match(/(?:am|an|dem|den|der)\s+(?:(?:die|der|das|dem|den)\s+)?(?:(?:kontakt|contact|kunde|firma|unternehmen|company|person|benutzer|user)\s+)?([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 _-]*?)(?=\s+(?:mit|und|text|inhalt|an|am|bei|auf|gehört|gehören|ist|sind|wird|wurde)\b|$)/i);
+    if (m && !/^(die|der|das|einen?|eine?|einem?|einer?|diesen?|diese|diesem|seine|ihre|unseren?|an|am|auf|bei|mit|und|in|zu|zum)\b/i.test(m[1])) {
       searchTerm = m[1].trim();
     }
   }
-  if (!searchTerm) return { hint };
+  if (!searchTerm) {
+    // Kein expliziter Name/E-Mail in der Instruktion — Event-Subjekt (initial_payload)
+    // als Ziel versuchen (auslösender Kontakt/Firma bei CRM_EVENT-Workflows).
+    const payloadTarget = resolvePayloadTarget(context?.state, hasContactRef, hasCompanyRef);
+    if (payloadTarget) return { ...payloadTarget, hint };
+    return { hint };
+  }
 
   const { pool, isUsingFallback, fallbackStore } = await import("../db.js");
   try {
@@ -142,7 +193,7 @@ export async function resolveTargetEntityId(
         );
         if (c) return { contact_id_uuid: c.id_uuid, hint };
       } else {
-        // P1-1: Erst exakter Match, dann Token-Fallback (ein Wort des
+        // 061 P1-1: Erst exakter Match, dann Token-Fallback (ein Wort des
         // Suchbegriffs reicht — "Testkontakt" → "Test Testkunde").
         let res = await pool.query(
           `SELECT id_uuid FROM core_registry_contacts WHERE tenant_id = $1 AND
@@ -176,10 +227,10 @@ export async function resolveTargetEntityId(
     }
     if (hasCompanyRef) {
       if (isUsingFallback) {
-        const c = (fallbackStore.companies || []).find((x: { tenant_id?: string; company_name?: string; email_address?: string }) =>
+        const c = (fallbackStore.companies || []).find((x: { tenant_id?: string; full_legal_name?: string; email_address?: string }) =>
           x.tenant_id === tenantId && (
             (x.email_address || "").toLowerCase() === searchTerm.toLowerCase() ||
-            (x.company_name || "").toLowerCase().includes(searchTerm.toLowerCase())
+            (x.full_legal_name || "").toLowerCase().includes(searchTerm.toLowerCase())
           )
         );
         if (c) return { company_id_uuid: c.id_uuid, hint };
@@ -196,6 +247,9 @@ export async function resolveTargetEntityId(
   } catch (err) {
     console.warn(`[resolveTargetEntityId] Auflösung fehlgeschlagen (${hint}):`, err);
   }
+  // Expliziter Name ergab keinen Treffer — Event-Subjekt als letzter Fallback
+  const payloadTarget = resolvePayloadTarget(context?.state, hasContactRef, hasCompanyRef);
+  if (payloadTarget) return { ...payloadTarget, hint };
   return { hint };
 }
 
@@ -237,11 +291,11 @@ export class WorkflowGraphExecutor {
       processedInstructions = `${processedInstructions}\n\n=== RELEVANTER WISSENSKONTEXT AUS DATEN-TRESOR (RAG) ===\n${retrievedContext}\n======================================================`;
     }
 
-    // Vorgänger-Ergebnisse als deterministischen Kontext anhängen —
+    // 069 P0-1: Vorgänger-Ergebnisse als deterministischen Kontext anhängen —
     // NUR für ACTION-Nodes (Daten-Tools). Steuer-Nodes (WAIT/CONDITIONAL/
     // HUMAN_GATE) parsen ihre Instruktion deterministisch (z. B. Warte-Dauer)
     // und dürfen nicht durch Vorgänger-JSON kontaminiert werden.
-    // (Regression: WAIT-Parser las eine falsche Zahl aus dem Kontext-Block.)
+    // (Regression 069→QA: WAIT-Parser las "2160000s" aus dem Kontext-Block.)
     const predecessorEntries: string[] = [];
     if (node.type === "ACTION") {
       predecessorEntries.push(...Object.entries(state.node_results || {})
@@ -883,7 +937,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         let synthesizedInstructions = instructions;
         if (needsSynthesizedArgs) {
           try {
-            // P1-1: Ziel-Entität aus natürlicher Sprache auflösen und in den
+            // 061 P1-1: Ziel-Entität aus natürlicher Sprache auflösen und in den
             // Kontext injizieren — der Synthesizer kann sonst keine
             // contact_id_uuid/company_id_uuid erzeugen.
             let synthContext: Record<string, unknown> = {
@@ -957,7 +1011,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
           // rohe Klartext-Instruktionen scheiterten still bei JSON.parse; das
           // Ziel (contact_id_uuid/company_id_uuid) wird aus der Instruktion
           // extrahiert (gleiche Logik wie im linearen workflowExecutor).
-          // P1-1: Zusätzlich die im Synthesizer-Kontext aufgelöste Ziel-ID
+          // 061 P1-1: Zusätzlich die im Synthesizer-Kontext aufgelöste Ziel-ID
           // aus vorherigen Schritten übernehmen ("lege eine Notiz am Kontakt ab"
           // nach "lege einen Kontakt an" — ohne Namensnennung).
           const { toNoteDraftJson } = await import("./workflowExecutor.js");

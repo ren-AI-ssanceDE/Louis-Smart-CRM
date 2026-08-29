@@ -2,6 +2,13 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.11] — 2026-08-29
+
+- **KI-Suche über Namen funktioniert zuverlässig:** Fragt ihr den KI-Assistenten nach einem Kontakt, einer Firma oder einer Rechnung (z. B. „Zeige mir den Kontakt Max Mustermann"), findet er den Eintrag jetzt zuverlässig — die Namenssuche nutzt das korrekte Suchfeld, auch wenn ältere Anfragen weiterhin gültig sind.
+- **Gelernte Workflows entsprechen exakt dem gelernten Ablauf:** Werden Abläufe aus dem Chat gelernt („Wenn ein Kontakt angelegt wird …"), speichert das System den Inhalt der aktuellen Anweisung — nicht mehr Inhalte aus früheren Gesprächen. Firma-Bedingungen („…der zur Firma X gehört") werden als Trigger-Bedingung übernommen.
+- **Workflow-Ziele treffen den auslösenden Eintrag:** Ein Workflow-Schritt wie „lege eine Notiz am Kontakt an" bezieht sich jetzt auf den Kontakt, der das Ereignis ausgelöst hat — die Notiz landet am richtigen Eintrag.
+- **Firmenauflösung in Workflows weiter abgesichert:** Die Zielsuche über Firmennamen („an der Firma X", „am Unternehmen Y") funktioniert in allen Betriebsmodi konsistent.
+
 ## [2.1.10] — 2026-08-29
 
 - **Firmenauflösung in automatisierten Abläufen korrigiert:** Workflows, die eine Firma anhand ihres Namens suchen, funktionieren wieder zuverlässig — die Suche nutzt jetzt das korrekte Namensfeld.

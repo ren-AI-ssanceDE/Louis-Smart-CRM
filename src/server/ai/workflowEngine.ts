@@ -1300,7 +1300,7 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
             enriched.associated_company_id = row.associated_company_id || null;
 
             if (row.associated_company_id) {
-              // Projektarbeit P0-3: company_id aus associated_company_id (Entscheidung 4) —
+              // 064 P0-3: company_id aus associated_company_id (Entscheidung 4) —
               // fehlt die Zuordnung, bleibt company_id ungesetzt → Bedingung failt.
               enriched.company_id = row.associated_company_id;
               const compRes = await pool.query(
@@ -1321,7 +1321,7 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
         const company = fallbackStore.companies.find(c => c.id_uuid === entityId);
         if (company) {
           enriched.id_uuid = company.id_uuid;
-          // Projektarbeit P0-3: company_id für Firmen-Uploads (Filter-Basis, Fallback-Modus)
+          // 064 P0-3: company_id für Firmen-Uploads (Filter-Basis, Fallback-Modus)
           enriched.company_id = company.id_uuid;
           enriched.company_name = company.full_legal_name || "";
           enriched.full_legal_name = company.full_legal_name || "";
@@ -1337,7 +1337,7 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
           if (res.rows.length > 0) {
             const row = res.rows[0];
             enriched.id_uuid = row.id_uuid;
-            // Projektarbeit P0-3: company_id/company_name für Firmen-Uploads (Filter-Basis)
+            // 064 P0-3: company_id/company_name für Firmen-Uploads (Filter-Basis)
             enriched.company_id = row.id_uuid;
             enriched.company_name = row.full_legal_name || "";
             enriched.full_legal_name = row.full_legal_name || "";
@@ -1402,6 +1402,12 @@ async function enrichWorkflowPayload(tenantId: string, eventName: string, data: 
         }
       }
     }
+  }
+
+  // Bedingungs-Feld company_id = associated_company_id (deterministisch): Conditions
+  // aus gelernten Workflows nutzen company_id (z. B. "Kontakt, der zur Firma X gehört").
+  if (enriched.associated_company_id && !enriched.company_id) {
+    enriched.company_id = enriched.associated_company_id;
   }
 
   return enriched;

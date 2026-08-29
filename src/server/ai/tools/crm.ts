@@ -686,6 +686,17 @@ export async function executeListCompanies(
       }
     }
 
+    // Abwärtskompatibilität: LLMs senden je nach Prompt-Cache noch { query: ... } statt
+    // { search: ... }; query auf search mappen statt still zu verwerfen (sonst ungefilterte
+    // Liste → falsche "nicht gefunden").
+    if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+      const argsObj = rawArgs as Record<string, unknown>;
+      if ('query' in argsObj && !('search' in argsObj)) {
+        argsObj.search = argsObj.query;
+        delete argsObj.query;
+      }
+    }
+
     const parsed = ListCompaniesInputSchema.safeParse(rawArgs);
     const input = parsed.success ? parsed.data : ListCompaniesInputSchema.parse({});
     const { search, limit, offset, detail_level } = input;
@@ -811,6 +822,17 @@ export async function executeListContacts(
         rawArgs = typeof argsStr === 'string' ? JSON.parse(argsStr) : argsStr;
       } catch {
         rawArgs = { search: argsStr };
+      }
+    }
+
+    // Abwärtskompatibilität: LLMs senden je nach Prompt-Cache noch { query: ... } statt
+    // { search: ... }; query auf search mappen statt still zu verwerfen (sonst ungefilterte
+    // Liste → falsche "nicht gefunden").
+    if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+      const argsObj = rawArgs as Record<string, unknown>;
+      if ('query' in argsObj && !('search' in argsObj)) {
+        argsObj.search = argsObj.query;
+        delete argsObj.query;
       }
     }
 
@@ -957,6 +979,17 @@ export async function executeListInvoices(
         rawArgs = typeof argsStr === 'string' ? JSON.parse(argsStr) : argsStr;
       } catch {
         rawArgs = { search: argsStr };
+      }
+    }
+
+    // Abwärtskompatibilität: LLMs senden je nach Prompt-Cache noch { query: ... } statt
+    // { search: ... }; query auf search mappen statt still zu verwerfen (sonst ungefilterte
+    // Liste → falsche "nicht gefunden").
+    if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+      const argsObj = rawArgs as Record<string, unknown>;
+      if ('query' in argsObj && !('search' in argsObj)) {
+        argsObj.search = argsObj.query;
+        delete argsObj.query;
       }
     }
 
@@ -1745,7 +1778,7 @@ export async function executeUpdateDraftContact(
       ["price_list", "price_list"],
       ["custom_documents", "custom_documents"],
       ["responsible_person", "responsible_person"],
-      // company_id ist nach dem Preprocess normalisiert (deckt
+      // 070 B3/B6: company_id ist nach dem Preprocess normalisiert (deckt
       // associated_company_id UND company_id ab — Alias-Parität create↔update).
       ["associated_company_id", "company_id"]
     ];
@@ -1754,7 +1787,7 @@ export async function executeUpdateDraftContact(
         updates[dbCol] = args[argKey];
       }
     }
-    // labels → labels_json (DB-Spalte), Fallback hält labels (Array) + labels_json konsistent
+    // 070 B6: labels → labels_json (DB-Spalte), Fallback hält labels (Array) + labels_json konsistent
     if (args.labels !== undefined) {
       updates.labels = args.labels;
     }
@@ -1772,7 +1805,7 @@ export async function executeUpdateDraftContact(
       }
     }
 
-    // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+    // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
     if (updates.first_name !== undefined || updates.last_name !== undefined) {
       let curFirst: unknown = undefined;
       let curLast: unknown = undefined;
@@ -1821,12 +1854,12 @@ export async function executeUpdateDraftContact(
         updated_at_utc: new Date().toISOString(),
         is_verified_by_human: false
       };
-      // labels_json konsistent zum labels-Array halten (Fallback-Format)
+      // 070 B6: labels_json konsistent zum labels-Array halten (Fallback-Format)
       if (updates.labels !== undefined) merged.labels_json = JSON.stringify(updates.labels);
       fallbackStore.contacts[idx] = merged as typeof fallbackStore.contacts[number];
       saveFallbackStore();
     } else {
-      // labels → labels_json (DB-Spalte existiert, labels nicht)
+      // 070 B6: labels → labels_json (DB-Spalte existiert, labels nicht)
       const dbUpdates: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(updates)) {
         dbUpdates[k === "labels" ? "labels_json" : k] = k === "labels" ? JSON.stringify(v) : v;
@@ -1915,7 +1948,7 @@ export async function executeCreateDraftContact(
       fax_number: args.fax_number || null,
       mobile_number: args.mobile_number || null,
       language: args.language || "de",
-      // labels aus Args (Agent kann Labels setzen, konsistent mit MCP/UI)
+      // 070 B1: labels aus Args (Agent kann Labels setzen, konsistent mit MCP/UI)
       labels: args.labels ?? [],
       labels_json: JSON.stringify(args.labels ?? []),
  // G1 : Opt-ins aus Args (Default false), nicht mehr hart false

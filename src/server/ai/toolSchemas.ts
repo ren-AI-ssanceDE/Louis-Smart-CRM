@@ -22,15 +22,38 @@ const queryOnly = (description: string): ToolJsonSchema => ({
   additionalProperties: false
 });
 
+// Listen-Tools: search-basiertes Schema — Feldnamen MÜSSEN mit den
+// List*InputSchema-Definitionen in src/server/ai/tools/types.ts übereinstimmen (search, limit,
+// offset, payment_status). queryOnly zwang das LLM zu {query}, der Executor erwartet {search}
+// → stille Fehl-Suche. search bleibt optional (Liste ohne Filter weiterhin erlaubt).
+const searchListSchema = (description: string): ToolJsonSchema => ({
+  type: "object",
+  properties: {
+    search: { ...stringSchema, description },
+    limit: { type: "integer", description: "optional" },
+    offset: { type: "integer", description: "optional" }
+  },
+  additionalProperties: false
+});
+
 // ---------------------------------------------------------------------------
 // Parameter-Schemas je Tool (Name → Schema). Tools ohne Eintrag nutzen den
 // Fallback { type: "object" } in buildNativeTools.
 // ---------------------------------------------------------------------------
 export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
-  // CRM READ — Suchabfrage als query-String
-  list_companies: queryOnly("Suchbegriff (Name, Ort, USt-ID) als Freitext, optional mit limit/offset als JSON: { search, limit, offset }"),
-  list_contacts: queryOnly("Suchbegriff (Name, E-Mail, Firma) als Freitext, optional mit limit/offset als JSON: { search, limit, offset }"),
-  list_invoices: queryOnly("Filter als JSON: { search, limit, offset, payment_status } oder Suchbegriff"),
+  // CRM READ — Suchabfrage als query-String (queryOnly-Tools) bzw. search (Listen-Tools, 076)
+  list_companies: searchListSchema("Suchbegriff (Name, Ort, USt-ID) als Freitext; optional limit/offset"),
+  list_contacts: searchListSchema("Suchbegriff (Name, E-Mail, Firma) als Freitext; optional limit/offset"),
+  list_invoices: {
+    type: "object",
+    properties: {
+      search: { ...stringSchema, description: "Suchbegriff (Rechnungsnummer, Firma, Betrag) als Freitext" },
+      payment_status: { type: "string", description: "optional: draft|issued|paid|cancelled|overdue|pending" },
+      limit: { type: "integer", description: "optional" },
+      offset: { type: "integer", description: "optional" }
+    },
+    additionalProperties: false
+  },
   crm_data_analyst: queryOnly("Analyse-Auftrag als Freitext (z. B. 'Angebotslage: wie viele angenommen?')"),
  // P1-2: Alias sichtbar im Katalog — gleiche Parameter wie crm_data_analyst
   data_architect: queryOnly("Analyse-Auftrag als Freitext (z. B. 'Angebotslage: wie viele angenommen?')"),

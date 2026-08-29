@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.11: Zuverlässige KI-Suche & präzise Workflow-Ziele
+
+Mit **2.1.11** findet der KI-Assistent Kontakte, Firmen und Rechnungen zuverlässig über die Namenssuche, und gelernte Workflows treffen exakt die richtigen Einträge: Von „Zeige mir den Kontakt Max Mustermann" bis „lege eine Notiz am Kontakt an" — Antworten und Aktionen stimmen jetzt mit dem tatsächlichen Datenbestand überein.
+
+**Was sich verbessert:** Bisher konnte die Namenssuche im Chat Einträge übersehen, gelernte Workflows gelegentlich Inhalte aus früheren Gesprächen übernehmen und Schritte ohne Zielangabe enden. Das ist behoben — gelernte Abläufe entsprechen der Anweisung, Bedingungen wie „der zur Firma X gehört" werden als Trigger-Bedingung übernommen, und Workflow-Schritte treffen den auslösenden Eintrag.
+
 ## 🚀 Release v2.1.10: Zuverlässige Firmenauflösung in automatisierten Abläufen
 
 Mit **2.1.10** funktioniert die Suche nach einer Firma in automatisierten Abläufen wieder zuverlässig: Workflows, die ein Unternehmen anhand seines Namens ermitteln, finden es jetzt korrekt — die Auflösung nutzt das richtige Namensfeld.
