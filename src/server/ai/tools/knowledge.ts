@@ -1563,7 +1563,7 @@ function detectNaturalLanguageTool(text: string, knownTools: ReadonlySet<string>
 
 /**
  * Wandelt Workflow-Schritte aus beliebigem LLM-Format in eine tool_chain_sequence um
- * (Auftrag 058, Regel provider-neutral):
+ * (provider-neutral):
  * - Array von { tool, instruction | description } → 1:1 (inkl. Schritt-Präfix-Regex)
  * - String (nummerierte Liste „1. …\n2. …“) → Zeilen splitten, Tool-Namen erkennen,
  *   ohne erkennbares Tool → crm_data_analyst
@@ -1738,7 +1738,7 @@ export async function executeLearnWorkflow(
     const description = rawArgs.workflow_description || rawArgs.description || name;
     
     // Parse tool chain sequence — Array (tool_chain_sequence/tool_chain/sequence)
-    // ODER steps als Array/nummerierter String (Auftrag 058, provider-neutral).
+    // ODER steps als Array/nummerierter String (provider-neutral).
     const knownTools = await loadKnownWorkflowToolNames();
     const seq = rawArgs.tool_chain_sequence || rawArgs.tool_chain || rawArgs.sequence || rawArgs.steps || [];
     let toolChain = parseStepsToToolChain(seq, knownTools);

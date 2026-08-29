@@ -186,7 +186,7 @@ export async function resolveTargetEntityId(
       } else {
         const res = await pool.query(
           `SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND
-             (LOWER(email_address) = LOWER($2) OR LOWER(company_name) LIKE LOWER($3))
+             (LOWER(email_address) = LOWER($2) OR LOWER(full_legal_name) LIKE LOWER($3))
            LIMIT 1`,
           [tenantId, searchTerm, `%${searchTerm}%`]
         );

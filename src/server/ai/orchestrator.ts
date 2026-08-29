@@ -495,8 +495,8 @@ export function detectWorkflowStartIntent(
 }
 
 /**
- * 067 P1-Fix: Erkennt Workflow-LERN-Absicht deterministisch (0 Token, reine
- * Regex — 063-Muster, KEIN LLM). Analog detectWorkflowStartIntent (061-P1-2).
+ * Erkennt Workflow-LERN-Absicht deterministisch (0 Token, reine
+ * Regex, KEIN LLM). Analog detectWorkflowStartIntent.
  * Löst das Varianz-Problem: Bei „neuer Workflow / lerne / merke dir als
  * Workflow" + Wenn-Dann-Logik wählt das LLM teils vault_write (Memory) statt
  * learn_workflow → Workflow wird nie angelegt. Die Regex priorisiert die

@@ -880,7 +880,7 @@ export class AgentRuntime {
     const dateIsoStr = temporalAnchor;
 
     // Workflow- und MCP-Tools GENAU EINMAL laden (nicht pro Iteration — Voraussetzung für Cache-Hits)
-    // FIX Regel-3 (Auftrag 060): getLearnedWorkflows statt searchRelevantSkills —
+    // getLearnedWorkflows statt searchRelevantSkills —
     // die Skill-Suche matcht "Starte X" nicht (Query ≠ workflow_name, Keyword-ILIKE
     // greift nicht) und liefert ohne Embedding nichts → gelernte Workflows
     // erschienen NIE im Prompt → Louis erfand die Ausführungsmeldung.
@@ -1233,8 +1233,8 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
       }
 
       // ============================================================================
-      // 067 P1-Kern (Korrektur 3): Deterministischer learn_workflow-Dispatch —
-      // analog detectWorkflowStartIntent (061-P1-2). Wenn der Prompt eine
+      // Deterministischer learn_workflow-Dispatch —
+      // analog detectWorkflowStartIntent. Wenn der Prompt eine
       // Workflow-LERN-Absicht hat („neuer Workflow", „lerne als Workflow",
       // Wenn-Dann-Logik), wird learn_workflow DIREKT ausgeführt — die
       // LLM-Entscheidung über die Tool-Wahl entfällt (Varianz: mal vault_write,
@@ -1261,7 +1261,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
             context.tenantId,
             learnQuery,
             context.userId || "ai_assistant",
-            context.userMessage // sourceText: deterministische Chain-Extraktion (064-P3-Fallback)
+            context.userMessage // sourceText: deterministische Chain-Extraktion (Fallback)
           );
           const resultText = learnResult && typeof learnResult === "object" && "success" in learnResult
             ? (learnResult as { success: boolean; data?: unknown; error?: string }).success
@@ -1367,7 +1367,7 @@ ${context.attachments && context.attachments.length > 0 ? `\n## Angehängte Date
         // unwrappen, bevor sie an den Provider gehen (DeepSeek-HTTP-400-Schutz).
         const nativeToolDecls = useNativeTools ? normalizeToolSchemas([
           ...buildNativeTools(allCatalogTools),
-          // FIX Regel-3 (Auftrag 060): gelernte Workflows ALS NATIVE TOOLS deklarieren —
+          // gelernte Workflows ALS NATIVE TOOLS deklarieren —
           // vorher nur Prompt-Text → im strikt nativen Modus nicht aufrufbar → Louis
           // halluzinierte "wurde gestartet". Dispatch (workflow_-Prefix) + Executor
           // existierten bereits (agentRuntime Z.2749, executeWorkflowMacro).

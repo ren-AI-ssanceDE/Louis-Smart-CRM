@@ -2,6 +2,10 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.10] — 2026-08-29
+
+- **Firmenauflösung in automatisierten Abläufen korrigiert:** Workflows, die eine Firma anhand ihres Namens suchen, funktionieren wieder zuverlässig — die Suche nutzt jetzt das korrekte Namensfeld.
+
 ## [2.1.9] — 2026-08-28
 
 - **Anzeigename wird bei Namensänderungen synchron gehalten:** Ändert ihr Vor- oder Nachnamen eines Kontakts, wird der Anzeigename automatisch mitgeführt — in der Oberfläche, über Schnittstellen und in automatisierten Abläufen.

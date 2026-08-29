@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.10: Zuverlässige Firmenauflösung in automatisierten Abläufen
+
+Mit **2.1.10** funktioniert die Suche nach einer Firma in automatisierten Abläufen wieder zuverlässig: Workflows, die ein Unternehmen anhand seines Namens ermitteln, finden es jetzt korrekt — die Auflösung nutzt das richtige Namensfeld.
+
+**Was sich verbessert:** Bisher schlug die Firmensuche in bestimmten automatisierten Abläufen fehl, wodurch Schritte ohne Zielangabe enden konnten. Das ist behoben.
+
 ## 🚀 Release v2.1.9: Anzeigename folgt Namensänderungen zuverlässig
 
 Mit **2.1.9** bleibt der Anzeigename eines Kontakts immer konsistent: **Ändert ihr Vor- oder Nachnamen — in der Oberfläche, über eine Schnittstelle oder in einem automatisierten Ablauf — wird der Anzeigename automatisch neu zusammengesetzt.** Namenskorrekturen sind damit überall sichtbar, nicht nur in den Einzelfeldern.
