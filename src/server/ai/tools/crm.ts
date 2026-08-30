@@ -1805,7 +1805,7 @@ export async function executeUpdateDraftContact(
       }
     }
 
-    // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+    // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
     if (updates.first_name !== undefined || updates.last_name !== undefined) {
       let curFirst: unknown = undefined;
       let curLast: unknown = undefined;
