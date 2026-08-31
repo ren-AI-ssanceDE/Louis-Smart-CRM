@@ -126,17 +126,22 @@ export type ToolResultClass = "success" | "error" | "unknown";
  */
 export function classifyToolResult(toolName: string, result: unknown): ToolResultClass {
   void toolName;
+  // MCP-Fehler ('MCP Error (Server): …', 'mcp-error: …', 'MCP-Fehler …'),
+  // Tool-Fehler ('Tool execution failed: …') und unbekannte Tools ('Unknown tool: …')
+  // wurden als success klassifiziert → No-Progress-Guardrail griff nicht → LLM halluzinierte
+  // Erfolg mit erfundener ID. Nur PRÄFIX-Matching (Fail-open: Thema-Erwähnung bleibt success).
+  const ERROR_PREFIX_RE = /^(fehler|error|❌|failed|failure|mcp(\s|-)?error|mcp-fehler|tool\s+execution\s+failed|unknown\s+tool)/i;
   if (typeof result === "string") {
     const t = result.trim().toLowerCase();
     if (t.length === 0) return "unknown";
-    if (/^(fehler|error|❌|failed|failure)/i.test(t)) return "error";
+    if (ERROR_PREFIX_RE.test(t)) return "error";
     return "success";
   }
   if (typeof result === "object" && result !== null) {
     const r = result as Record<string, unknown>;
     if (r.success === false || r.ok === false) return "error";
     if (typeof r.error === "string" && r.error.length > 0) return "error";
-    if (typeof r.result === "string" && /^(fehler|error|❌)/i.test(r.result)) return "error";
+    if (typeof r.result === "string" && ERROR_PREFIX_RE.test(r.result.trim().toLowerCase())) return "error";
     if (r.success === true || r.ok === true) return "success";
   }
   return "unknown";

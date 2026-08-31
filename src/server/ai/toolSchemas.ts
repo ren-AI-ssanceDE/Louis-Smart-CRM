@@ -9,6 +9,7 @@
 
 export type ToolJsonSchema = {
   type: "object";
+  description?: string;
   properties?: Record<string, unknown>;
   required?: string[];
   additionalProperties?: boolean;
@@ -90,6 +91,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
   finalize_and_send_offer: queryOnly("Angebots-ID als JSON: { offer_id_uuid } oder UUID-String"),
   send_smtp_email: {
     type: "object",
+    description: "Erstellt einen E-Mail-ENTWURF zur Freigabe (GoBD-Human-in-the-loop) — sendet NICHT direkt. Bei unvollständigen Empfängerdaten entsteht ein Dashboard-Draft. Für E-Mail-Aufträge dieses Tool nutzen, NICHT externe gmail_*-Tools (Schema weicht ab, to als Array).",
     properties: {
       to: { type: "string", description: "Empfänger-E-Mail-Adresse" },
       subject: { type: "string", description: "Betreff" },

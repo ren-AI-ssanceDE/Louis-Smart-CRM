@@ -500,7 +500,7 @@ export const SYSTEM_TOOL_CATALOG: DefinedToolDescriptor[] = [
   { name: "update_invoice_draft", desc: "'update_invoice_draft': Aktualisiert eine bestehende Rechnung (Partial-Update, z. B. payment_status, due_date, Beträge). Query JSON: { id_uuid, payment_status?, due_date?, ... }", domain: 'CRM_WRITE' },
   { name: "update_offer_draft", desc: "'update_offer_draft': Aktualisiert ein bestehendes Angebot (Partial-Update). Query JSON: { id_uuid, title?, valid_until?, payment_term?, ... }", domain: 'CRM_WRITE' },
   { name: "finalize_and_send_offer", desc: "'finalize_and_send_offer': Finalisiert ein Angebot und generiert das PDF.", domain: 'CRM_WRITE' },
-  { name: "send_smtp_email", desc: "'send_smtp_email': Erstellt einen E-Mail-Entwurf zur Freigabe.", domain: 'CRM_WRITE' },
+  { name: "send_smtp_email", desc: "'send_smtp_email': Erstellt einen E-Mail-ENTWURF zur Freigabe (GoBD-Human-in-the-loop) — sendet NICHT direkt. Bei unvollständigen Empfängerdaten entsteht ein Dashboard-Draft unter 'E-Mail-Entwürfe'. NUTZE DIESES Tool für E-Mail-Aufträge — verwende NICHT externe gmail_*-Tools (deren Schema weicht ab, z. B. to als Array, und erzeugt Fehler).", domain: 'CRM_WRITE' },
  // G7 : E-Mail-Entwürfe abrufen
   { name: "list_mail_drafts", desc: "'list_mail_drafts': Listet E-Mail-Entwürfe. Query JSON: { status?: 'PENDING'|'APPROVED'|'REJECTED', recipient?, limit? }", domain: 'CRM_READ' },
   

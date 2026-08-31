@@ -2,6 +2,12 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.12] — 2026-08-31
+
+- **Firma-Bedingungen in gelernten Workflows treffen exakt die genannte Firma:** Wird ein Ablauf gelernt wie „Wenn ein Kontakt angelegt wird, der zur Firma ‚Muster GmbH' gehört …“, wird jetzt der vollständige Firmenname als Bedingung übernommen — die Automatisierung greift nur beim passenden Unternehmen, nicht mehr bei einer beliebigen Firma mit ähnlichem Namen. Die Zuordnung bevorzugt zudem den exakten Namen und ist bei ähnlichen Firmennamen eindeutig.
+- **Automatisierte Anbindungen können Workflows mit den Katalog-Tool-Namen lernen:** Externe Systeme (über MCP) können Workflows jetzt mit den Namen anlegen, die ihnen die Schnittstelle selbst anbietet (z. B. „Notiz erstellen“) — intern werden diese automatisch auf die ausführbaren Abläufe übersetzt. Reine Lese-Funktionen bleiben weiterhin bewusst außen vor, damit keine Abläufe gespeichert werden, die nicht ausführbar sind.
+- **Fehlgeschlagene Aufgaben werden ehrlich gemeldet:** Schlägt ein Tool oder eine Anbindung fehl (z. B. weil eine E-Mail nicht erstellt werden konnte), meldet Louis das jetzt als Fehler — statt stillschweigend eine erfundene Erfolgsmeldung mit nicht existierender Bestätigungsnummer auszugeben. Die Beschreibung der E-Mail-Erstellung weist zudem deutlich auf den internen Entwurfs- und Freigabeprozess hin.
+
 ## [2.1.11] — 2026-08-29
 
 - **KI-Suche über Namen funktioniert zuverlässig:** Fragt ihr den KI-Assistenten nach einem Kontakt, einer Firma oder einer Rechnung (z. B. „Zeige mir den Kontakt Max Mustermann"), findet er den Eintrag jetzt zuverlässig — die Namenssuche nutzt das korrekte Suchfeld, auch wenn ältere Anfragen weiterhin gültig sind.

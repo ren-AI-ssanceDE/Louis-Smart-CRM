@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.12: Präzise Workflow-Automation & ehrliche Fehlermeldungen
+
+Mit **2.1.12** werden gelernte Workflows noch präziser und automatisierte Anbindungen flexibler: Firma-Bedingungen wie „der zur Firma Muster GmbH gehört" treffen jetzt exakt die genannte Firma, und externe Systeme können Abläufe mit den Tool-Namen lernen, die ihnen die Schnittstelle selbst anbietet. Zudem meldet Louis fehlgeschlagene Aufgaben ehrlich als Fehler, statt eine erfundene Erfolgsbestätigung auszugeben.
+
+**Was sich verbessert:** Bisher konnte eine Firma-Bedingung in einem gelernten Ablauf bei ähnlichen Firmennamen auf die falsche Firma zeigen, und automatisierte Anbindungen scheiterten, wenn sie Workflows mit den von der Schnittstelle angebotenen Tool-Namen lernen wollten. Außerdem gab Louis bei fehlgeschlagenen Schritten gelegentlich eine Erfolgsmeldung mit nicht existierender Bestätigungsnummer aus. Das ist behoben — Bedingungen treffen exakt die genannte Firma, Anbindungen lernen zuverlässig, und Fehler werden klar ausgewiesen.
+
 ## 🚀 Release v2.1.11: Zuverlässige KI-Suche & präzise Workflow-Ziele
 
 Mit **2.1.11** findet der KI-Assistent Kontakte, Firmen und Rechnungen zuverlässig über die Namenssuche, und gelernte Workflows treffen exakt die richtigen Einträge: Von „Zeige mir den Kontakt Max Mustermann" bis „lege eine Notiz am Kontakt an" — Antworten und Aktionen stimmen jetzt mit dem tatsächlichen Datenbestand überein.

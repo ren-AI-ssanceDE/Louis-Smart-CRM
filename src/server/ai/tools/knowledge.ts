@@ -1690,19 +1690,30 @@ export async function loadKnownWorkflowToolNames(): Promise<ReadonlySet<string>>
 }
 
 /** Löst einen Firmennamen zu seiner id_uuid auf — Auflösung ausschließlich über
- *  full_legal_name (die Spalte heißt nicht company_name); Fallback-Store + Postgres. */
+ *  full_legal_name (die Spalte heißt nicht company_name); Fallback-Store + Postgres.
+ *  Deterministisch: exakter Match zuerst (full_legal_name = $1), ILIKE nur als
+ *  Fallback, bei mehreren Treffern die NEUESTE zuerst (ORDER BY created_at_utc DESC)
+ *  — ohne ORDER BY liefert LIMIT 1 eine beliebige Firma bei ähnlichen Namen. */
 async function resolveCompanyIdByName(tenantId: string, name: string): Promise<string | null> {
   const norm = String(name || "").trim();
   if (!norm) return null;
   try {
     if (isUsingFallback || !pool) {
-      const hit = (fallbackStore.companies || []).find(
+      const list = (fallbackStore.companies || []).filter(
         (c) => c.tenant_id === tenantId && String(c.full_legal_name || "").toLowerCase().includes(norm.toLowerCase())
       );
-      return hit ? String(hit.id_uuid) : null;
+      if (list.length === 0) return null;
+      const exact = list.find((c) => String(c.full_legal_name || "").toLowerCase() === norm.toLowerCase());
+      return String((exact || list[0]).id_uuid);
     }
+    // Exakter Match zuerst; Fallback ILIKE mit neueste-zuerst (deterministisch)
+    const exactRes = await pool.query(
+      "SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND LOWER(full_legal_name) = LOWER($2) LIMIT 1",
+      [tenantId, norm]
+    );
+    if (exactRes.rows.length > 0) return String(exactRes.rows[0].id_uuid);
     const res = await pool.query(
-      "SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND full_legal_name ILIKE $2 LIMIT 1",
+      "SELECT id_uuid FROM core_registry_companies WHERE tenant_id = $1 AND full_legal_name ILIKE $2 ORDER BY created_at_utc DESC LIMIT 1",
       [tenantId, `%${norm}%`]
     );
     return res.rows.length > 0 ? String(res.rows[0].id_uuid) : null;
@@ -1724,9 +1735,12 @@ export async function enrichTriggerConditions(
   if (detected.trigger_type !== "CRM_EVENT" || !config) return detected;
 
   const text = source || "";
+  // Verb-Gruppe ist PFLICHT (nicht optional): non-greedy Capture expandiert bis
+  // zum Verb, statt nach 1 Zeichen zu stoppen. (Greedy wäre falsch — es würde
+  // das Verb mit erfassen: "Firma X gehört" → "X gehört".)
   const firmMatch =
-    /(?:zur|für|fuer|an|bei)\s+firma\s+["']?([^"',.;]+?)["']?\s*(?:gehört|gehören|ist|basiert|zugeordnet)?/i.exec(text) ||
-    /(?:zum|für|fuer|an|bei)\s+unternehmen\s+["']?([^"',.;]+?)["']?\s*(?:gehört|gehören|ist|basiert|zugeordnet)?/i.exec(text);
+    /(?:zur|für|fuer|an|bei)\s+firma\s+["']?([^"',.;]+?)["']?\s+(?:gehört|gehören|ist|basiert|zugeordnet)/i.exec(text) ||
+    /(?:zum|für|fuer|an|bei)\s+unternehmen\s+["']?([^"',.;]+?)["']?\s+(?:gehört|gehören|ist|basiert|zugeordnet)/i.exec(text);
   if (!firmMatch) return detected;
 
   const companyId = await resolveCompanyIdByName(tenantId, firmMatch[1]);
@@ -1817,6 +1831,17 @@ export async function executeLearnWorkflow(
         instruction: description
       });
     }
+
+    // Katalog-Namen aus dem MCP-Pfad (tools/list) auf Executor-Namen übersetzen:
+    // Der MCP-Client lernt mit Katalog-Namen (z. B. notes_create), der Executor
+    // kennt nur seine eigenen Namen (create_note_draft). Ohne Übersetzung lehnt
+    // validateWorkflowTools unten ab. Chat-Pfad: sourceText-Kette enthält bereits
+    // Executor-Namen → Mapping ist no-op. Muss VOR Validierung UND Speicherung
+    // greifen, damit die gespeicherte Sequenz ausführbare Namen enthält.
+    toolChain = toolChain.map((step) => ({
+      ...step,
+      tool: MCP_TOOL_TO_EXECUTOR[step.tool] || step.tool
+    }));
 
     // P0-3 (058): Tool-Validierung BEIM LERNEN — fail-fast statt stillem Speichern
     // (bisher lief validateWorkflowTools nur bei der Ausführung; workflowExecutor
@@ -2042,6 +2067,44 @@ export async function searchRelevantSkills(
 // ============================================================================
 // S5 TEIL A: Workflow-Makro-Ausführung (executeWorkflowMacro)
 // ============================================================================
+
+// Abbildung der MCP-Katalog-Tool-Namen (mcpServer.ts MCP_TOOLS_CATALOG) auf die
+// AUSFÜHRBAREN Workflow-Executor-Namen (workflowGraphExecutor.ts
+// WORKFLOW_EXECUTOR_TOOL_NAMES). Ein MCP-Client lernt Workflows mit den Namen aus
+// tools/list (Katalog); der Executor kennt nur seine eigenen Namen. Ohne
+// Übersetzung lehnt validateWorkflowTools Katalog-Namen (z. B. notes_create) ab,
+// obwohl das Tool existiert (Tool-Namens-Drift im MCP-Learn-Pfad). NUR Tools mit
+// echtem Executor-Pendant werden gemappt; Lese-Tools ohne Pendant (crm_list_*,
+// crm_get_*, …) bleiben bewusst aus — sonst würde ein Workflow gespeichert, der
+// bei Ausführung crasht.
+// Identische Namen (vault_search, vault_write, vault_update, vault_delete) brauchen
+// keinen Eintrag. Beim Erweitern des MCP-Katalogs: Pendant hier eintragen
+// (der Mapping-Konsistenz-Test in tests/ erzwingt das).
+export const MCP_TOOL_TO_EXECUTOR: Record<string, string> = {
+  crm_create_company: "create_company_draft",
+  crm_update_company: "update_company_draft",
+  crm_create_contact: "create_contact_draft",
+  crm_update_contact: "update_contact_draft",
+  crm_create_invoice: "create_invoice_draft",
+  crm_create_offer: "create_offer_draft",
+  crm_list_kanban_boards: "list_kanban_boards",
+  crm_create_kanban_card: "create_kanban_card",
+  crm_move_kanban_card: "move_kanban_card",
+  crm_list_vault_files: "list_vault_files",
+  notes_list: "list_notes",
+  notes_create: "create_note_draft",
+  notes_update: "update_note",
+  notes_delete: "delete_note",
+  mail_list_drafts: "list_mail_drafts",
+  kanban_get_board_details: "get_kanban_board_details",
+  kanban_create_board: "create_kanban_board",
+  kanban_update_card: "update_kanban_card",
+  kanban_delete_card: "delete_kanban_card",
+  templates_list: "get_templates",
+  offer_finalize_send: "finalize_and_send_offer",
+  sessions_recall: "recall_sessions",
+  workflows_learn: "learn_workflow",
+};
 
 // Tool-Aliase des workflowExecutor (workflowExecutor.ts Z. 345–355, 432–438, 597, 603, 609–640)
 const KNOWN_EXECUTOR_TOOL_ALIASES = new Set<string>([

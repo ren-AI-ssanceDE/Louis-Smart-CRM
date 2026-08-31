@@ -2,8 +2,8 @@
 
 <img width="2064" height="1110" alt="louis_smart_crm_release" src="https://github.com/user-attachments/assets/8033d26b-97c3-4587-868e-033392c28694" />
 
-> **Version 2.1.11** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
-> Highlight der Version: Die KI-Suche über Namen und die Workflow-Automation treffen jetzt zuverlässig die richtigen Einträge — von der Kontakt-Suche im Chat bis zur Notiz am auslösenden Kontakt.
+> **Version 2.1.12** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
+> Highlight der Version: Workflow-Automation wird zuverlässiger — Firma-Bedingungen in gelernten Abläufen treffen exakt die genannte Firma, und automatisierte Anbindungen können Workflows mit den Katalog-Tool-Namen lernen. Zudem meldet Louis fehlgeschlagene Aufgaben jetzt ehrlich statt erfundener Erfolge.
 > Probier's aus - einfach herunterladen und installieren!
 ---
 
