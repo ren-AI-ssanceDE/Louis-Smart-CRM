@@ -438,7 +438,7 @@ export const CustomWorkflowSchema = z.object({
     instruction: z.string()
   })),
   trigger_type: z.enum(['MANUAL', 'CRM_EVENT', 'TIMER']).default('MANUAL'),
-  // Projektarbeit: strukturiert statt freiem Record — conditions optional (Altverhalten:
+  // 064: strukturiert statt freiem Record — conditions optional (Altverhalten:
   // nur event_name/delay_seconds). Whitelist-Felder + Operatoren ohne Regex.
   // Alt-Bestand ({} oder Alt-Keys ohne conditions) bleibt gültig via Union;
   // ABER: sobald `conditions` gesetzt ist, wird strikt validiert (Whitelist).
@@ -446,7 +446,7 @@ export const CustomWorkflowSchema = z.object({
     z.object({
       event_name: z.string(),
       delay_seconds: z.number().int().min(0).default(0),
-      // Projektarbeit: AND = alle Bedingungen, OR = mindestens eine (Default AND, abwärtskompatibel)
+      // 064: AND = alle Bedingungen, OR = mindestens eine (Default AND, abwärtskompatibel)
       logic: z.enum(['AND', 'OR']).default('AND'),
       conditions: z.array(z.object({
         field: z.enum(['entity_type', 'entity_id', 'entity_name', 'file_name',
@@ -816,6 +816,7 @@ export const CouncilSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   defaultMode: z.enum(['multi-role', 'multi-model']).default('multi-role'),
   defaultMaxRounds: z.number().min(1).max(5).default(2),
+  councilTimeoutS: z.number().int().min(15).max(600).nullable().optional(),
   providers: z.array(CouncilProviderSchema).max(5).default([]),
   roles: z.array(z.object({
     id: z.string(),
@@ -852,6 +853,7 @@ export const CouncilFallbackMetadataSchema = z.object({
   actualModelId: z.string().optional(),
   fallbackReason: z.string().optional(),
   isDegraded: z.boolean().optional(),
+  retried: z.boolean().optional(),
   requestedProvider: z.string().optional(),
   requestedModel: z.string().optional(),
   usedProvider: z.string().optional(),

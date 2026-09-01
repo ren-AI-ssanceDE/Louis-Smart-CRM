@@ -816,6 +816,7 @@ export interface CouncilSettings {
   enabled: boolean;
   defaultMode: 'multi-role' | 'multi-model';
   defaultMaxRounds: number;
+  councilTimeoutS?: number | null;
   providers: CouncilProvider[];
   roles: {
     id: string;
@@ -844,6 +845,7 @@ export interface CouncilFallbackMetadata {
   actualModelId?: string;
   fallbackReason?: string;
   isDegraded?: boolean;
+  retried?: boolean;
   requestedProvider?: string;
   requestedModel?: string;
   usedProvider?: string;

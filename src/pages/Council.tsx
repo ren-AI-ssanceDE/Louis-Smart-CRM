@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -12,7 +12,6 @@ import {
   ChevronRight, 
   CheckCircle, 
   AlertCircle, 
-  RefreshCw, 
   Cpu, 
   User as UserIcon, 
   MessageSquare,
@@ -26,9 +25,17 @@ import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { Dialog } from '../components/ui/Dialog';
+import { CouncilTable } from '../components/council/CouncilTable';
+import { shouldAutoAdvance } from '../lib/councilStatus';
 import { CouncilSession, CouncilMessage, CouncilParticipant } from '../types';
 
 // Markdown-Renderer Hilfsfunktionen
+// 088 P1: degraded-Semantik — Badge zeigt bei isDegraded ODER usedFallback
+// (Multi-Role-Fehlerfall setzt isDegraded ohne usedFallback)
+function isCouncilMessageDegraded(msg?: { fallbackMetadata?: { isDegraded?: boolean; usedFallback?: boolean } | undefined }): boolean {
+  return Boolean(msg?.fallbackMetadata?.isDegraded || msg?.fallbackMetadata?.usedFallback);
+}
+
 function parseInlineMarkdown(text: string): React.ReactNode[] {
   const regex = /\*\*([^*]+)\*\*/g;
   const parts: React.ReactNode[] = [];
@@ -116,11 +123,62 @@ export const Council = () => {
       toast.success(t('council:round_calculated', { defaultValue: 'Runde erfolgreich berechnet!' }));
       refetchSessions();
       refetchActiveSession();
+      // 090 Auto-Modus: nach beendeter Runde automatisch die nächste starten.
+      // Bewertung mit dem Session-Stand VOR der Runde (activeSessionData ist im
+      // onSuccess noch der alte Stand — genau richtig: currentRound < maxRounds).
+      const sess = activeSessionData?.session;
+      if (sess && shouldAutoAdvance({ autoMode: autoModeRef.current, status: sess.status, currentRound: sess.currentRound, maxRounds: sess.maxRounds })) {
+        setAutoPending(true);
+        setTimeout(() => {
+          setAutoPending(false);
+          // Nur starten, wenn der Modus noch an ist, keine andere Session gewählt
+          // wurde und keine Mutation gerade läuft (z.B. manueller Klick dazwischen).
+          if (autoModeRef.current && selectedSessionIdRef.current && !isPendingRef.current) {
+            // Auto-Modus: Tab auf die nächste Runde wechseln (der User sieht den
+            // Übergang; im manuellen Modus bleibt der Tab wie er ist — Punkt 3).
+            setActiveRoundTab(Math.min(sess.maxRounds, sess.currentRound + 1));
+            executeStepMutation.mutate({ sessionId: selectedSessionIdRef.current });
+          }
+        }, 2500);
+      }
     },
     onError: (err) => {
       toast.error(t('council:error_round_calc', { defaultValue: 'Fehler bei der Rundenberechnung: ' }) + err.message);
     }
   });
+
+  // 089: Während eine Runde läuft (isPending), den Session-Stand pollen — die Engine
+  // speichert Antworten inkrementell, so wächst der Fortschritt live (Member grün).
+  // onSuccess der Mutation refetcht bereits final (kein Extra-Poll nach Ende nötig).
+  useEffect(() => {
+    if (!executeStepMutation.isPending) return;
+    const id = setInterval(() => {
+      refetchActiveSession();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [executeStepMutation.isPending, refetchActiveSession]);
+
+  const [roundStartedAt, setRoundStartedAt] = useState<number | null>(null);
+
+  // 090 Auto-Modus: client-seitiger Schalter (nicht persistiert — Reload setzt zurück).
+  // Refs für Closure-Sicherheit in onSuccess/setTimeout (aktuelle Werte statt eingefrorene).
+  const [autoMode, setAutoMode] = useState(false);
+  const [autoPending, setAutoPending] = useState(false);
+  const autoModeRef = useRef(false);
+  const selectedSessionIdRef = useRef<string | null>(null);
+  // 090: isPending als Ref — im onSuccess ist die Closure-Variable noch "true"
+  // (letzter Render während die Runde lief); der setTimeout-Guard braucht den
+  // AKTUELLEN Wert (Mutation längst beendet), sonst blockt er den Auto-Start.
+  const isPendingRef = useRef(false);
+  useEffect(() => {
+    isPendingRef.current = executeStepMutation.isPending;
+  }, [executeStepMutation.isPending]);
+  useEffect(() => {
+    autoModeRef.current = autoMode;
+  }, [autoMode]);
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
 
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
@@ -186,7 +244,9 @@ export const Council = () => {
     }
   }, [settings, isCreating]);
 
-  // Sync active round tab when active session data loads
+  // Sync active round tab when active session data loads (nur beim Session-Wechsel,
+  // nicht bei jeder Datenänderung — sonst springt der Tab während laufender Runden
+  // auf die letzte abgeschlossene Runde zurück; 090: Punkt 3 + Auto-Modus)
   useEffect(() => {
     if (activeSessionData?.session) {
       const current = activeSessionData.session.currentRound;
@@ -197,7 +257,7 @@ export const Council = () => {
         setActiveRoundTab(Math.max(1, current - 1));
       }
     }
-  }, [activeSessionData]);
+  }, [activeSessionData?.session.id]);
 
   const handleStartSession = () => {
     if (!topic.trim()) {
@@ -218,6 +278,7 @@ export const Council = () => {
 
   const handleExecuteNextRound = () => {
     if (!selectedSessionId) return;
+    setRoundStartedAt(Date.now());
     executeStepMutation.mutate({ sessionId: selectedSessionId });
   };
 
@@ -520,6 +581,29 @@ export const Council = () => {
                   </div>
                 </div>
 
+                {/* 090 Auto-Modus: Schalter bei neuer Debatte (nicht persistiert — Reload bricht ab) */}
+                <div className="flex items-center justify-between gap-4 bg-primary-light/40 p-4 rounded-xl border border-white/5">
+                  <div>
+                    <label htmlFor="council-auto-mode" className="text-xs font-bold text-white uppercase tracking-wider cursor-pointer">
+                      {t('council:auto_mode_label', { defaultValue: 'Auto-Modus' })}
+                    </label>
+                    <p className="text-[11px] text-slate-500 font-mono mt-1">
+                      {t('council:auto_mode_hint', { defaultValue: 'Ein Reload bricht den Auto-Modus ab.' })}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="council-auto-mode"
+                    data-testid="council-auto-mode"
+                    role="switch"
+                    aria-checked={autoMode}
+                    onClick={() => setAutoMode((v) => !v)}
+                    className={cn('relative w-12 h-6 rounded-full transition-colors shrink-0', autoMode ? 'bg-accent-orange' : 'bg-slate-700')}
+                  >
+                    <span className={cn('absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform', autoMode && 'translate-x-6')} />
+                  </button>
+                </div>
+
                 <div className="flex justify-end pt-6 border-t border-white/5">
                   <button
                     onClick={handleStartSession}
@@ -668,37 +752,61 @@ export const Council = () => {
                       </div>
                     </div>
 
-                    {/* Active Step Executor (Phase 2) */}
-                    {activeSessionData.session.status !== 'completed' && activeRoundTab === activeSessionData.session.currentRound && (
-                      <div className="p-8 bg-primary-light/30 rounded-xl border border-dashed border-white/10 text-center space-y-4">
-                        <div className="flex justify-center">
-                          <div className="p-4 bg-accent-orange/5 rounded-full border border-accent-orange/15 text-accent-orange animate-pulse">
-                            <RefreshCw size={24} />
+                    {/* Active Step Executor (090: Tisch bleibt nach Runden-Ende sichtbar; Button nur auf aktueller Runde) */}
+                    {activeSessionData.session.status !== 'completed' &&
+                      activeRoundTab <= activeSessionData.session.currentRound &&
+                      activeSessionData.session.id === selectedSessionId && (
+                      <div className="p-6 bg-primary-light/30 rounded-xl border border-dashed border-white/10 space-y-6">
+                        {activeRoundTab === activeSessionData.session.currentRound ? (
+                          <div className="text-center">
+                            <h4 className="text-sm font-bold text-white font-display uppercase tracking-wide">{t('council:round_ready_title', { defaultValue: 'Runde {{num}} Bereit zur Ausführung', num: activeSessionData.session.currentRound })}</h4>
+                            <p className="text-xs text-slate-500 font-mono mt-1 leading-relaxed max-w-xl mx-auto">
+                              {activeSessionData.session.currentRound === 1 
+                                ? t('council:round_1_description', { defaultValue: 'Phase 1 (Brainstorming): Die 5 Berater-Rollen (Kontrarian, Grundsatzdenker, Expansionist, Außenseiter, Umsetzer) analysieren die Frage unabhängig aus ihrer Spezialperspektive.' })
+                                : t('council:round_n_description', { defaultValue: 'Phase 2 (Anonymes Peer Review): Die Berater bewerten anonymisiert die Entwürfe A bis E aus Runde {{prevRound}}, vergeben Rankings und identifizieren blinde Flecken.', prevRound: activeSessionData.session.currentRound - 1 })}
+                            </p>
                           </div>
-                        </div>
-                        <div className="max-w-md mx-auto">
-                          <h4 className="text-sm font-bold text-white font-display uppercase tracking-wide">{t('council:round_ready_title', { defaultValue: 'Runde {{num}} Bereit zur Ausführung', num: activeSessionData.session.currentRound })}</h4>
-                          <p className="text-xs text-slate-500 font-mono mt-1 leading-relaxed">
-                            {activeSessionData.session.currentRound === 1 
-                              ? t('council:round_1_description', { defaultValue: 'Phase 1 (Brainstorming): Die 5 Berater-Rollen (Kontrarian, Grundsatzdenker, Expansionist, Außenseiter, Umsetzer) analysieren die Frage unabhängig aus ihrer Spezialperspektive.' })
-                              : t('council:round_n_description', { defaultValue: 'Phase 2 (Anonymes Peer Review): Die Berater bewerten anonymisiert die Entwürfe A bis E aus Runde {{prevRound}}, vergeben Rankings und identifizieren blinde Flecken.', prevRound: activeSessionData.session.currentRound - 1 })}
+                        ) : (
+                          <div className="text-center">
+                            <h4 className="text-sm font-bold text-white font-display uppercase tracking-wide">{t('council:round_finished_title', { defaultValue: 'Runde {{num}} abgeschlossen', num: activeRoundTab })}</h4>
+                          </div>
+                        )}
+
+                        <CouncilTable
+                          participants={activeSessionData.session.participants}
+                          messages={activeSessionData.messages}
+                          activeRound={activeRoundTab}
+                          currentRound={activeSessionData.session.currentRound}
+                          maxRounds={activeSessionData.session.maxRounds}
+                          isRunning={executeStepMutation.isPending}
+                          roundStartedAt={roundStartedAt}
+                        />
+
+                        {autoPending && (
+                          <p className="text-[11px] font-mono text-accent-orange/90 text-center">
+                            {t('council:auto_advance_hint', { defaultValue: 'Auto-Modus: nächste Runde startet automatisch…' })}
                           </p>
-                        </div>
-                        <button
-                          onClick={handleExecuteNextRound}
-                          disabled={executeStepMutation.isPending}
-                          className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 sm:px-6 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 active:scale-95 font-display text-[11px] uppercase tracking-widest leading-none mx-auto"
-                        >
-                          {executeStepMutation.isPending ? (
-                            <>
-                              <Loader2 size={14} className="animate-spin" /> {t('council:calculating', { defaultValue: 'Berechne...' })}
-                            </>
-                          ) : (
-                            <>
-                              {t('council:calculate_round', { defaultValue: 'Runde {{num}} berechnen', num: activeSessionData.session.currentRound })} <ArrowRight size={14} />
-                            </>
-                          )}
-                        </button>
+                        )}
+
+                        {activeRoundTab === activeSessionData.session.currentRound && (
+                          <div className="text-center mt-12">
+                            <button
+                              onClick={handleExecuteNextRound}
+                              disabled={executeStepMutation.isPending}
+                              className="flex items-center justify-center gap-2 bg-accent-orange text-white px-5 sm:px-6 h-11 rounded-xl font-bold hover:bg-accent-orange/90 transition-all shadow-xl shadow-accent-orange/20 active:scale-95 font-display text-[11px] uppercase tracking-widest leading-none mx-auto"
+                            >
+                              {executeStepMutation.isPending ? (
+                                <>
+                                  <Loader2 size={14} className="animate-spin" /> {t('council:calculating', { defaultValue: 'Berechne...' })}
+                                </>
+                              ) : (
+                                <>
+                                  {t('council:calculate_round', { defaultValue: 'Runde {{num}} berechnen', num: activeSessionData.session.currentRound })} <ArrowRight size={14} />
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -720,9 +828,9 @@ export const Council = () => {
                                   <p className="text-[10px] text-slate-500 font-mono truncate">{participant.modelId || 'Louis AI'}</p>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  {Boolean((msg?.fallbackMetadata as { usedFallback?: boolean } | undefined)?.usedFallback) && (
-                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md uppercase shrink-0 flex items-center gap-1" title={(msg?.fallbackMetadata as { fallbackReason?: string } | undefined)?.fallbackReason || 'Fallback verwendet'}>
-                                      <AlertCircle size={10} /> Fallback
+                                  {isCouncilMessageDegraded(msg) && (
+                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md uppercase shrink-0 flex items-center gap-1" title={(msg?.fallbackMetadata as { fallbackReason?: string } | undefined)?.fallbackReason || t('council:degraded_badge', { defaultValue: 'Degraded' })}>
+                                      <AlertCircle size={10} /> {t('council:degraded_badge', { defaultValue: 'Degraded' })}
                                     </span>
                                   )}
                                   <span className="text-[10px] font-mono text-slate-600 border border-white/5 px-2 py-0.5 rounded-md uppercase shrink-0">

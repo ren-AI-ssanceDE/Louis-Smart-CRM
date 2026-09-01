@@ -439,6 +439,8 @@ export const MailDialog = ({
   // 054 (P0-3): Drag & Drop-Handler (Vault/FileBrowser-Muster Z. 185-199)
   const [dragActive, setDragActive] = useState(false);
   const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
     } else if (e.type === "dragleave") {

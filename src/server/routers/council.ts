@@ -4,8 +4,8 @@ import path from "path";
 import { router, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore } from "../db.js";
-import { CouncilSettingsSchema, CANONICAL_COUNCIL_ROLES, PEER_REVIEW_SYSTEM_PROMPT, CHAIRMAN_SYSTEM_PROMPT } from "../../lib/schemas.js";
-import { getCouncilSession, getCouncilMessages, executeCouncilStep } from "../council/councilEngine.js";
+import { CouncilSettingsSchema, CouncilMessageSchema, CANONICAL_COUNCIL_ROLES, PEER_REVIEW_SYSTEM_PROMPT, CHAIRMAN_SYSTEM_PROMPT } from "../../lib/schemas.js";
+import { getCouncilSession, getCouncilMessages, executeCouncilStep, hasDegradedCouncilMessages } from "../council/councilEngine.js";
 import { forceManualIngest } from "../storage.js";
 import { v4 as uuidv4 } from "uuid";
 import { CouncilSession } from "../../types.js";
@@ -33,26 +33,11 @@ const CouncilSessionSchema = z.object({
   finalConclusion: z.string().optional()
 });
 
-const CouncilMessageSchema = z.object({
-  id: z.string(),
-  sessionId: z.string(),
-  roundNumber: z.number(),
-  participantId: z.string(),
-  role: z.string().optional(),
-  content: z.string(),
-  createdAt: z.string(),
-  fallbackMetadata: z.object({
-    usedFallback: z.boolean().optional(),
-    originalModel: z.string().optional(),
-    fallbackModel: z.string().optional(),
-    reason: z.string().optional()
-  }).optional()
-});
-
 const defaultSettings = {
   enabled: true,
   defaultMode: 'multi-role' as const,
   defaultMaxRounds: 2,
+  councilTimeoutS: null,
   providers: [],
   roles: CANONICAL_COUNCIL_ROLES,
   peerReviewSystemPrompt: PEER_REVIEW_SYSTEM_PROMPT,
@@ -203,12 +188,13 @@ export const councilRouter = router({
       const session = await getCouncilSession(input.sessionId, ctx.tenantId);
       const messages = await getCouncilMessages(input.sessionId, ctx.tenantId);
 
-      // Event-Emission falls Fallbacks verwendet wurden
-      const hasFallbacks = messages.some(m => m.fallbackMetadata?.usedFallback);
-      if (hasFallbacks) {
+      // Event-Emission falls degraded (isDegraded ODER usedFallback — 088 P1:
+      // Multi-Role setzt isDegraded ohne usedFallback, Multi-Model-Fallback nutzt beides)
+      const hasDegraded = hasDegradedCouncilMessages(messages);
+      if (hasDegraded) {
         workflowEventBus.emitEvent(ctx.tenantId, 'council.session_degraded_fallback', {
           sessionId: input.sessionId,
-          degradedMessagesCount: messages.filter(m => m.fallbackMetadata?.usedFallback).length
+          degradedMessagesCount: messages.filter(m => m.fallbackMetadata?.isDegraded || m.fallbackMetadata?.usedFallback).length
         });
       }
 

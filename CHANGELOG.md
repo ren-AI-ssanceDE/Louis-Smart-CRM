@@ -2,6 +2,13 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.13] — 2026-09-01
+
+- **Der LLM Council läuft jetzt zuverlässig durch:** Die Berater-Runden haben kein starres Zeitlimit mehr — das Timeout ist im Admin-Bereich einstellbar, und schlägt ein Berater beim ersten Versuch fehl, wird automatisch ein zweiter Versuch unternommen, bevor ehrlich über einen Ausfall berichtet wird. Damit landen Diskussionen nicht mehr „stumm“ im Zeitlimit, sondern kommen zu einem echten Ergebnis.
+- **Der Rat sitzt jetzt sichtbar am Tisch:** Während einer Debatte zeigt eine Tisch-Ansicht die fünf Berater und den Vorsitzenden. Sobald ein Berater seine Antwort liefert, wird sein Platz grün — der Fortschritt der Runde ist jederzeit sichtbar, inklusive Antwortzeiten und Laufzeit, statt eines leeren „Berechne…“.
+- **Neuer Auto-Modus für komplette Debatten:** Mit einem Schalter bei der Erstellung startet Runde 1 wie gewohnt manuell — danach wechseln und starten die Folgerunden und die abschließende Synthese vollautomatisch. Ohne Auto-Modus bleibt alles beim gewohnten manuellen Ablauf, die Tisch-Ansicht bleibt nach jeder Runde sichtbar.
+- **Datei-Anhänge per Drag & Drop werden zuverlässig angehängt:** Zieht man eine Datei in den Mail-Dialog, wird sie jetzt korrekt als Anhang übernommen, statt versehentlich heruntergeladen zu werden.
+
 ## [2.1.12] — 2026-08-31
 
 - **Firma-Bedingungen in gelernten Workflows treffen exakt die genannte Firma:** Wird ein Ablauf gelernt wie „Wenn ein Kontakt angelegt wird, der zur Firma ‚Muster GmbH' gehört …“, wird jetzt der vollständige Firmenname als Bedingung übernommen — die Automatisierung greift nur beim passenden Unternehmen, nicht mehr bei einer beliebigen Firma mit ähnlichem Namen. Die Zuordnung bevorzugt zudem den exakten Namen und ist bei ähnlichen Firmennamen eindeutig.

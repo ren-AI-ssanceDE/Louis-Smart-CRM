@@ -2,8 +2,8 @@
 
 <img width="2064" height="1110" alt="louis_smart_crm_release" src="https://github.com/user-attachments/assets/8033d26b-97c3-4587-868e-033392c28694" />
 
-> **Version 2.1.12** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
-> Highlight der Version: Workflow-Automation wird zuverlässiger — Firma-Bedingungen in gelernten Abläufen treffen exakt die genannte Firma, und automatisierte Anbindungen können Workflows mit den Katalog-Tool-Namen lernen. Zudem meldet Louis fehlgeschlagene Aufgaben jetzt ehrlich statt erfundener Erfolge.
+> **Version 2.1.13** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
+> Highlight der Version: Der LLM Council läuft jetzt zuverlässig durch — mit einstellbarem Timeout, automatischem Wiederholungsversuch, sichtbarem Fortschritt am Tisch und einem Auto-Modus für komplette Debatten. Zudem werden Datei-Anhänge per Drag & Drop zuverlässig übernommen.
 > Probier's aus - einfach herunterladen und installieren!
 ---
 

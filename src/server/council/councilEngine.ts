@@ -4,6 +4,10 @@ import { CouncilSession, CouncilMessage, CouncilParticipant } from "../../types.
 import { PEER_REVIEW_SYSTEM_PROMPT, CHAIRMAN_SYSTEM_PROMPT, CANONICAL_COUNCIL_ROLES } from "../../lib/schemas.js";
 import { v4 as uuidv4 } from "uuid";
 
+// 088: Admin-konfigurierbares Council-Timeout (Sekunden); NULL in Settings = dieser Default.
+// R-AR-05: ein Ort für den Default, keine hartkodierten Konstanten in multiModelClient.
+export const DEFAULT_COUNCIL_TIMEOUT_S = 120;
+
 const ANONYMOUS_LABELS = ['Antwort A', 'Antwort B', 'Antwort C', 'Antwort D', 'Antwort E', 'Antwort F', 'Antwort G', 'Antwort H'];
 
 export function truncateCouncilMessageContent(content: string, maxTokens: number = 800): string {
@@ -15,12 +19,22 @@ export function truncateCouncilMessageContent(content: string, maxTokens: number
   return content.slice(0, charLimit) + `\n... [Gekürzt für Räte-Synthese-Budget]`;
 }
 
+// 088 P1: degraded-Semantik — isDegraded ODER usedFallback (usedFallback allein
+// existiert nur noch im Multi-Model-Fallback; Multi-Role setzt isDegraded ohne
+// usedFallback). Konsumenten (Router-Event, UI) müssen beide Fälle erkennen.
+export function hasDegradedCouncilMessages(
+  messages: { fallbackMetadata?: { isDegraded?: boolean; usedFallback?: boolean } | undefined }[]
+): boolean {
+  return messages.some((m) => Boolean(m.fallbackMetadata?.isDegraded || m.fallbackMetadata?.usedFallback));
+}
+
 export async function getCouncilSettings(tenantId: string) {
   if (isUsingFallback) {
     return fallbackStore.councilSettings || {
       enabled: true,
       defaultMode: 'multi-role',
       defaultMaxRounds: 2,
+      councilTimeoutS: null,
       providers: [],
       roles: CANONICAL_COUNCIL_ROLES,
       peerReviewSystemPrompt: PEER_REVIEW_SYSTEM_PROMPT,
@@ -38,6 +52,7 @@ export async function getCouncilSettings(tenantId: string) {
         enabled: true,
         defaultMode: 'multi-role',
         defaultMaxRounds: 2,
+        councilTimeoutS: null,
         providers: [],
         roles: CANONICAL_COUNCIL_ROLES,
         peerReviewSystemPrompt: PEER_REVIEW_SYSTEM_PROMPT,
@@ -55,6 +70,7 @@ export async function getCouncilSettings(tenantId: string) {
       enabled: true,
       defaultMode: 'multi-role',
       defaultMaxRounds: 2,
+      councilTimeoutS: null,
       providers: [],
       roles: CANONICAL_COUNCIL_ROLES,
       peerReviewSystemPrompt: PEER_REVIEW_SYSTEM_PROMPT,
@@ -221,6 +237,7 @@ export async function runSessionSynthesis(session: CouncilSession, tenantId: str
 
   const settings = await getCouncilSettings(tenantId);
   const chairmanPrompt = settings.chairmanSystemPrompt || CHAIRMAN_SYSTEM_PROMPT;
+  const timeoutMs = (settings.councilTimeoutS ?? DEFAULT_COUNCIL_TIMEOUT_S) * 1000;
 
   const result = await callCouncilModelResilient({
     providerId: 'louis-chat',
@@ -229,7 +246,8 @@ export async function runSessionSynthesis(session: CouncilSession, tenantId: str
     userPrompt,
     temperature: 0.4,
     tenantId,
-    participantName: 'Chairman des Expertenrats'
+    participantName: 'Chairman des Expertenrats',
+    timeoutMs
   });
 
   return result.text;
@@ -239,6 +257,9 @@ export async function executeCouncilStep(sessionId: string, tenantId: string): P
   const session = await getCouncilSession(sessionId, tenantId);
   if (!session) throw new Error("Session nicht gefunden.");
   if (session.status === 'completed') return;
+
+  const settings = await getCouncilSettings(tenantId);
+  const timeoutMs = (settings.councilTimeoutS ?? DEFAULT_COUNCIL_TIMEOUT_S) * 1000;
 
   const currentRound = session.currentRound;
   const isFirstRound = currentRound === 1;
@@ -256,7 +277,8 @@ export async function executeCouncilStep(sessionId: string, tenantId: string): P
         userPrompt,
         temperature: participant.temperature,
         tenantId,
-        participantName: participant.name
+        participantName: participant.name,
+        timeoutMs
       });
 
       if (result.metadata.usedFallback) {
@@ -275,7 +297,6 @@ export async function executeCouncilStep(sessionId: string, tenantId: string): P
     await Promise.all(participantPromises);
   } else {
     // PHASE 2: Anonymisiertes Peer Review (Parallelisierte Ausführung)
-    const settings = await getCouncilSettings(tenantId);
     const basePeerReviewPrompt = settings.peerReviewSystemPrompt || PEER_REVIEW_SYSTEM_PROMPT;
 
     const prevRoundMsgs = allMessages.filter(m => m.roundNumber === currentRound - 1);
@@ -299,7 +320,8 @@ export async function executeCouncilStep(sessionId: string, tenantId: string): P
         userPrompt,
         temperature: participant.temperature,
         tenantId,
-        participantName: participant.name
+        participantName: participant.name,
+        timeoutMs
       });
 
       if (result.metadata.usedFallback) {

@@ -13,6 +13,7 @@ export const CouncilSettingsTab = () => {
   const [enabled, setEnabled] = useState(true);
   const [defaultMode, setDefaultMode] = useState<'multi-role' | 'multi-model'>('multi-role');
   const [defaultMaxRounds, setDefaultMaxRounds] = useState(3);
+  const [councilTimeoutS, setCouncilTimeoutS] = useState<number | null>(null);
   const [providers, setProviders] = useState<CouncilProvider[]>([]);
   const [roles, setRoles] = useState<{ id: string; name: string; systemPrompt: string; temperature: number }[]>([]);
   const [peerReviewSystemPrompt, setPeerReviewSystemPrompt] = useState<string>(PEER_REVIEW_SYSTEM_PROMPT);
@@ -37,6 +38,7 @@ export const CouncilSettingsTab = () => {
       setEnabled(settingsData.enabled ?? true);
       setDefaultMode(settingsData.defaultMode ?? 'multi-role');
       setDefaultMaxRounds(settingsData.defaultMaxRounds ?? 2);
+      setCouncilTimeoutS(settingsData.councilTimeoutS ?? null);
       setProviders(settingsData.providers ?? []);
       setRoles(settingsData.roles ?? []);
       setPeerReviewSystemPrompt(settingsData.peerReviewSystemPrompt ?? PEER_REVIEW_SYSTEM_PROMPT);
@@ -97,6 +99,7 @@ export const CouncilSettingsTab = () => {
       enabled,
       defaultMode,
       defaultMaxRounds,
+      councilTimeoutS,
       providers,
       roles,
       peerReviewSystemPrompt,
@@ -194,6 +197,24 @@ export const CouncilSettingsTab = () => {
             className="w-full bg-slate-800/50 border border-white/5 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-accent-orange/50 transition-colors"
           />
           <p className="text-[11px] text-slate-500 mt-1 font-mono">{t('admin:council_settings_tab.karpathy_recommendation', { defaultValue: 'Karpathy empfiehlt 3 Runden für optimales Peer-Review.' })}</p>
+        </div>
+
+        <div>
+          <label htmlFor="council-timeout-s" className="block text-xs font-bold font-mono uppercase text-slate-400 tracking-wider mb-2">{t('admin:council_settings_tab.council_timeout_label', { defaultValue: 'Council-Timeout (Sekunden)' })}</label>
+          <input
+            id="council-timeout-s"
+            type="number"
+            min={15}
+            max={600}
+            value={councilTimeoutS ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              setCouncilTimeoutS(v === '' ? null : Math.min(600, Math.max(15, parseInt(v) || 15)));
+            }}
+            placeholder={t('admin:council_settings_tab.council_timeout_placeholder', { defaultValue: '120 (Standard)' })}
+            className="w-full bg-slate-800/50 border border-white/5 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-accent-orange/50 transition-colors"
+          />
+          <p className="text-[11px] text-slate-500 mt-1 font-mono">{t('admin:council_settings_tab.council_timeout_helper', { defaultValue: 'Leer lassen = Standard (120s). Bereich 15–600.' })}</p>
         </div>
       </div>
 

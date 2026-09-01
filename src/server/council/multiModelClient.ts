@@ -69,9 +69,11 @@ export async function callCouncilModelResilient(params: {
   temperature: number;
   tenantId: string;
   participantName?: string;
+  timeoutMs: number;
 }): Promise<CallCouncilModelResult> {
   const originalProviderId = params.providerId;
   const originalModelId = params.modelId;
+  const timeoutMs = params.timeoutMs;
 
   const isSpecificCouncilProvider = !!originalProviderId && originalProviderId !== 'louis-chat';
 
@@ -79,8 +81,15 @@ export async function callCouncilModelResilient(params: {
   if (isSpecificCouncilProvider && ProviderHealthTracker.isAvailable(originalProviderId)) {
     try {
       const internalRes = await executeWithTimeout(
-        () => callCouncilModelInternal({ ...params }),
-        45000 // 45 Sek Timeout für Council Provider
+        () => callCouncilModelInternal({
+          providerId: params.providerId,
+          modelId: params.modelId,
+          systemPrompt: params.systemPrompt,
+          userPrompt: params.userPrompt,
+          temperature: params.temperature,
+          tenantId: params.tenantId
+        }),
+        timeoutMs
       );
       ProviderHealthTracker.recordSuccess(originalProviderId);
       return {
@@ -102,18 +111,44 @@ export async function callCouncilModelResilient(params: {
     }
   }
 
-  // Stufe 2: Fallback auf Louis AI Konfiguration (oder direkter Aufruf, falls kein Council-Provider eingestellt)
+  // Stufe 2: Aufruf über die Louis AI Konfiguration.
+  // Multi-Role (kein spezifischer Council-Provider): DIES ist der Primäraufruf —
+  // ein „Fallback aufs gleiche LLM" wäre eine Null-Operation (088). Stattdessen
+  // 1× echter Retry bei Fehler (Entscheidung 2026-09-01).
+  // Multi-Model (spezifischer Provider fehlgeschlagen): Fallback auf Louis AI wie
+  // gehabt — KEIN Retry (Bestandsverhalten).
   console.info(`[Council Resilience] Führe Aufruf über die Louis AI Konfiguration aus...`);
-  try {
-    const internalRes = await executeWithTimeout(
-      () => callCouncilModelInternal({
-        ...params,
-        providerId: 'louis-chat',
-        modelId: ''
-      }),
-      45000 // 45 Sek Timeout
-    );
 
+  const callLouisAi = () =>
+    callCouncilModelInternal({
+      providerId: 'louis-chat',
+      modelId: '',
+      systemPrompt: params.systemPrompt,
+      userPrompt: params.userPrompt,
+      temperature: params.temperature,
+      tenantId: params.tenantId
+    });
+
+  let internalRes: { text: string; usage?: ModelUsageMetadata } | null = null;
+  let lastError: string | null = null;
+  let retried = false;
+
+  try {
+    internalRes = await executeWithTimeout(callLouisAi, timeoutMs);
+  } catch (primaryErr) {
+    lastError = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    console.warn(`[Council Resilience] Louis-AI-Aufruf fehlgeschlagen (${lastError}) — 1× Retry...`);
+    if (!isSpecificCouncilProvider) {
+      retried = true;
+      try {
+        internalRes = await executeWithTimeout(callLouisAi, timeoutMs);
+      } catch (retryErr) {
+        lastError = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      }
+    }
+  }
+
+  if (internalRes) {
     return {
       text: internalRes.text,
       usage: internalRes.usage,
@@ -126,25 +161,25 @@ export async function callCouncilModelResilient(params: {
         fallbackReason: isSpecificCouncilProvider
           ? `Primärer Council-Provider (${originalProviderId}) fehlgeschlagen. Fallback auf Louis AI Konfiguration.`
           : undefined,
-        isDegraded: isSpecificCouncilProvider
-      }
-    };
-  } catch (fallbackErr) {
-    const errorMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-    console.error(`[Council Resilience] Aufruf über Louis AI Konfiguration fehlgeschlagen: ${errorMsg}`);
-    return {
-      text: `[Hinweis: Der konfigurierte LLM-Provider konnte nicht rechtzeitig antworten (${errorMsg}). Bitte überprüfen Sie die Provider-Einstellungen.]`,
-      metadata: {
-        usedFallback: true,
-        originalProviderId,
-        originalModelId,
-        actualProviderId: 'error-timeout',
-        actualModelId: 'timeout-fallback',
-        fallbackReason: `Aufruf fehlgeschlagen: ${errorMsg}`,
-        isDegraded: true
+        isDegraded: isSpecificCouncilProvider,
+        retried: retried || undefined
       }
     };
   }
+
+  return {
+    text: `[Hinweis: Der konfigurierte LLM-Provider konnte nicht rechtzeitig antworten (${lastError}). Bitte überprüfen Sie die Provider-Einstellungen.]`,
+    metadata: {
+      usedFallback: isSpecificCouncilProvider,
+      originalProviderId,
+      originalModelId,
+      actualProviderId: 'error-timeout',
+      actualModelId: 'timeout-fallback',
+      fallbackReason: `Aufruf fehlgeschlagen: ${lastError}`,
+      isDegraded: true,
+      retried: retried || undefined
+    }
+  };
 }
 
 async function executeWithTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
@@ -277,6 +312,7 @@ export async function callCouncilModel(params: {
   userPrompt: string;
   temperature: number;
   tenantId: string;
+  timeoutMs: number;
 }): Promise<string> {
   const result = await callCouncilModelResilient(params);
   return result.text;
