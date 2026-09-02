@@ -107,3 +107,7 @@ Louis kennt **zwei getrennte Vaults** — Tool-Namen sind disambiguiert (`knowle
 - **Bekannter Build-Fix:** Lato-Fonts werden aus dem Build-Kontext kopiert (kein GitHub-Download); Mustang-CLI wird beim Build geladen (Netz nötig)
 - **MCP-Test-Key:** `RAW="louis_mcp_<name>"` → `sha256sum` → INSERT in `mcp_api_keys`, nach Tests löschen
 
+### Externe KI-Agenten anbinden (MCP)
+
+Louis' Werkzeuge (Kontakte, Firmen, Rechnungen, Angebote, Kanban, Vault, Workflows) lassen sich über den MCP-Server auch aus externen KI-Agenten heraus ansteuern. 5-Minuten-Einrichtung mit API-Key, Agent-Konfiguration und ersten Aufrufen (englisch): [docs/hermes-integration.md](docs/hermes-integration.md).
+
