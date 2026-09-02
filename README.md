@@ -1,6 +1,6 @@
 # Louis Smart CRM
 
-<img width="2064" height="1110" alt="louis_smart_crm_release" src="https://github.com/user-attachments/assets/8033d26b-97c3-4587-868e-033392c28694" />
+<img width="2064" height="1110" alt="louis_smart_crm_release" src="https://www.ren-ai-ssance.de/wp-content/uploads/2026/09/louis_crm.jpg" />
 
 > **Version 2.1.13** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
 > Highlight der Version: Der LLM Council läuft jetzt zuverlässig durch — mit einstellbarem Timeout, automatischem Wiederholungsversuch, sichtbarem Fortschritt am Tisch und einem Auto-Modus für komplette Debatten. Zudem werden Datei-Anhänge per Drag & Drop zuverlässig übernommen.
