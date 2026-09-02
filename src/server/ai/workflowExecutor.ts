@@ -18,21 +18,59 @@ import { EmailCompiler } from "../utils/emailCompiler.js";
 // Zusätzlich werden explizite IDs (contact_id_uuid/company_id_uuid oder
 // UUID-Muster) aus Klartext-Instruktionen extrahiert (Louis schreibt sie
 // beim Lernen teils mit, z. B. "am Kontakt (contact_id_uuid abc-…)").
+/**
+ * Extrahiert das FUEHRENDE JSON-Objekt aus einem Text, der nach dem Objekt
+ * weiteren Inhalt haben darf (z. B. angehängter Predecessor-Kontext im
+ * DAG-Executor: "{...}\n\n=== ERGEBNISSE VORHERIGER SCHRITTE ===").
+ * JSON.parse scheitert an Trailing-Text — dieser Scanner respektiert Strings
+ * und Escapes und parst nur das erste ausgeglichene Objekt.
+ */
+function extractLeadingJsonObject(text: string): Record<string, unknown> | null {
+  const s = text.trimStart();
+  if (!s.startsWith("{")) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed: unknown = JSON.parse(s.slice(0, i + 1));
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export function toNoteDraftJson(instruction: string, resolvedContactId?: string, resolvedCompanyId?: string): string {
   const trimmed = (instruction || "").trim();
   if (!trimmed) return JSON.stringify({ note_text: "", ...(resolvedContactId ? { contact_id_uuid: resolvedContactId } : {}), ...(resolvedCompanyId ? { company_id_uuid: resolvedCompanyId } : {}) });
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      // Bereits strukturiert — nur note_text sicherstellen
-      if (!parsed.note_text && typeof parsed.text === "string") parsed.note_text = parsed.text;
-      // P1-1: aufgelöste Ziel-ID ergänzen, falls nicht in der Instruktion
-      if (!parsed.contact_id_uuid && resolvedContactId) parsed.contact_id_uuid = resolvedContactId;
-      if (!parsed.company_id_uuid && resolvedCompanyId) parsed.company_id_uuid = resolvedCompanyId;
-      return JSON.stringify(parsed);
-    }
-  } catch {
-    // kein JSON — Klartext, unten wrappen
+  // Strukturierte Instruktion: FUEHRENDES JSON-Objekt nutzen — auch wenn der
+  // DAG-Executor Vorgänger-Ergebnisse als Kontext angehängt hat (JSON.parse
+  // scheitert an Trailing-Text → der ganze String wurde sonst note_text →
+  // Validierungsfehler ">2000" → die Notiz wurde nie persistiert).
+  const parsed = extractLeadingJsonObject(trimmed);
+  if (parsed) {
+    // Bereits strukturiert — nur note_text sicherstellen
+    if (!parsed.note_text && typeof parsed.text === "string") parsed.note_text = parsed.text;
+    // P1-1: aufgelöste Ziel-ID ergänzen, falls nicht in der Instruktion
+    if (!parsed.contact_id_uuid && resolvedContactId) parsed.contact_id_uuid = resolvedContactId;
+    if (!parsed.company_id_uuid && resolvedCompanyId) parsed.company_id_uuid = resolvedCompanyId;
+    return JSON.stringify(parsed);
   }
   // Klartext: Text-Referenzen extrahieren (best-effort), Rest als note_text
   const textMatch = trimmed.match(/(?:Text|text|Inhalt|inhalt)\s*['"“”]?([^'"”]{2,200})/i);

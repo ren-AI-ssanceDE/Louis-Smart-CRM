@@ -2,8 +2,8 @@
 
 <img width="2064" height="1110" alt="louis_smart_crm_release" src="https://www.ren-ai-ssance.de/wp-content/uploads/2026/09/louis_crm.jpg" />
 
-> **Version 2.1.13** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
-> Highlight der Version: Der LLM Council läuft jetzt zuverlässig durch — mit einstellbarem Timeout, automatischem Wiederholungsversuch, sichtbarem Fortschritt am Tisch und einem Auto-Modus für komplette Debatten. Zudem werden Datei-Anhänge per Drag & Drop zuverlässig übernommen.
+> **Version 2.1.14** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
+> Highlight der Version: Notizen aus automatisierten Abläufen werden jetzt auch dann zuverlässig gespeichert, wenn ein Schritt auf die Ergebnisse vorheriger Schritte zurückgreift — die eigentliche Anweisung wird sauber vom Kontext getrennt.
 > Probier's aus - einfach herunterladen und installieren!
 ---
 

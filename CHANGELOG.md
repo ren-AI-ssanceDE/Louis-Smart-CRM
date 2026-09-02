@@ -2,6 +2,10 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.14] — 2026-09-02
+
+- **Notizen aus automatisierten Abläufen werden zuverlässig gespeichert:** In gelernten Workflows, in denen ein Schritt auf die Ergebnisse vorheriger Schritte zugreift (zum Beispiel eine Analyse, gefolgt von einer Notiz), wurde die Notiz unter bestimmten Umständen nicht angelegt. Jetzt wird die eigentliche Anweisung sauber von den vorherigen Ergebnissen getrennt — die Notiz entsteht zuverlässig mit dem gewünschten Text.
+
 ## [2.1.13] — 2026-09-01
 
 - **Der LLM Council läuft jetzt zuverlässig durch:** Die Berater-Runden haben kein starres Zeitlimit mehr — das Timeout ist im Admin-Bereich einstellbar, und schlägt ein Berater beim ersten Versuch fehl, wird automatisch ein zweiter Versuch unternommen, bevor ehrlich über einen Ausfall berichtet wird. Damit landen Diskussionen nicht mehr „stumm“ im Zeitlimit, sondern kommen zu einem echten Ergebnis.
