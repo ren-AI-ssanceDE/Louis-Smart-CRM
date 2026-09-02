@@ -85,7 +85,7 @@ const README_INTERNA = [
   /\bhermes\b|\bvibe-coding\b|ren-AI-ssanceDE/i,
   /stefan@ren-ai-ssance/i,
 ];
-const README_SCAN_EXCLUDES = ["Readme Qualitätssicherung & Tests.md", "README.md", "Releases.md"]; // QA-Doku (gewollt), Root-README (Stefans Werk), Releases.md (historisch)
+const README_SCAN_EXCLUDES = ["Readme Qualitätssicherung & Tests.md", "README.md", "Releases.md", "hermes-integration.md"]; // QA-Doku (gewollt), Root-README (Stefans Werk), Releases.md (historisch), hermes-integration.md (bewusster öffentlicher Community-Guide für externe MCP-Clients — Freigabe 2026-09-02)
 
 function checkReadmeContent() {
   const violations = [];
