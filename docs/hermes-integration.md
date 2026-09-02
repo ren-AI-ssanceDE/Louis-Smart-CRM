@@ -208,9 +208,14 @@ resolve before creating.
 - **Governance-rules engine:** on top of the key scopes, a rules engine
   (BLOCK / ASK / REQUIRE_APPROVAL / ALLOW, per entity + action) can restrict
   agent actions further.
-- **Outgoing direction (Louis → external MCP servers, e.g. Obsidian vault,
-  Google Workspace):** this direction is governed per chat profile with its
-  own approval flows.
+- **Outgoing direction (Louis → external MCP servers):** consumption is
+  admin-controlled in three layers — (1) the server itself must be
+  registered, (2) each discovered tool must be enabled for Louis
+  (`is_enabled_for_louis`), and (3) a chat profile (created by the admin,
+  team-wide or personal, one default per tenant) determines which of those
+  tools are selectable in the chat window (`tools_json`; NULL = all
+  admin-approved tools). Tool selection in the UI only offers enabled tools.
+  Per-profile approval flows govern execution on top.
 - Draft-based flows also exist where business processes require them: email
   campaigns create **drafts** that an explicit approval call
   (`mail_approve_draft`) finalizes.
