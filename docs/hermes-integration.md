@@ -194,20 +194,26 @@ resolve before creating.
 ## 7. Security model and boundaries (honest)
 
 - **Incoming direction (external agent → Louis):** tool access is protected
-  by the API key and its scopes/per-tool permissions, and every write is
-  recorded in the audit log. Writes from an external MCP client are **not**
-  routed through the human approval queue — a key with `write` scope can
-  create or change records immediately. That is a deliberate design choice:
-  the key *is* the authorization, so keep scopes minimal and revoke keys you
-  no longer need.
+  by the API key. Writes from an external MCP client are checked against the
+  key's scopes (`read` / `write` / `admin` / `full_access`) and, optionally,
+  a per-tool permission matrix (`tool_permissions`) that can allow or deny
+  individual actions per tool. Create and update operations execute
+  immediately with a write-scoped key — the key *is* the authorization, so
+  keep scopes minimal and revoke keys you no longer need.
+- **Destructive operations are always staged:** deletes (e.g.
+  `kanban_delete_card`) are not executed directly from an external client —
+  they are created as approval drafts that require explicit confirmation by a
+  human in the Admin panel. An external agent can therefore never delete
+  records on its own.
+- **Governance-rules engine:** on top of the key scopes, a rules engine
+  (BLOCK / ASK / REQUIRE_APPROVAL / ALLOW, per entity + action) can restrict
+  agent actions further.
 - **Outgoing direction (Louis → external MCP servers, e.g. Obsidian vault,
-  Google Workspace):** this direction *is* governed — external tool use is
-  configured per chat profile with its own approval flows, and the
-  approval/human-gate queue protects those calls.
-- Draft-based flows still exist where a business process requires them:
-  email campaigns create **drafts** that an explicit approval call
-  (`mail_approve_draft`) finalizes. Direct CRM record tools write
-  immediately, as shown above.
+  Google Workspace):** this direction is governed per chat profile with its
+  own approval flows.
+- Draft-based flows also exist where business processes require them: email
+  campaigns create **drafts** that an explicit approval call
+  (`mail_approve_draft`) finalizes.
 - Watch **Admin → Audit-Log**: it is filterable and exportable, and it is the
   place to review what a connected agent has done.
 
