@@ -13,7 +13,7 @@ Louis Smart CRM wird im Entwicklungsprozess auf mehreren Ebenen abgesichert:
 | **Unit-/Integrationstests** | Vitest, Node-Umgebung, ohne echte DB (Fallback-Store) — Router, Schemas, Auth, Workflows, MCP-Tools |
 | **Mutation-Testing** | Stryker misst, ob die Tests eingebaute Fehler wirklich erkennen (Mutation-Score; kontinuierlich steigendes Gate) |
 | **End-to-End-Tests** | Playwright — hermetisch (Fallback-Server), gegen den Wegwerf-Test-Stack (eigene Test-DB, QA-Fixtures) und live gegen den Docker-Stack |
-| **AI-Suiten** | Deterministische Wiederholbarkeit über aufgezeichnete LLM-Antworten (Golden-Replay) im CI; zustandsabhängige Fälle laufen in der nächtlichen Regression |
+| **KI-Szenario-Tests** | Szenarien mit echten Modell-Antworten laufen in der nächtlichen Regression gegen den Live-Stack; im täglichen CI werden die deterministischen E2E-Ebenen geprüft (hermetisch + Wegwerf-Test-Stack) |
 | **MCP-Volltest** | Alle Katalog-Tools + Prompts gegen den laufenden Stack; externe MCP-Server (z. B. Google Workspace, Obsidian) nur gegen selbst angelegte QA-Daten |
 | **ZUGFeRD-Validierung** | Erzeugte E-Rechnungen werden gegen EN 16931 (Mustang) und PDF/A-3b geprüft |
 | **Continuous Integration** | GitHub Actions (Cloud) bei jedem Push: Projektregeln + Lint + Unit + Mutation-Score + E2E (hermetisch + Test-Stack) |
