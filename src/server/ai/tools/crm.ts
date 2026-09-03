@@ -1805,7 +1805,7 @@ export async function executeUpdateDraftContact(
       }
     }
 
-    // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+    // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
     if (updates.first_name !== undefined || updates.last_name !== undefined) {
       let curFirst: unknown = undefined;
       let curLast: unknown = undefined;
@@ -3147,6 +3147,76 @@ export async function executeCreateKanbanBoard(
 }
 
 /**
+ * 102 (BUG-010): Ziel-Spalte einer Kanban-Karte board-konsistent aufloesen/validieren.
+ * - columnId gegeben: Spalte muss existieren UND zum Board gehoeren — sonst Fehler,
+ *   statt still eine Mismatch-Karte (unsichtbar, aber in total_cards_count gezaehlt) zu erzeugen.
+ * - nur columnTitle/fehlend: board-konsistent aufloesen (Titel-Suche, dann erste Spalte).
+ * Dual-Store (isUsingFallback: Store-Lookup, sonst PG). Exportiert fuer Router/MCP/
+ * approveProposal (R-AR-10, wrappbar). Wird von executeCreate/MoveKanbanCard genutzt.
+ */
+export async function resolveKanbanColumn(
+  tenantId: string,
+  boardId: string,
+  columnId: string | null | undefined,
+  columnTitle?: string | null,
+  opts: { strict?: boolean } = {}
+): Promise<string> {
+  const strict = opts.strict === true;
+  if (isUsingFallback) {
+    const boardCols = (fallbackStore.kanbanColumns || []).filter(c => c.board_id === boardId);
+    if (columnId) {
+      if (!boardCols.some(c => c.id_uuid === columnId)) {
+        const existsAnywhere = (fallbackStore.kanbanColumns || []).some(c => c.id_uuid === columnId);
+        throw new Error(
+          existsAnywhere
+            ? "Ziel-Spalte gehört nicht zum Board der Karte."
+            : "Ziel-Spalte existiert nicht."
+        );
+      }
+      return columnId;
+    }
+    if (columnTitle && boardCols.length > 0) {
+      const matched = boardCols.find(c => c.title.toLowerCase().includes(columnTitle!.toLowerCase()));
+      if (matched) return matched.id_uuid;
+    }
+    // strict (move): keine stille erste-Spalte-Aufloesung — explizites Ziel noetig (Bestands-Semantik)
+    if (strict) throw new Error("Ziel-Spalte konnte nicht ermittelt werden.");
+    if (boardCols.length > 0) return boardCols[0].id_uuid;
+    throw new Error("Keine passende Spalte für das Board gefunden.");
+  }
+
+  if (columnId) {
+    const checkRes = await pool.query(
+      `SELECT 1 FROM kanban_columns WHERE id_uuid = $1 AND board_id = $2 AND (tenant_id = $3 OR tenant_id = '1') LIMIT 1`,
+      [columnId, boardId, tenantId]
+    );
+    if (checkRes.rows.length === 0) {
+      const existsRes = await pool.query(`SELECT 1 FROM kanban_columns WHERE id_uuid = $1 LIMIT 1`, [columnId]);
+      throw new Error(
+        existsRes.rows.length > 0
+          ? "Ziel-Spalte gehört nicht zum Board der Karte."
+          : "Ziel-Spalte existiert nicht."
+      );
+    }
+    return columnId;
+  }
+
+  const colsRes = await pool.query(
+    `SELECT id_uuid, title FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1') ORDER BY position ASC`,
+    [boardId, tenantId]
+  );
+  if (columnTitle && colsRes.rows.length > 0) {
+    const matched = colsRes.rows.find((c: { title: string }) =>
+      c.title.toLowerCase().includes(columnTitle!.toLowerCase())
+    );
+    if (matched) return matched.id_uuid;
+  }
+  if (strict) throw new Error("Ziel-Spalte konnte nicht ermittelt werden.");
+  if (colsRes.rows.length > 0) return colsRes.rows[0].id_uuid;
+  throw new Error("Keine passende Spalte für das Board gefunden.");
+}
+
+/**
  * Kanban MCP Tool 3: Create Kanban Card
  */
 export async function executeCreateKanbanCard(
@@ -3212,20 +3282,7 @@ export async function executeCreateKanbanCard(
         }
       }
 
-      if (!targetColumnId) {
-        const boardCols = (fallbackStore.kanbanColumns || []).filter(c => c.board_id === targetBoardId);
-        if (input.column_title && boardCols.length > 0) {
-          const matchedCol = boardCols.find(c => c.title.toLowerCase().includes(input.column_title!.toLowerCase()));
-          if (matchedCol) targetColumnId = matchedCol.id_uuid;
-        }
-        if (!targetColumnId && boardCols.length > 0) {
-          targetColumnId = boardCols[0].id_uuid;
-        }
-      }
-
-      if (!targetColumnId) {
-        throw new Error('Keine passende Spalte für die Karte gefunden.');
-      }
+      targetColumnId = await resolveKanbanColumn(tenantId, targetBoardId!, targetColumnId, input.column_title);
 
       const existingCards = (fallbackStore.kanbanCards || []).filter(c => c.column_id === targetColumnId);
       const newPos = existingCards.length;
@@ -3309,23 +3366,7 @@ export async function executeCreateKanbanCard(
       }
     }
 
-    if (!targetColumnId) {
-      const colsRes = await pool.query(
-        `SELECT id_uuid, title FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1') ORDER BY position ASC`,
-        [targetBoardId, tenantId]
-      );
-      if (input.column_title && colsRes.rows.length > 0) {
-        const matched = colsRes.rows.find(c => c.title.toLowerCase().includes(input.column_title!.toLowerCase()));
-        if (matched) targetColumnId = matched.id_uuid;
-      }
-      if (!targetColumnId && colsRes.rows.length > 0) {
-        targetColumnId = colsRes.rows[0].id_uuid;
-      }
-    }
-
-    if (!targetColumnId) {
-      throw new Error('Keine passende Spalte für die Karte gefunden.');
-    }
+    targetColumnId = await resolveKanbanColumn(tenantId, targetBoardId, targetColumnId, input.column_title);
 
     const posRes = await pool.query(
       `SELECT COUNT(*) as count FROM kanban_cards WHERE column_id = $1 AND (tenant_id = $2 OR tenant_id = '1')`,
@@ -3431,26 +3472,19 @@ export async function executeMoveKanbanCard(
       const card = (fallbackStore.kanbanCards || []).find(c => c.id_uuid === cardId);
       if (!card) throw new Error(`Karte mit ID ${cardId} nicht gefunden.`);
 
-      let targetColumnId = input.target_column_id || input.target_column_id_uuid;
-      if (!targetColumnId && input.target_column_title) {
-        const cols = (fallbackStore.kanbanColumns || []).filter(c => c.board_id === card.board_id);
-        const matched = cols.find(c => c.title.toLowerCase().includes(input.target_column_title!.toLowerCase()));
-        if (matched) targetColumnId = matched.id_uuid;
-      }
-
-      if (!targetColumnId) {
-        throw new Error('Ziel-Spalte konnte nicht ermittelt werden.');
-      }
+      const targetColumnId = await resolveKanbanColumn(
+        tenantId,
+        card.board_id,
+        input.target_column_id || input.target_column_id_uuid,
+        input.target_column_title,
+        { strict: true }
+      );
 
       const fromColId = card.column_id;
       const fromCol = (fallbackStore.kanbanColumns || []).find(c => c.id_uuid === fromColId);
       const toCol = (fallbackStore.kanbanColumns || []).find(c => c.id_uuid === targetColumnId);
 
-      card.column_id = targetColumnId;
-      card.position = input.new_position;
-      card.updated_at_utc = new Date().toISOString();
-
- // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write — Stub VOR jeder Mutation
       if (!bypassApproval) {
         return createToolSuccess({
           message: `Kanban-Karten-Verschiebung als Entwurf erstellt (Freigabe erforderlich). Karte: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
@@ -3467,6 +3501,10 @@ export async function executeMoveKanbanCard(
           }
         });
       }
+
+      card.column_id = targetColumnId;
+      card.position = input.new_position;
+      card.updated_at_utc = new Date().toISOString();
 
       saveFallbackStore();
 
@@ -3498,19 +3536,13 @@ export async function executeMoveKanbanCard(
     const card = cardRes.rows[0];
     const fromColId = card.column_id;
 
-    let targetColumnId = input.target_column_id || input.target_column_id_uuid;
-    if (!targetColumnId && input.target_column_title) {
-      const colsRes = await pool.query(
-        `SELECT id_uuid, title FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1')`,
-        [card.board_id, tenantId]
-      );
-      const matched = colsRes.rows.find(c => c.title.toLowerCase().includes(input.target_column_title!.toLowerCase()));
-      if (matched) targetColumnId = matched.id_uuid;
-    }
-
-    if (!targetColumnId) {
-      throw new Error('Ziel-Spalte konnte nicht ermittelt werden.');
-    }
+    const targetColumnId = await resolveKanbanColumn(
+      tenantId,
+      card.board_id,
+      input.target_column_id || input.target_column_id_uuid,
+      input.target_column_title,
+      { strict: true }
+    );
 
  // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
     if (!bypassApproval) {
@@ -3595,24 +3627,30 @@ export async function executeUpdateKanbanCard(
       if (idx === -1) throw new Error(`Karte mit ID ${cardId} nicht gefunden.`);
 
       const card = fallbackStore.kanbanCards![idx];
-      if (input.title !== undefined) card.title = input.title;
-      if (input.description !== undefined) card.description = input.description;
-      if (input.priority !== undefined) card.priority = input.priority;
-      if (input.due_date !== undefined) card.due_date = input.due_date;
-      if (input.labels !== undefined) card.labels = input.labels;
-      card.updated_at_utc = new Date().toISOString();
+      const newTitle = input.title ?? card.title;
+      const newDesc = input.description !== undefined ? input.description : card.description;
+      const newPriority = input.priority ?? card.priority;
+      const newDueDate = input.due_date !== undefined ? input.due_date : card.due_date;
+      const newLabels = input.labels ?? card.labels;
 
- // P0: Draft-Flow — Chat-Pfad KEIN direkter Write
+ // P0: Draft-Flow — Chat-Pfad KEIN direkter Write — Stub VOR jeder Mutation
       if (!bypassApproval) {
         return createToolSuccess({
-          message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${card.title}, Datenbank-ID: ${card.id_uuid}.`,
+          message: `Kanban-Karten-Update als Entwurf erstellt (Freigabe erforderlich). Titel: ${newTitle}, Datenbank-ID: ${card.id_uuid}.`,
           card_id: card.id_uuid,
-          title: card.title,
+          title: newTitle,
           draft: true,
           approval_required: true,
-          kanban_card: { ...card }
+          kanban_card: { ...card, title: newTitle, description: newDesc, priority: newPriority, due_date: newDueDate, labels: newLabels }
         });
       }
+
+      card.title = newTitle;
+      card.description = newDesc;
+      card.priority = newPriority;
+      card.due_date = newDueDate;
+      card.labels = newLabels;
+      card.updated_at_utc = new Date().toISOString();
 
       saveFallbackStore();
 

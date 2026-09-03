@@ -94,7 +94,7 @@ Das System emittiert Events bei Datenbewegungen; Workflows mit passendem `event_
 * **Kontakte**: `contact.created`, `contact.updated`, `contact.deleted`
 * **Unternehmen**: `company.created`, `company.updated`, `company.deleted`
 * **Angebote**: `offer.created`, `offer.finalized`, `offer.sent`, `offer.status_updated`
-* **Kanban**: `kanban.board_created`, `kanban.card_created`, `kanban.card_updated`, `kanban.card_moved`, `kanban.card_deleted`, `kanban.column_created`, `kanban.approval_approved`, `kanban.approval_rejected`
+* **Kanban**: `kanban.board_created`, `kanban.card_created`, `kanban.card_updated`, `kanban.card_moved`, `kanban.card_deleted`, `kanban.column_created` (die früheren Approval-Trigger haben keinen aktiven Datenpfad — obsoletes Subsystem)
 * **Dateien**: `file.uploaded` (Datei an Kontakt/Unternehmen), `knowledge.file_uploaded` (Datei ins interne Wissen)
 * **Weitere**: `council.session_degraded_fallback`
 

@@ -46,7 +46,7 @@ Kanban-Aktivitäten können **Workflows auslösen** — z. B.: Sobald eine Karte
 | `kanban_boards` | Boards (Titel, Beschreibung, Standard-Spalten) |
 | `kanban_columns` | Spalten mit `position` und `color_accent` |
 | `kanban_cards` | Karten mit Titel, Beschreibung, Fälligkeit, Zuweisung |
-| `kanban_approvals` | Genehmigungs-Workflows auf Karten |
+| `kanban_approvals` | Genehmigungs-Workflows auf Karten — **obsolet**: kein aktiver Datenpfad (0 Zeilen, keine INSERTs; Kanban-Freigabe läuft über den Chat-Draft-Flow) |
 
 **Standard-Spalten** (beim Anlegen ohne eigene Definition): `Backlog` → `Zu erledigen` → `In Bearbeitung` → `Erledigt`.
 
@@ -56,7 +56,7 @@ Kanban-Aktivitäten können **Workflows auslösen** — z. B.: Sobald eine Karte
 
 * **Drag & Drop**: Karten per @dnd-kit zwischen Spalten verschieben (`move_kanban_card` / `kanban.card_moved`-Event).
 * **Board-Verwaltung**: Boards anlegen, Spalten definieren, Karten erstellen/bearbeiten/löschen.
-* **Freigaben**: Karten können Genehmigungs-Workflows durchlaufen (`kanban.approval_approved` / `kanban.approval_rejected`).
+* **Freigaben im Chat**: Wenn der Assistent im Chat eine Karte anlegen/ändern/löschen will, schlägt er einen Freigabe-Entwurf (`proposedChanges`) vor, den der Nutzer bestätigt — für MCP-Clients und Workflows gilt die erteilte Berechtigung dagegen direkt (siehe Governance-Hinweis).
 * **i18n**: Komplett zweisprachig (DE/EN).
 
 ## 3. KI-Integration
@@ -78,9 +78,9 @@ Der Tool-Katalog (Domäne `KANBAN`) umfasst:
 * „Erstelle auf dem Board ‚Sales‘ eine Karte ‚Follow-up Acme AG‘“
 * „Verschiebe die Karte ‚Rechnung 1042 prüfen‘ in ‚Erledigt‘“
 
-> **Governance:** Schreibende Kanban-Aktionen laufen als Freigabe-Entwürfe (`proposedChanges`) — Konsistenz mit dem einheitlichen Draft-Flow.
+> **Governance:** Im **Chat** laufen schreibende Kanban-Aktionen als Freigabe-Entwürfe (`proposedChanges`) mit Nutzer-Bestätigung. **MCP-Clients** und **Workflows** schreiben direkt: Die am API-Schlüssel erteilte Berechtigung (Scopes + `tool_permissions` je Tool/Aktion) ist die Autorisierung — fehlt sie, kommt eine klare Fehlermeldung ohne Datenänderung. Beim Anlegen und Verschieben wird die Ziel-Spalte gegen das Board der Karte validiert; die Datenbank erzwingt diese Konsistenz zusätzlich (composite Foreign Key).
 
 ## 4. Workflow-Anbindung
 
-* **Events**: `kanban.board_created`, `kanban.card_created`, `kanban.card_updated`, `kanban.card_moved`, `kanban.card_deleted`, `kanban.column_created`, `kanban.approval_approved`, `kanban.approval_rejected` → als Workflow-Trigger nutzbar (z. B. bei Karten-Bewegung in „Erledigt“ eine Notiz schreiben).
+* **Events**: `kanban.board_created`, `kanban.card_created`, `kanban.card_updated`, `kanban.card_moved`, `kanban.card_deleted`, `kanban.column_created` → als Workflow-Trigger nutzbar (z. B. bei Karten-Bewegung in „Erledigt“ eine Notiz schreiben). Die früheren Approval-Events (`kanban.approval_approved`/`…_rejected`) haben keinen aktiven Datenpfad mehr (obsoletes Subsystem).
 * **DAG-Knoten**: `create_kanban_card`, `move_kanban_card`, `update_kanban_card`, `delete_kanban_card` sind als Workflow-Schritte im DAG-Picker verfügbar.

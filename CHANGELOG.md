@@ -2,6 +2,11 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.15] — 2026-09-03
+
+- **MCP-Zugriffe auf Kanban-Karten führen erteilte Berechtigungen zuverlässig aus:** Wenn ein API-Schlüssel die Berechtigung zum Löschen oder Ändern von Karten besitzt, wird die Aktion jetzt sofort und dauerhaft ausgeführt — vorher erschien in diesen Fällen eine Entwurfs-Meldung, obwohl kein Entwurfs-Workflow vorgesehen war. Auch aus automatisierten Abläufen heraus schreiben Kanban-Schritte jetzt direkt.
+- **Karten bleiben immer ihrem Board zugeordnet:** Beim Anlegen und Verschieben von Karten wird geprüft, dass die Ziel-Spalte wirklich zum gewählten Board gehört. Die Datenbank erzwingt diese Konsistenz zusätzlich technisch — Karten können nicht mehr in einem Zustand landen, in dem sie keiner sichtbaren Spalte zugeordnet sind, aber dennoch mitgezählt werden.
+
 ## [2.1.14] — 2026-09-02
 
 - **Notizen aus automatisierten Abläufen werden zuverlässig gespeichert:** In gelernten Workflows, in denen ein Schritt auf die Ergebnisse vorheriger Schritte zugreift (zum Beispiel eine Analyse, gefolgt von einer Notiz), wurde die Notiz unter bestimmten Umständen nicht angelegt. Jetzt wird die eigentliche Anweisung sauber von den vorherigen Ergebnissen getrennt — die Notiz entsteht zuverlässig mit dem gewünschten Text.

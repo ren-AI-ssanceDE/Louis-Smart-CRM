@@ -2,8 +2,8 @@
 
 <img width="2064" height="1110" alt="louis_smart_crm_release" src="https://www.ren-ai-ssance.de/wp-content/uploads/2026/09/louis_crm.jpg" />
 
-> **Version 2.1.14** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
-> Highlight der Version: Notizen aus automatisierten Abläufen werden jetzt auch dann zuverlässig gespeichert, wenn ein Schritt auf die Ergebnisse vorheriger Schritte zurückgreift — die eigentliche Anweisung wird sauber vom Kontext getrennt.
+> **Version 2.1.15** — Das KI-gestützte CRM für kleine Unternehmen, Freiberufler und Solo-Selbstständige.
+> Highlight der Version: MCP-Zugriffe auf Kanban-Karten führen erteilte Berechtigungen jetzt zuverlässig aus — und die Datenbank wacht über die Konsistenz von Boards und Spalten.
 > Probier's aus - einfach herunterladen und installieren!
 ---
 

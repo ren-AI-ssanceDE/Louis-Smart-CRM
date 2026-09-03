@@ -14,7 +14,7 @@ import {
   CreateOfferArgsZodSchema,
   UpdateContactArgsZodSchema,
 } from "../ai/tools/types.js";
-import { executeListCompanies, executeListContacts, executeListInvoices } from "../ai/tools/crm.js";
+import { executeListCompanies, executeListContacts, executeListInvoices, resolveKanbanColumn } from "../ai/tools/crm.js";
 import {
   executeListNotes, executeCreateNoteDraft, executeUpdateNote, executeDeleteNote,
   executeGetKanbanBoardDetails, executeCreateKanbanBoard, executeUpdateKanbanCard, executeDeleteKanbanCard,
@@ -843,12 +843,12 @@ const ALLOWED_CONTACT_UPDATE_COLUMNS = new Set([
   "associated_company_id"
 ]);
 
-// zentrale Zuordnung: Zentrale Mapping-Tabelle MCP-Tool-Name → Aktions-Typ.
+// 061 P0-3: Zentrale Mapping-Tabelle MCP-Tool-Name → Aktions-Typ.
 // SINGLE SOURCE OF TRUTH für die Tool-Berechtigungen. Verhindert die
 // Namens-Drift-Klasse dauerhaft: JEDER MCP-Schreib-Tool-Name muss hier einen
-// Eintrag haben (Drift-Guard-Test  erzwingt das).
+// Eintrag haben (Drift-Guard-Test 061 erzwingt das).
 // tool_permissions im API-Key referenzieren GENAU diese Namen.
-// Aktions-Zuordnung: Aktions-Enum erweitert — Entitäts-Tools (create/update/delete),
+// 062 P0-2: Aktions-Enum erweitert — Entitäts-Tools (create/update/delete),
 // Aktions-Tools (approve/send/run) mit semantisch passender Aktion
 // (mail_approve_draft = Freigabe = ja/nein, kein Update; offer_finalize_send =
 // Senden; crm_run_* = Agent/Council ausführen).
@@ -866,7 +866,7 @@ export const MCP_TOOL_ACTIONS: Record<string, "create" | "update" | "delete" | "
   // Angebote
   "crm_create_offer": "create",
   "offer_finalize_send": "send",
-  // Agent/Council (: run statt generischem Fallback — Key braucht ["run"])
+  // Agent/Council (062: run statt generischem Fallback — Key braucht ["run"])
   "crm_run_louis_ai": "run",
   "crm_run_council_deliberation": "run",
   // Kanban
@@ -890,8 +890,8 @@ export const MCP_TOOL_ACTIONS: Record<string, "create" | "update" | "delete" | "
   "workflows_learn": "create"
 };
 
-// zentrale Zuordnung: Leitet die Aktion aus der zentralen Tabelle ab (kein Regex-Raten).
-// Aktions-Zuordnung: Rückgabetyp um approve/send/run erweitert.
+// 061 P0-3: Leitet die Aktion aus der zentralen Tabelle ab (kein Regex-Raten).
+// 062 P0-2: Rückgabetyp um approve/send/run erweitert.
 export function getToolAction(name: string): "create" | "update" | "delete" | "approve" | "send" | "run" | null {
   return MCP_TOOL_ACTIONS[name] ?? null;
 }
@@ -919,11 +919,11 @@ function checkMcpToolScope(name: string, ctx: McpContext): void {
     if (!hasScope("write")) {
       throw new Error(`Insufficient permissions: Scope 'write' or 'admin' required for tool '${name}'.`);
     }
-    // zentrale Zuordnung: Tool-Berechtigungen (create/update/delete pro Tool) — wenn der
+    // 061 P0-3: Tool-Berechtigungen (create/update/delete pro Tool) — wenn der
     // Key tool_permissions gesetzt hat, gelten DIESE statt der generischen
     // write-Scope-Freigabe. Fehlende Aktion = verboten (klare Meldung, kein
     // irreführender Draft!). NULL = Altverhalten (nur scopes).
-    //  P2-Review: Tools OHNE Matrix-Eintrag (z.B. crm_run_louis_ai — der
+    // 061 P2-Review: Tools OHNE Matrix-Eintrag (z.B. crm_run_louis_ai — der
     // Chat-Einstieg, kein create/update/delete) fallen auf die generische
     // Scope-Prüfung zurück statt hart geblockt zu werden — sonst verliert ein
     // Key mit tool_permissions den kompletten Chat-Zugang (externer Client-Fall).
@@ -1114,7 +1114,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
           labels_json?: string | null;
           labels?: string[];
         };
-        // labels als Array additiv ergänzen (Router-Parität contacts.ts);
+        // 070 P2-1: labels als Array additiv ergänzen (Router-Parität contacts.ts);
         // labels_json ist jsonb → pg liefert Array (kein String). Beide Fälle behandeln.
         if (typeof contact.labels_json === "string") {
           try {
@@ -1248,7 +1248,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       const parsed = UpdateContactArgsZodSchema.parse(args);
       const idUuid = parsed.id_uuid as string;
       if (!idUuid) throw new Error("id_uuid is required");
-      // company_id-Alias auf associated_company_id mappen (wie Create-Handler),
+      // 070 B3: company_id-Alias auf associated_company_id mappen (wie Create-Handler),
       // damit der Alias nicht an der Allowlist vorbeiläuft.
       const parsedRec = parsed as Record<string, unknown>;
       if (parsedRec.company_id !== undefined && parsedRec.associated_company_id === undefined) {
@@ -1258,7 +1258,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       // undefined-Felder weg, damit nichts auf NULL überschrieben wird).
       const keys = Object.keys(parsed).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k));
       if (keys.length === 0) throw new Error("No valid fields to update");
-      // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+      // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
       const recomputeFullLegalName = (curFirst: unknown, curLast: unknown): void => {
         const first = keys.includes("first_name") ? parsedRec.first_name : curFirst;
         const last = keys.includes("last_name") ? parsedRec.last_name : curLast;
@@ -1269,7 +1269,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       if (isUsingFallback) {
         const contact = fallbackStore.contacts.find((c) => c.id_uuid === idUuid);
         if (!contact) throw new Error(`Contact ${idUuid} not found`);
-        // Bestandswerte aus dem Store-Kontakt für die Neuberechnung
+        // 071 (BUG-006): Bestandswerte aus dem Store-Kontakt für die Neuberechnung
         if (keys.includes("first_name") || keys.includes("last_name")) {
           recomputeFullLegalName(contact.first_name, contact.last_name);
         }
@@ -1283,7 +1283,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         await mcpAudit(tenantId, "UPDATE", "CONTACT", idUuid, `MCP: Kontakt aktualisiert: ${(contact as { full_legal_name?: string }).full_legal_name || idUuid} (Felder: ${keys.join(", ")})`);
         return contact;
       } else {
-        // Bestandswerte aus der DB für die Neuberechnung
+        // 071 (BUG-006): Bestandswerte aus der DB für die Neuberechnung
         if (keys.includes("first_name") || keys.includes("last_name")) {
           const nameRes = await pool.query(
             "SELECT first_name, last_name FROM core_registry_contacts WHERE id_uuid = $1 AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1'))",
@@ -1649,25 +1649,27 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       const idUuid = uuidv4();
       let boardId = args.board_id_uuid as string | undefined;
       let columnId = args.column_id_uuid as string | undefined;
+      const columnTitle = args.column_title as string | undefined;
 
-      if (!boardId || !columnId) {
-        // Resolve default board / first column
+      if (!boardId) {
+        // Default-Board aufloesen — kein uuidv4()-Dummy: Karten ohne existierendes
+        // Board waeren Phantom-Karten (Fallback unsichtbar, PG FK-Fehler)
         if (isUsingFallback) {
-          const b = fallbackStore.kanbanBoards?.[0];
-          boardId = b?.id_uuid || uuidv4();
-          const col = fallbackStore.kanbanColumns?.find((c) => c.board_id === boardId);
-          columnId = col?.id_uuid || uuidv4();
+          boardId = (fallbackStore.kanbanBoards || []).find(b => b.is_default)?.id_uuid
+            || (fallbackStore.kanbanBoards || [])[0]?.id_uuid;
         } else {
-          const bRes = await pool.query(`SELECT id_uuid FROM kanban_boards WHERE tenant_id = $1 OR (tenant_id = '1' AND $1 = '1') LIMIT 1`, [tenantId]);
+          const bRes = await pool.query(
+            `SELECT id_uuid FROM kanban_boards WHERE tenant_id = $1 OR (tenant_id = '1' AND $1 = '1') ORDER BY is_default DESC LIMIT 1`,
+            [tenantId]
+          );
           boardId = bRes.rows[0]?.id_uuid;
-          if (boardId) {
-            const cRes = await pool.query(`SELECT id_uuid FROM kanban_columns WHERE board_id = $1 LIMIT 1`, [boardId]);
-            columnId = cRes.rows[0]?.id_uuid;
-          }
         }
       }
 
-      if (!boardId || !columnId) throw new Error("Could not find a valid Kanban board or column");
+      if (!boardId) throw new Error("Could not find a valid Kanban board or column");
+
+      // BUG-010: Ziel-Spalte board-konsistent validieren/aufloesen (auch wenn beide gegeben)
+      columnId = await resolveKanbanColumn(tenantId, boardId, columnId, columnTitle);
 
       const payload = {
         id_uuid: idUuid,
@@ -1721,22 +1723,37 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
 
     case "crm_move_kanban_card": {
       const cardId = args.card_id_uuid as string;
-      const targetColumnId = args.target_column_id_uuid as string;
+      const targetColumnId = args.target_column_id_uuid as string | undefined;
+      const targetColumnTitle = args.target_column_title as string | undefined;
       const newPos = Number(args.new_position) || 0;
 
       if (isUsingFallback) {
         const card = fallbackStore.kanbanCards?.find((c) => c.id_uuid === cardId);
         if (!card) throw new Error(`Card ${cardId} not found`);
-        if (targetColumnId) card.column_id = targetColumnId;
+        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren; Titel wird
+        // board-konsistent aufgeloest und ANGEWENDET (strict: kein stiller No-op)
+        const resolved = targetColumnId || targetColumnTitle
+          ? await resolveKanbanColumn(tenantId, card.board_id, targetColumnId, targetColumnTitle, { strict: true })
+          : undefined;
+        if (resolved) card.column_id = resolved;
         card.position = newPos;
         card.updated_at_utc = new Date().toISOString();
         saveFallbackStore();
         workflowEventBus.emitEvent(tenantId, "kanban.card_moved", card);
         return card;
       } else {
+        const cardRes = await pool.query(
+          `SELECT board_id, column_id FROM kanban_cards WHERE id_uuid = $1 AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1'))`,
+          [cardId, tenantId]
+        );
+        if (cardRes.rows.length === 0) throw new Error(`Card ${cardId} not found`);
+        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren (bei Zielangabe)
+        const resolved = targetColumnId || targetColumnTitle
+          ? await resolveKanbanColumn(tenantId, cardRes.rows[0].board_id, targetColumnId, targetColumnTitle, { strict: true })
+          : undefined;
         const res = await pool.query(
           `UPDATE kanban_cards SET column_id = COALESCE($1, column_id), position = $2, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $3 AND (tenant_id = $4 OR (tenant_id = '1' AND $4 = '1')) RETURNING *`,
-          [targetColumnId || null, newPos, cardId, tenantId]
+          [resolved || null, newPos, cardId, tenantId]
         );
         if (res.rows.length === 0) throw new Error(`Card ${cardId} not found`);
         const updated = cleanDbRow(res.rows[0]);
@@ -1928,10 +1945,10 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "kanban_create_board": {
-      // zentrale Zuordnung: MCP-Client mit Tool-Berechtigung 'create' für dieses Tool
+      // 061 P0-3: MCP-Client mit Tool-Berechtigung 'create' für dieses Tool
       // schreibt DIREKT (bypassApproval=true) — der externe Client bekommt echte
       // Persistenz statt des irreführenden "Entwurf erstellt"-Drafts, der nie
-      // freigegeben werden kann (-Bug-Klasse). Ohne Berechtigung wirft
+      // freigegeben werden kann (B-213-10-Bug-Klasse). Ohne Berechtigung wirft
       // checkMcpToolScope bereits eine klare Meldung.
       const res = await executeCreateKanbanBoard(tenantId, JSON.stringify(args), "mcp_client", true);
       if (!res.success) throw new Error(res.error || "Fehler beim Erstellen des Kanban-Boards");
@@ -1939,13 +1956,21 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       return res.data;
     }
     case "kanban_update_card": {
-      const res = await executeUpdateKanbanCard(tenantId, JSON.stringify(args), "mcp_client");
+      // B-213-10-Klasse (gleicher Fix wie kanban_delete_card): MCP-Client mit
+      // Tool-Berechtigung 'update' schreibt DIREKT (bypassApproval=true) — echte
+      // Persistenz statt irreführendem Draft, der nie freigegeben werden kann.
+      const res = await executeUpdateKanbanCard(tenantId, JSON.stringify(args), "mcp_client", true);
       if (!res.success) throw new Error(res.error || "Fehler beim Aktualisieren der Kanban-Karte");
       await mcpAudit(tenantId, "UPDATE", "KANBAN_CARD", String(args.card_id_uuid || args.id_uuid || "n/a"), `MCP: Kanban-Karte aktualisiert (${String(args.card_id_uuid || args.id_uuid || "n/a")})`);
       return res.data;
     }
     case "kanban_delete_card": {
-      const res = await executeDeleteKanbanCard(tenantId, JSON.stringify(args), "mcp_client");
+      // B-213-10-Klasse: MCP-Client mit Tool-Berechtigung 'delete' für dieses Tool
+      // schreibt DIREKT (bypassApproval=true) — der externe Client bekommt echte
+      // Persistenz statt des irreführenden "Entwurf erstellt"-Drafts, der nie
+      // freigegeben werden kann (Autorisierung wird geprüft und eingelöst).
+      // Ohne Berechtigung wirft checkMcpToolScope bereits eine klare Meldung.
+      const res = await executeDeleteKanbanCard(tenantId, JSON.stringify(args), "mcp_client", true);
       if (!res.success) throw new Error(res.error || "Fehler beim Löschen der Kanban-Karte");
       await mcpAudit(tenantId, "DELETE", "KANBAN_CARD", String(args.card_id_uuid || args.id_uuid || "n/a"), `MCP: Kanban-Karte gelöscht (${String(args.card_id_uuid || args.id_uuid || "n/a")})`);
       return res.data;

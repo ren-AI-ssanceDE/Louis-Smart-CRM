@@ -882,14 +882,15 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
       } = await import("./tools/crm.js");
 
       let rawResult: unknown = "";
+      // 042-Semantik: Workflow-Graph-Pfad schreibt direkt (bypassApproval=true) — wie create_board
       if (toolName.includes("create")) {
-        rawResult = await executeCreateKanbanCard(tenantId, cleanArgs, "ai_workflow_dag");
+        rawResult = await executeCreateKanbanCard(tenantId, cleanArgs, "ai_workflow_dag", true);
       } else if (toolName.includes("move")) {
-        rawResult = await executeMoveKanbanCard(tenantId, cleanArgs, "ai_workflow_dag");
+        rawResult = await executeMoveKanbanCard(tenantId, cleanArgs, "ai_workflow_dag", true);
       } else if (toolName.includes("update")) {
-        rawResult = await executeUpdateKanbanCard(tenantId, cleanArgs, "ai_workflow_dag");
+        rawResult = await executeUpdateKanbanCard(tenantId, cleanArgs, "ai_workflow_dag", true);
       } else if (toolName.includes("delete")) {
-        rawResult = await executeDeleteKanbanCard(tenantId, cleanArgs, "ai_workflow_dag");
+        rawResult = await executeDeleteKanbanCard(tenantId, cleanArgs, "ai_workflow_dag", true);
       }
 
       return {

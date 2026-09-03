@@ -4,6 +4,7 @@ import { router, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, cleanDbRow, cleanLigatureHacksFromValue } from "../db.js";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
+import { resolveKanbanColumn } from "../ai/tools/crm.js";
 import { 
   KanbanBoardSchema, 
   KanbanBoardFullSchema, 
@@ -421,6 +422,17 @@ export const kanbanRouter = router({
       const sanitized = cleanLigatureHacksFromValue(input);
       const companyId = sanitized.company_id_uuid?.trim() || null;
       const contactId = sanitized.contact_id_uuid?.trim() || null;
+
+      // BUG-010: column_id muss zum board_id gehoeren — klare Meldung statt Mismatch-Karte/FK-Rohfehler
+      try {
+        await resolveKanbanColumn(ctx.tenantId, sanitized.board_id, sanitized.column_id);
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Ungültige Ziel-Spalte."
+        });
+      }
+
       const id = uuidv4();
       const now = new Date().toISOString();
 
@@ -540,9 +552,13 @@ export const kanbanRouter = router({
       if (isUsingFallback) {
         const idx = (fallbackStore.kanbanCards || []).findIndex(c => c.id_uuid === sanitized.id_uuid);
         if (idx === -1) throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' });
+        const existing = fallbackStore.kanbanCards![idx];
         fallbackStore.kanbanCards![idx] = {
-          ...fallbackStore.kanbanCards![idx],
+          ...existing,
           ...sanitized,
+          // board_id/column_id aendert nur der Move (moveCard) — wie im PG-Zweig (UPDATE setzt sie nicht)
+          board_id: existing.board_id,
+          column_id: existing.column_id,
           status: cardStatus,
           company_id_uuid: companyId,
           contact_id_uuid: contactId,
@@ -637,6 +653,16 @@ export const kanbanRouter = router({
         const card = (fallbackStore.kanbanCards || []).find(c => c.id_uuid === input.card_id_uuid);
         if (!card) throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' });
 
+        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren
+        try {
+          await resolveKanbanColumn(ctx.tenantId, card.board_id, input.target_column_id_uuid);
+        } catch (e) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: e instanceof Error ? e.message : 'Ungültige Ziel-Spalte.'
+          });
+        }
+
         const fromColId = card.column_id;
         const fromCol = (fallbackStore.kanbanColumns || []).find(c => c.id_uuid === fromColId);
         const toCol = (fallbackStore.kanbanColumns || []).find(c => c.id_uuid === input.target_column_id_uuid);
@@ -674,6 +700,16 @@ export const kanbanRouter = router({
       const card = cleanDbRow(cardRes.rows[0]);
       const fromColId = card.column_id;
 
+      // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren
+      try {
+        await resolveKanbanColumn(ctx.tenantId, card.board_id, input.target_column_id_uuid);
+      } catch (e) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: e instanceof Error ? e.message : 'Ungültige Ziel-Spalte.'
+        });
+      }
+
       const colsRes = await pool.query(
         "SELECT id_uuid, title, position FROM kanban_columns WHERE id_uuid = ANY($1) AND (tenant_id = $2 OR tenant_id = '1')",
         [[fromColId, input.target_column_id_uuid], ctx.tenantId]
@@ -708,6 +744,15 @@ export const kanbanRouter = router({
       return { success: true };
     }),
 
+  // =========================================================================
+  // OBSOLET: sys_louis_kanban_approvals-Subsystem (getPendingApprovals /
+  // approveApproval / rejectApproval / updateApproval) — seit der Chat-Freigabe
+  // (proposedChanges → approveProposal) existiert KEIN INSERT-Pfad mehr in die
+  // Tabelle (repo-weit 0 INSERTs, live 0 Zeilen); der PG-Zweig liest zudem
+  // Spalten, die die Tabelle nicht hat. Die Kanban-Sektion des Dashboard-
+  // Freigabe-Panels wurde entfernt (Kanban-Freigabe = Chat). Nicht ohne
+  // Entscheidung reaktivieren; kein DROP (additive Migrations-Regel).
+  // =========================================================================
   getPendingApprovals: protectedProcedure
     .output(z.array(KanbanApprovalFullSchema))
     .query(async ({ ctx }) => {

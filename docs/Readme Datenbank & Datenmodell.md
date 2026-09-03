@@ -55,7 +55,7 @@ Das System ist **mandantenfähig**: Jede Firma/Nutzer sieht nur ihre eigenen Dat
 | `fiscal_billing_invoices` | Rechnungen: Positionen (`invoice_line_items_json`), Netto/Brutto, ZUGFeRD-Metadaten, Status (`draft/issued/paid/overdue/cancelled`) |
 | `offers` | Angebote: Gültigkeit, Positionen, Status, Konvertierung |
 | `core_registry_my_company_table` | Eigenes Unternehmen: Nummernkreise (Rechnung/Angebot), Bankverbindung, Logo |
-| `kanban_boards` / `kanban_columns` / `kanban_cards` / `kanban_approvals` | Kanban-Pipeline |
+| `kanban_boards` / `kanban_columns` / `kanban_cards` / `kanban_approvals` | Kanban-Pipeline (`kanban_approvals`: obsolet, kein aktiver Datenpfad) |
 | `council_sessions` / `council_messages` | Council-Debatten |
 | `sys_louis_ai_sessions` / `sys_louis_ai_chat_history` | Agenten-Sessions & Gesprächshistorien |
 | `sys_louis_ai_knowledge_metadata` / `sys_louis_ai_knowledge_chunks` | RAG-Wissensbasis (Chunks + Embeddings) |

@@ -13,6 +13,7 @@ const pdf = require("pdf-parse");
 const mammoth = require("mammoth");
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, adminProcedure } from "../trpc.js";
+import { resolveKanbanColumn } from "../ai/tools/crm.js";
 import { 
   pool, 
   isUsingFallback, 
@@ -2095,8 +2096,22 @@ export const louisAiRouter = router({
           } else if (action === "UPDATE" || action === "MOVE") {
             const idx = fallbackStore.kanbanCards.findIndex((c) => c.id_uuid === appliedId);
             if (idx >= 0) {
+              const existing = fallbackStore.kanbanCards[idx];
+              const pState = (input.proposed_state || {}) as Record<string, unknown>;
+              // BUG-010 (defensiv): NUR wenn der Vorschlag board_id/column_id tatsaechlich
+              // aendert, muss die resultierende Kombination konsistent sein — reine
+              // Feld-Updates (Titel etc.) bleiben auch auf Altlast-Karten moeglich (wie PG)
+              const proposesBoardChange = !!(pState.board_id || pState.board_id_uuid);
+              const proposesColumnChange = !!(pState.column_id || pState.column_id_uuid || pState.target_column_id_uuid);
+              if (proposesBoardChange || proposesColumnChange) {
+                const effBoardId = String(pState.board_id || pState.board_id_uuid || existing.board_id || "");
+                const effColumnId = String(pState.column_id || pState.column_id_uuid || pState.target_column_id_uuid || existing.column_id || "");
+                if (effBoardId && effColumnId) {
+                  await resolveKanbanColumn(tenantId, effBoardId, effColumnId);
+                }
+              }
               fallbackStore.kanbanCards[idx] = {
-                ...fallbackStore.kanbanCards[idx],
+                ...existing,
                 ...(input.proposed_state as Record<string, unknown>),
                 id_uuid: appliedId,
                 updated_at_utc: new Date().toISOString()
@@ -2115,6 +2130,9 @@ export const louisAiRouter = router({
               const firstCol = (fallbackStore.kanbanColumns || []).find(c => c.board_id === boardId);
               if (firstCol) columnId = firstCol.id_uuid;
             }
+            // BUG-010 (defensiv): Spalte muss zum Board gehoeren; kein Phantom-Write ohne Board
+            if (!boardId) throw new Error("Kein gültiges Board für die Karte gefunden.");
+            columnId = await resolveKanbanColumn(tenantId, boardId, columnId);
             fallbackStore.kanbanCards.push({
               id_uuid: appliedId,
               tenant_id: tenantId,
@@ -2500,12 +2518,23 @@ export const louisAiRouter = router({
           } else if (action === "UPDATE") {
             await pool.query(
               "UPDATE kanban_cards SET title = $1, description = $2, priority = $3, due_date = $4, labels = $5, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $6 AND (tenant_id = $7 OR tenant_id = '1')",
-              [pState.title, pState.description || null, pState.priority || 'medium', pState.due_date || null, JSON.stringify(pState.labels || []), appliedId, tenantId]
+              // labels als JS-Array (node-pg serialisiert TEXT[]-Arrays; JSON.stringify -> "malformed array literal")
+              [pState.title, pState.description || null, pState.priority || 'medium', pState.due_date || null, Array.isArray(pState.labels) ? pState.labels : [], appliedId, tenantId]
             );
           } else if (action === "MOVE") {
+            const targetId = (pState.column_id as string) || (pState.target_column_id_uuid as string) || "";
+            // BUG-010 (defensiv): Ziel-Spalte muss zum Board der Karte gehoeren
+            if (targetId) {
+              const kRes = await pool.query(
+                "SELECT board_id FROM kanban_cards WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')",
+                [appliedId, tenantId]
+              );
+              if (kRes.rows.length === 0) throw new Error(`Karte ${appliedId} nicht gefunden.`);
+              await resolveKanbanColumn(tenantId, kRes.rows[0].board_id, targetId);
+            }
             await pool.query(
               "UPDATE kanban_cards SET column_id = $1, position = $2, updated_at_utc = CURRENT_TIMESTAMP WHERE id_uuid = $3 AND (tenant_id = $4 OR tenant_id = '1')",
-              [pState.column_id || pState.target_column_id_uuid, pState.position ?? pState.new_position ?? 0, appliedId, tenantId]
+              [targetId || null, pState.position ?? pState.new_position ?? 0, appliedId, tenantId]
             );
           } else {
             let boardId = (pState.board_id as string) || (pState.board_id_uuid as string) || null;
@@ -2518,6 +2547,9 @@ export const louisAiRouter = router({
               const cRes = await pool.query("SELECT id_uuid FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1') ORDER BY position ASC LIMIT 1", [boardId, tenantId]);
               if (cRes.rows[0]) columnId = cRes.rows[0].id_uuid;
             }
+            // BUG-010 (defensiv): Spalte muss zum Board gehoeren; kein Write ohne Board
+            if (!boardId) throw new Error("Kein gültiges Board für die Karte gefunden.");
+            columnId = await resolveKanbanColumn(tenantId, boardId, columnId);
             await pool.query(
               `INSERT INTO kanban_cards (
                 id_uuid, tenant_id, board_id, column_id, title, description, priority, position, due_date, company_id_uuid, contact_id_uuid, labels
@@ -2525,7 +2557,9 @@ export const louisAiRouter = router({
               [
                 appliedId, tenantId, boardId, columnId, pState.title || "Neue Karte",
                 pState.description || null, pState.priority || 'medium', pState.position || 0,
-                pState.due_date || null, pState.company_id_uuid || null, pState.contact_id_uuid || null, JSON.stringify(pState.labels || [])
+                pState.due_date || null, pState.company_id_uuid || null, pState.contact_id_uuid || null,
+                // labels als JS-Array (node-pg serialisiert TEXT[]-Arrays; JSON.stringify -> "malformed array literal")
+                Array.isArray(pState.labels) ? pState.labels : []
               ]
             );
           }
@@ -2666,7 +2700,7 @@ export const louisAiRouter = router({
         }
       }
 
-      // Tool-Validierung AUCH im Editor-Save-Pfad (Router-Endpunkt) —
+      // 058: Tool-Validierung AUCH im Editor-Save-Pfad (Router-Endpunkt) —
       // der Chat-Pfad (executeLearnWorkflow) validiert bereits; ohne diesen Check
       // könnte der Editor Workflows mit nicht-ausführbaren Tools speichern.
       const editorSteps = [

@@ -67,7 +67,7 @@ export function toNoteDraftJson(instruction: string, resolvedContactId?: string,
   if (parsed) {
     // Bereits strukturiert — nur note_text sicherstellen
     if (!parsed.note_text && typeof parsed.text === "string") parsed.note_text = parsed.text;
-    // P1-1: aufgelöste Ziel-ID ergänzen, falls nicht in der Instruktion
+    // 061 P1-1: aufgelöste Ziel-ID ergänzen, falls nicht in der Instruktion
     if (!parsed.contact_id_uuid && resolvedContactId) parsed.contact_id_uuid = resolvedContactId;
     if (!parsed.company_id_uuid && resolvedCompanyId) parsed.company_id_uuid = resolvedCompanyId;
     return JSON.stringify(parsed);
@@ -86,7 +86,7 @@ export function toNoteDraftJson(instruction: string, resolvedContactId?: string,
     if (bareUuid) {
       args.contact_id_uuid = bareUuid[1];
     }
-    // P1-1: aufgelöste Ziel-ID aus vorherigen Schritten (node_results) ergänzen
+    // 061 P1-1: aufgelöste Ziel-ID aus vorherigen Schritten (node_results) ergänzen
     if (!args.contact_id_uuid && resolvedContactId) args.contact_id_uuid = resolvedContactId;
     if (!args.company_id_uuid && resolvedCompanyId) args.company_id_uuid = resolvedCompanyId;
   }
@@ -180,7 +180,7 @@ export async function synthesizeDraftArgs(opts: {
   ]
 }`;
   } else if (toolName.includes("create") && toolName.includes("note")) {
-    // P1-1: Notiz-CREATE — Ziel-ID aus dem aufgelösten Kontext (resolved_contact_id_uuid)
+    // 061 P1-1: Notiz-CREATE — Ziel-ID aus dem aufgelösten Kontext (resolved_contact_id_uuid)
     schemaInstructions = `Generate a JSON object matching this schema:
 {
   "contact_id_uuid": "optional string (UUID des Zielkontakts — WICHTIG: falls im Kontext resolved_contact_id_uuid vorhanden, GENAU DIESEN Wert verwenden)",
@@ -535,7 +535,7 @@ export class WorkflowExecutor {
       let state: IWorkflowContextState;
       let nodeId = dag.start_node_id;
 
-      // P/2.1.7: direct_send_email des Workflows in den Payload injizieren —
+      // 068/2.1.7: direct_send_email des Workflows in den Payload injizieren —
       // der Graph-Executor braucht es für send_smtp_email (forceDraft vs. Sofortversand)
       if (!initialPayloadObj.direct_send_email && workflow.direct_send_email !== undefined) {
         initialPayloadObj.direct_send_email = workflow.direct_send_email;
@@ -571,7 +571,7 @@ export class WorkflowExecutor {
           // WAIT-Knoten selbst — ein erneutes executeDAG würde den WAIT endlos neu
           // terminieren (Endlosschleife). Stattdessen zum Folgeknoten springen
           // (analog approveWorkflowHumanGate).
-          // P1-1: isWaitToolNode ergänzt — learn_workflow speichert WAIT als
+          // 061 P1-1: isWaitToolNode ergänzt — learn_workflow speichert WAIT als
           // ACTION-Knoten mit tool_identifier "wait"/"delay", nicht als WAIT-Typ;
           // ohne diese Erkennung hängt der Resume endlos in PENDING_DELAY.
           const resumeNode = dag.nodes?.find((n) => n.node_id === nodeId);
@@ -1373,14 +1373,15 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
               rawResult = await executeListKanbanBoards(tenantId, cleanSynthesizedArgs);
             } else if (step.tool === "get_kanban_board_details" || step.tool === "executeGetKanbanBoardDetails") {
               rawResult = await executeGetKanbanBoardDetails(tenantId, cleanSynthesizedArgs);
+            // 042-Semantik: Workflow-Pfad schreibt direkt (bypassApproval=true) — wie create_board
             } else if (step.tool === "create_kanban_card" || step.tool === "executeCreateKanbanCard") {
-              rawResult = await executeCreateKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow");
+              rawResult = await executeCreateKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow", true);
             } else if (step.tool === "move_kanban_card" || step.tool === "executeMoveKanbanCard") {
-              rawResult = await executeMoveKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow");
+              rawResult = await executeMoveKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow", true);
             } else if (step.tool === "update_kanban_card" || step.tool === "executeUpdateKanbanCard") {
-              rawResult = await executeUpdateKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow");
+              rawResult = await executeUpdateKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow", true);
             } else if (step.tool === "delete_kanban_card" || step.tool === "executeDeleteKanbanCard") {
-              rawResult = await executeDeleteKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow");
+              rawResult = await executeDeleteKanbanCard(tenantId, cleanSynthesizedArgs, "ai_workflow", true);
             }
 
             logEntry.outputs = { text: typeof rawResult === "string" ? rawResult : JSON.stringify(rawResult), synthesizedArgs: cleanSynthesizedArgs };

@@ -200,11 +200,16 @@ resolve before creating.
   individual actions per tool. Create and update operations execute
   immediately with a write-scoped key — the key *is* the authorization, so
   keep scopes minimal and revoke keys you no longer need.
-- **Destructive operations are always staged:** deletes (e.g.
-  `kanban_delete_card`) are not executed directly from an external client —
-  they are created as approval drafts that require explicit confirmation by a
-  human in the Admin panel. An external agent can therefore never delete
-  records on its own.
+- **Destructive operations require explicit permission:** deletes (e.g.
+  `kanban_delete_card`) are executed directly when the key holds the
+  corresponding action in the per-tool permission matrix — the key *is* the
+  authorization for create, update and delete alike. An external agent can only
+  delete or modify records its key was explicitly granted, and denied actions
+  return a clear error without touching data.
+- **Column consistency is enforced:** when creating or moving Kanban cards,
+  the target column must belong to the card's board — validated on every entry
+  path and additionally guaranteed by a database-level constraint, so cards
+  can never end up in a state where they are not visible in any column.
 - **Governance-rules engine:** on top of the key scopes, a rules engine
   (BLOCK / ASK / REQUIRE_APPROVAL / ALLOW, per entity + action) can restrict
   agent actions further.
