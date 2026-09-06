@@ -5,7 +5,7 @@ import { PEER_REVIEW_SYSTEM_PROMPT, CHAIRMAN_SYSTEM_PROMPT, CANONICAL_COUNCIL_RO
 import { v4 as uuidv4 } from "uuid";
 
 // 088: Admin-konfigurierbares Council-Timeout (Sekunden); NULL in Settings = dieser Default.
-// R-AR-05: ein Ort für den Default, keine hartkodierten Konstanten in multiModelClient.
+// Ein Ort für den Default: keine hartkodierten Konstanten in multiModelClient.
 export const DEFAULT_COUNCIL_TIMEOUT_S = 120;
 
 const ANONYMOUS_LABELS = ['Antwort A', 'Antwort B', 'Antwort C', 'Antwort D', 'Antwort E', 'Antwort F', 'Antwort G', 'Antwort H'];

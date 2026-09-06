@@ -423,7 +423,7 @@ export const kanbanRouter = router({
       const companyId = sanitized.company_id_uuid?.trim() || null;
       const contactId = sanitized.contact_id_uuid?.trim() || null;
 
-      // BUG-010: column_id muss zum board_id gehoeren — klare Meldung statt Mismatch-Karte/FK-Rohfehler
+      // column_id muss zum board_id gehoeren — klare Meldung statt Mismatch-Karte/FK-Rohfehler
       try {
         await resolveKanbanColumn(ctx.tenantId, sanitized.board_id, sanitized.column_id);
       } catch (e) {
@@ -653,7 +653,7 @@ export const kanbanRouter = router({
         const card = (fallbackStore.kanbanCards || []).find(c => c.id_uuid === input.card_id_uuid);
         if (!card) throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' });
 
-        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren
+        // Ziel-Spalte muss zum Board der Karte gehoeren
         try {
           await resolveKanbanColumn(ctx.tenantId, card.board_id, input.target_column_id_uuid);
         } catch (e) {
@@ -700,7 +700,7 @@ export const kanbanRouter = router({
       const card = cleanDbRow(cardRes.rows[0]);
       const fromColId = card.column_id;
 
-      // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren
+      // Ziel-Spalte muss zum Board der Karte gehoeren
       try {
         await resolveKanbanColumn(ctx.tenantId, card.board_id, input.target_column_id_uuid);
       } catch (e) {

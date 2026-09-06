@@ -1,6 +1,6 @@
 // ============================================================================
 // 089: Reine Status-Logik für die Council-Tisch-Fortschrittsanzeige.
-// Kein React-Import — Unit-testbar in node-Env (R-AR-10, wrappbar).
+// Kein React-Import — Unit-testbar in node-Env, bewusst wrappbar gehalten.
 // Status je Council-Member: waiting (wartet) → working (arbeitet) → done (Antwort da).
 // Phase: idle | brainstorming | peer-review | synthesis (Chairman arbeitet).
 // ============================================================================

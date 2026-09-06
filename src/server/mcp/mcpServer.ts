@@ -1258,7 +1258,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       // undefined-Felder weg, damit nichts auf NULL überschrieben wird).
       const keys = Object.keys(parsed).filter((k) => ALLOWED_CONTACT_UPDATE_COLUMNS.has(k));
       if (keys.length === 0) throw new Error("No valid fields to update");
-      // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+      // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
       const recomputeFullLegalName = (curFirst: unknown, curLast: unknown): void => {
         const first = keys.includes("first_name") ? parsedRec.first_name : curFirst;
         const last = keys.includes("last_name") ? parsedRec.last_name : curLast;
@@ -1269,7 +1269,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       if (isUsingFallback) {
         const contact = fallbackStore.contacts.find((c) => c.id_uuid === idUuid);
         if (!contact) throw new Error(`Contact ${idUuid} not found`);
-        // 071 (BUG-006): Bestandswerte aus dem Store-Kontakt für die Neuberechnung
+        // Bestandswerte aus dem Store-Kontakt für die Neuberechnung
         if (keys.includes("first_name") || keys.includes("last_name")) {
           recomputeFullLegalName(contact.first_name, contact.last_name);
         }
@@ -1283,7 +1283,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         await mcpAudit(tenantId, "UPDATE", "CONTACT", idUuid, `MCP: Kontakt aktualisiert: ${(contact as { full_legal_name?: string }).full_legal_name || idUuid} (Felder: ${keys.join(", ")})`);
         return contact;
       } else {
-        // 071 (BUG-006): Bestandswerte aus der DB für die Neuberechnung
+        // Bestandswerte aus der DB für die Neuberechnung
         if (keys.includes("first_name") || keys.includes("last_name")) {
           const nameRes = await pool.query(
             "SELECT first_name, last_name FROM core_registry_contacts WHERE id_uuid = $1 AND (tenant_id = $2 OR (tenant_id = '1' AND $2 = '1'))",
@@ -1668,7 +1668,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
 
       if (!boardId) throw new Error("Could not find a valid Kanban board or column");
 
-      // BUG-010: Ziel-Spalte board-konsistent validieren/aufloesen (auch wenn beide gegeben)
+      // Ziel-Spalte board-konsistent validieren/aufloesen (auch wenn beide gegeben)
       columnId = await resolveKanbanColumn(tenantId, boardId, columnId, columnTitle);
 
       const payload = {
@@ -1730,7 +1730,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
       if (isUsingFallback) {
         const card = fallbackStore.kanbanCards?.find((c) => c.id_uuid === cardId);
         if (!card) throw new Error(`Card ${cardId} not found`);
-        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren; Titel wird
+        // Ziel-Spalte muss zum Board der Karte gehoeren; Titel wird
         // board-konsistent aufgeloest und ANGEWENDET (strict: kein stiller No-op)
         const resolved = targetColumnId || targetColumnTitle
           ? await resolveKanbanColumn(tenantId, card.board_id, targetColumnId, targetColumnTitle, { strict: true })
@@ -1747,7 +1747,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
           [cardId, tenantId]
         );
         if (cardRes.rows.length === 0) throw new Error(`Card ${cardId} not found`);
-        // BUG-010: Ziel-Spalte muss zum Board der Karte gehoeren (bei Zielangabe)
+        // Ziel-Spalte muss zum Board der Karte gehoeren (bei Zielangabe)
         const resolved = targetColumnId || targetColumnTitle
           ? await resolveKanbanColumn(tenantId, cardRes.rows[0].board_id, targetColumnId, targetColumnTitle, { strict: true })
           : undefined;

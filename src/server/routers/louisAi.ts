@@ -2098,7 +2098,7 @@ export const louisAiRouter = router({
             if (idx >= 0) {
               const existing = fallbackStore.kanbanCards[idx];
               const pState = (input.proposed_state || {}) as Record<string, unknown>;
-              // BUG-010 (defensiv): NUR wenn der Vorschlag board_id/column_id tatsaechlich
+              // Defensiv: NUR wenn der Vorschlag board_id/column_id tatsaechlich
               // aendert, muss die resultierende Kombination konsistent sein — reine
               // Feld-Updates (Titel etc.) bleiben auch auf Altlast-Karten moeglich (wie PG)
               const proposesBoardChange = !!(pState.board_id || pState.board_id_uuid);
@@ -2130,7 +2130,7 @@ export const louisAiRouter = router({
               const firstCol = (fallbackStore.kanbanColumns || []).find(c => c.board_id === boardId);
               if (firstCol) columnId = firstCol.id_uuid;
             }
-            // BUG-010 (defensiv): Spalte muss zum Board gehoeren; kein Phantom-Write ohne Board
+            // Defensiv: Spalte muss zum Board gehoeren; kein Phantom-Write ohne Board
             if (!boardId) throw new Error("Kein gültiges Board für die Karte gefunden.");
             columnId = await resolveKanbanColumn(tenantId, boardId, columnId);
             fallbackStore.kanbanCards.push({
@@ -2523,7 +2523,7 @@ export const louisAiRouter = router({
             );
           } else if (action === "MOVE") {
             const targetId = (pState.column_id as string) || (pState.target_column_id_uuid as string) || "";
-            // BUG-010 (defensiv): Ziel-Spalte muss zum Board der Karte gehoeren
+            // Defensiv: Ziel-Spalte muss zum Board der Karte gehoeren
             if (targetId) {
               const kRes = await pool.query(
                 "SELECT board_id FROM kanban_cards WHERE id_uuid = $1 AND (tenant_id = $2 OR tenant_id = '1')",
@@ -2547,7 +2547,7 @@ export const louisAiRouter = router({
               const cRes = await pool.query("SELECT id_uuid FROM kanban_columns WHERE board_id = $1 AND (tenant_id = $2 OR tenant_id = '1') ORDER BY position ASC LIMIT 1", [boardId, tenantId]);
               if (cRes.rows[0]) columnId = cRes.rows[0].id_uuid;
             }
-            // BUG-010 (defensiv): Spalte muss zum Board gehoeren; kein Write ohne Board
+            // Defensiv: Spalte muss zum Board gehoeren; kein Write ohne Board
             if (!boardId) throw new Error("Kein gültiges Board für die Karte gefunden.");
             columnId = await resolveKanbanColumn(tenantId, boardId, columnId);
             await pool.query(

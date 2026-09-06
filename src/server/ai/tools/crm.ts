@@ -1805,7 +1805,7 @@ export async function executeUpdateDraftContact(
       }
     }
 
-    // 071 (BUG-006): full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
+    // full_legal_name bei Namensänderung neu berechnen (Muster contacts.ts fullLegalName)
     if (updates.first_name !== undefined || updates.last_name !== undefined) {
       let curFirst: unknown = undefined;
       let curLast: unknown = undefined;
@@ -3147,12 +3147,12 @@ export async function executeCreateKanbanBoard(
 }
 
 /**
- * 102 (BUG-010): Ziel-Spalte einer Kanban-Karte board-konsistent aufloesen/validieren.
+ * Ziel-Spalte einer Kanban-Karte board-konsistent aufloesen/validieren.
  * - columnId gegeben: Spalte muss existieren UND zum Board gehoeren — sonst Fehler,
  *   statt still eine Mismatch-Karte (unsichtbar, aber in total_cards_count gezaehlt) zu erzeugen.
  * - nur columnTitle/fehlend: board-konsistent aufloesen (Titel-Suche, dann erste Spalte).
  * Dual-Store (isUsingFallback: Store-Lookup, sonst PG). Exportiert fuer Router/MCP/
- * approveProposal (R-AR-10, wrappbar). Wird von executeCreate/MoveKanbanCard genutzt.
+ * approveProposal ist bewusst wrappbar. Wird von executeCreate/MoveKanbanCard genutzt.
  */
 export async function resolveKanbanColumn(
   tenantId: string,
