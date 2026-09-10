@@ -6,6 +6,7 @@ import { generateZugferdXML, inferProfileFromInvoice } from "../../lib/zugferd.j
 import { McpContext } from "./auth.js";
 import { z } from "zod";
 import { CompanySchema, ContactSchema, InvoiceSchema, OfferInputSchema, CompanyFullSchema, InvoiceFullSchema } from "../../lib/schemas.js";
+import { normalizeInvoiceStatus, normalizeOfferStatus } from "../../lib/documentStatus.js";
 import { Company, Contact, Invoice, Offer } from "../../types.js";
 import {
   CreateCompanyArgsZodSchema,
@@ -264,7 +265,7 @@ export const MCP_TOOLS_CATALOG = [
       type: "object",
       properties: {
         search: { type: "string", description: "Suchbegriff (Rechnungsnummer, Empfänger)" },
-        payment_status: { type: "string", enum: ["pending", "paid", "overdue", "draft"] },
+        payment_status: { type: "string", enum: ["draft", "issued", "paid", "cancelled", "overdue"], description: "Optionaler Statusfilter. 'open'/'pending' werden als 'issued' behandelt." },
         limit: { type: "integer", default: 50 },
         offset: { type: "integer", default: 0 }
       }
@@ -308,19 +309,19 @@ export const MCP_TOOLS_CATALOG = [
             required: ["description", "quantity", "unit_price"]
           }
         },
-        payment_status: { type: "string", enum: ["pending", "paid", "overdue", "draft"], default: "pending" }
+        payment_status: { type: "string", enum: ["draft", "issued", "paid", "cancelled", "overdue"], default: "issued", description: "Standard 'issued' (offen); 'pending' wird als 'issued' behandelt." }
       },
       required: ["issue_date", "invoice_line_items"]
     }
   },
   {
     name: "crm_update_invoice_status",
-    description: "Statusänderung einer Rechnung (z. B. bezahlt, storniert, entwurf)",
+    description: "Statusänderung einer Rechnung (draft, issued, paid, cancelled, overdue)",
     inputSchema: {
       type: "object",
       properties: {
         invoice_id_uuid: { type: "string" },
-        payment_status: { type: "string", enum: ["pending", "paid", "overdue", "draft"] }
+        payment_status: { type: "string", enum: ["draft", "issued", "paid", "cancelled", "overdue"] }
       },
       required: ["invoice_id_uuid", "payment_status"]
     }
@@ -1382,7 +1383,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         vat_rate: 19,
         currency_code: "EUR",
         invoice_line_items: itemsWithTotals,
-        payment_status: (parsed.payment_status || "pending") as "pending" | "paid" | "overdue" | "draft",
+        payment_status: normalizeInvoiceStatus(parsed.payment_status) ?? "issued",
         created_by_identity: "ai_assistant" as const,
         ai_confidence_score: 1.0,
         is_verified_by_human: true,
@@ -1432,14 +1433,17 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
 
     case "crm_update_invoice_status": {
       const invoiceId = (args.invoice_id_uuid || args.invoice_id || args.id_uuid || args.id) as string;
-      const status = (args.payment_status || args.status) as string;
+      const rawStatus = (args.payment_status || args.status) as string;
       if (!invoiceId) throw new Error("invoice_id_uuid is required");
+      if (!rawStatus) throw new Error("payment_status is required");
+      const status = normalizeInvoiceStatus(rawStatus);
+      if (!status) throw new Error(`Unbekannter Status '${rawStatus}'. Erlaubt: draft, issued, paid, cancelled, overdue.`);
 
       if (isUsingFallback) {
         const invoice = fallbackStore.invoices.find((i) => i.id_uuid === invoiceId);
         if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
         const oldStatus = invoice.payment_status;
-        invoice.payment_status = status as "draft" | "issued" | "paid" | "cancelled" | "overdue";
+        invoice.payment_status = status;
         saveFallbackStore();
         workflowEventBus.emitEvent(tenantId, "invoice.status_changed", invoice);
         await mcpAudit(tenantId, "UPDATE", "INVOICE", invoiceId, `MCP: Rechnungsstatus geändert: ${oldStatus} → ${status} (${invoice.invoice_number || invoiceId})`);
@@ -1567,7 +1571,7 @@ async function executeMcpTool(name: string, args: Record<string, unknown>, ctx: 
         total_net_amount: Math.round(totalNet * 100) / 100,
         total_vat_amount: Math.round((totalGross - totalNet) * 100) / 100,
         total_gross_amount: Math.round(totalGross * 100) / 100,
-        offer_status: "not_sent" as const,
+        offer_status: normalizeOfferStatus((parsed as { offer_status?: unknown }).offer_status) ?? "draft",
         created_at_utc: new Date().toISOString(),
         updated_at_utc: new Date().toISOString(),
       };

@@ -49,7 +49,7 @@ export const TOOL_PARAMETERS: Record<string, ToolJsonSchema> = {
     type: "object",
     properties: {
       search: { ...stringSchema, description: "Suchbegriff (Rechnungsnummer, Firma, Betrag) als Freitext" },
-      payment_status: { type: "string", description: "optional: draft|issued|paid|cancelled|overdue|pending" },
+      payment_status: { type: "string", description: "optional: draft|issued|paid|cancelled|overdue — offen = issued+overdue; 'pending' wird als issued behandelt" },
       limit: { type: "integer", description: "optional" },
       offset: { type: "integer", description: "optional" }
     },

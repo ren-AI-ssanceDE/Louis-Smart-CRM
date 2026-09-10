@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { isOpenInvoiceStatus, normalizeInvoiceStatus } from "../../../lib/documentStatus.js";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent, cleanDbRow, cleanLigatureHacksFromValue } from "../../db.js";
 import { 
   CreateInvoiceArgsZodSchema, 
@@ -459,7 +460,7 @@ export async function executeCrmDataAnalyst(tenantId: string, query: string): Pr
         total_contacts_count: conts.length,
         total_invoices_count: invs.length,
         total_offers_count: offs.length,
-        open_invoices_gross_sum: invs.filter(i => i.payment_status === "issued" || (i.payment_status as string) === "pending").reduce((a, b) => a + b.total_gross_amount, 0),
+        open_invoices_gross_sum: invs.filter(i => isOpenInvoiceStatus(i.payment_status)).reduce((a, b) => a + b.total_gross_amount, 0),
         paid_invoices_gross_sum: invs.filter(i => i.payment_status === "paid").reduce((a, b) => a + b.total_gross_amount, 0),
         draft_offers_gross_sum: offs.filter(o => o.offer_status === "draft").reduce((a, b) => a + Number(b.total_gross_amount || 0), 0),
         sent_offers_gross_sum: offs.filter(o => o.offer_status === "sent").reduce((a, b) => a + Number(b.total_gross_amount || 0), 0),
@@ -487,7 +488,7 @@ export async function executeCrmDataAnalyst(tenantId: string, query: string): Pr
   try {
     const compCount = await pool.query("SELECT COUNT(*) FROM core_registry_companies WHERE tenant_id = $1", [tenantId]);
     const contCount = await pool.query("SELECT COUNT(*) FROM core_registry_contacts WHERE tenant_id = $1", [tenantId]);
-    const invCount = await pool.query("SELECT COUNT(*), SUM(total_gross_amount) FILTER (WHERE payment_status = 'pending') as pending_sum, SUM(total_gross_amount) FILTER (WHERE payment_status = 'paid') as paid_sum FROM fiscal_billing_invoices WHERE tenant_id = $1", [tenantId]);
+    const invCount = await pool.query("SELECT COUNT(*), SUM(total_gross_amount) FILTER (WHERE payment_status IN ('issued', 'pending', 'overdue')) as pending_sum, SUM(total_gross_amount) FILTER (WHERE payment_status = 'paid') as paid_sum FROM fiscal_billing_invoices WHERE tenant_id = $1", [tenantId]);
     const offCount = await pool.query(
       `SELECT COUNT(*), 
               SUM(total_gross_amount) FILTER (WHERE offer_status = 'draft') as draft_sum,
@@ -1024,7 +1025,11 @@ export async function executeListInvoices(
             return false;
           });
         } else {
-          list = list.filter((i) => (i.payment_status || i.status) === payment_status);
+          const wanted = normalizeInvoiceStatus(payment_status);
+          list = list.filter((i) => {
+            const status = normalizeInvoiceStatus(i.payment_status ?? i.status);
+            return status === wanted;
+          });
         }
       }
 
@@ -1114,8 +1119,17 @@ export async function executeListInvoices(
           )
         )`);
       } else {
-        queryParams.push(payment_status);
-        whereConditions.push(`i.payment_status = $${queryParams.length}`);
+        const wanted = normalizeInvoiceStatus(payment_status);
+        if (!wanted) {
+          whereConditions.push(`i.payment_status = $${queryParams.length}`);
+          queryParams.push(payment_status);
+        } else if (wanted === 'issued') {
+          // Offene Rechnungen: kanonisch 'issued', tolerant auch noch als Legacy gespeicherte Zeilen.
+          whereConditions.push(`i.payment_status IN ('issued', 'pending')`);
+        } else {
+          queryParams.push(wanted);
+          whereConditions.push(`i.payment_status = $${queryParams.length}`);
+        }
       }
     }
 

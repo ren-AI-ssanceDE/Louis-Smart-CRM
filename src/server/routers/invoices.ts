@@ -9,6 +9,7 @@ import { BaseInvoiceSchema, InvoiceSchema, InvoiceFullSchema } from "../../lib/s
 import { Invoice, InvoicePaidPayload } from "../../types.js";
 import { generateInvoiceFilesOnDisk } from "../pdfHelper.js";
 import { compareInvoiceNumbers } from "../../lib/utils.js";
+import { normalizeInvoiceStatus } from "../../lib/documentStatus.js";
 import { TRPCError } from "@trpc/server";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
 
@@ -67,8 +68,8 @@ export const invoicesRouter = router({
             
             return {
               ...inv,
-              payment_status: inv.payment_status || inv.status || 'issued',
-              status: inv.payment_status || inv.status || 'issued',
+              payment_status: normalizeInvoiceStatus(inv.payment_status ?? inv.status) ?? 'issued',
+              status: normalizeInvoiceStatus(inv.payment_status ?? inv.status) ?? 'issued',
               due_date: computedDueDate || null,
               ai_confidence_score: confidence,
               company_name: company ? company.full_legal_name : (inv.company_name || ''),

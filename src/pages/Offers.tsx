@@ -11,6 +11,12 @@ import { toast } from "sonner";
 import { Offer, OfferLineItem, OfferTextTemplate, Company, Contact } from "../types";
 import { trpc } from "../lib/trpc";
 import { cn } from "../lib/utils";
+import {
+  OFFER_LIST_FILTERS,
+  matchesOfferListFilter,
+  isOfferLockedStatus,
+  type OfferListFilter,
+} from "../lib/documentStatus";
 import { formatCurrency } from "../lib/math";
 import { Dialog } from "../components/ui/Dialog";
 import { ContactFormDialog } from "../components/ContactFormDialog";
@@ -24,7 +30,7 @@ export const Offers = () => {
   const utils = trpc.useContext();
 
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | "draft" | "not_sent" | "sent" | "accepted" | "declined">("all");
+  const [statusFilter, setStatusFilter] = React.useState<OfferListFilter>("all");
   const [limit, setLimit] = React.useState(10);
   const [page, setPage] = React.useState(1);
 
@@ -90,7 +96,7 @@ export const Offers = () => {
   const [mailTarget, setMailTarget] = React.useState<{ id_uuid?: string; email: string; name: string; offer: Offer } | null>(null);
 
   const isReadOnly = React.useMemo(() => {
-    return editingOffer?.offer_status === "accepted" || editingOffer?.offer_status === "declined";
+    return isOfferLockedStatus(editingOffer?.offer_status);
   }, [editingOffer]);
 
   // KI-Generator States
@@ -109,7 +115,7 @@ export const Offers = () => {
   const [isVatInclusive, setIsVatInclusive] = React.useState(false);
   const [introText, setIntroText] = React.useState("");
   const [closingText, setClosingText] = React.useState("");
-  const [offerStatus, setOfferStatus] = React.useState<"draft" | "not_sent" | "sent" | "accepted" | "declined">("not_sent");
+  const [offerStatus, setOfferStatus] = React.useState<"draft" | "sent" | "accepted" | "rejected">("draft");
   const [offerLineItems, setOfferLineItems] = React.useState<OfferLineItem[]>([
     { position: 1, description: "", quantity: 1, unit_code: "PCE", unit_price: 0, vat_rate: 19, total_net: 0, total_gross: 0 }
   ]);
@@ -617,7 +623,7 @@ export const Offers = () => {
     setIsVatInclusive(false);
     updateIntroText("");
     updateClosingText("");
-    setOfferStatus("not_sent");
+    setOfferStatus("draft");
     setOfferLineItems([
       { position: 1, description: "", quantity: 1, unit_code: "PCE", unit_price: 0, vat_rate: 19, total_net: 0, total_gross: 0, is_text_position: false }
     ]);
@@ -704,7 +710,7 @@ export const Offers = () => {
       currency_code: currencyCode,
       is_vat_inclusive: isVatInclusive,
       line_items: offerLineItems,
-      offer_status: editingOffer ? offerStatus : "not_sent"
+      offer_status: editingOffer ? offerStatus : "draft"
     };
 
     if (editingOffer) {
@@ -879,9 +885,7 @@ export const Offers = () => {
   // Filters mapping
   const filteredOffers = React.useMemo(() => {
     return offers.filter(o => {
-      if (statusFilter !== "all") {
-        if (o.offer_status !== statusFilter) return false;
-      }
+      if (!matchesOfferListFilter(o, statusFilter)) return false;
       const q = searchQuery.toLowerCase().trim();
       if (!q) return true;
       const compName = companies.find(c => c.id_uuid === o.associated_company_id)?.full_legal_name || "";
@@ -902,6 +906,22 @@ export const Offers = () => {
   }, [offers, searchQuery, companies, contacts, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOffers.length / limit));
+
+  // Reiter der Liste: kanonische Filterwerte, Zähler und Filter nutzen dieselbe Prüffunktion.
+  const offerStatusTabs = React.useMemo(() => {
+    const labels: Record<OfferListFilter, string> = {
+      all: t('offers:all', { defaultValue: 'Alle' }),
+      draft: t('offers:drafts', { defaultValue: 'Entwürfe' }),
+      sent: t('offers:sent', { defaultValue: 'Gesendet' }),
+      accepted: t('offers:accepted', { defaultValue: 'Angenommen' }),
+      rejected: t('offers:rejected', { defaultValue: 'Abgelehnt' }),
+    };
+    return OFFER_LIST_FILTERS.map((value) => ({
+      value,
+      label: labels[value],
+      count: value === 'all' ? undefined : offers.filter((o) => matchesOfferListFilter(o, value)).length,
+    }));
+  }, [offers, t]);
 
   React.useEffect(() => {
     if (page > totalPages) {
@@ -981,16 +1001,10 @@ export const Offers = () => {
 
       {/* Status FILTER TABS */}
       <div className="flex border-b border-white/5 pb-2 ml-1 gap-4 sm:gap-6 overflow-x-auto no-scrollbar max-w-full">
-        {([
-          { value: 'all', label: t('offers:all', { defaultValue: 'Alle' }), count: undefined },
-          { value: 'draft', label: t('offers:draft', { defaultValue: 'Entwurf' }), count: offers.filter(o => o.offer_status === 'draft').length },
-          { value: 'not_sent', label: t('offers:not_sent', { defaultValue: 'Nicht gesendet' }), count: offers.filter(o => o.offer_status === 'draft' || (o.offer_status as string) === 'not_sent').length },
-          { value: 'sent', label: t('offers:sent', { defaultValue: 'Gesendet' }), count: offers.filter(o => o.offer_status === 'sent').length },
-          { value: 'accepted', label: t('offers:accepted', { defaultValue: 'Angenommen' }), count: offers.filter(o => o.offer_status === 'accepted').length },
-          { value: 'declined', label: t('offers:declined', { defaultValue: 'Abgelehnt' }), count: offers.filter(o => o.offer_status === 'rejected' || (o.offer_status as string) === 'declined').length }
-        ] as const).map((tab) => (
+        {offerStatusTabs.map((tab) => (
           <button
             key={tab.value}
+            data-testid={`offer-status-tab-${tab.value}`}
             onClick={() => {
               setStatusFilter(tab.value);
               setPage(1);
@@ -1041,6 +1055,7 @@ export const Offers = () => {
               return (
                 <motion.div
                   key={o.id_uuid}
+                  data-testid="offer-row"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
@@ -1058,11 +1073,10 @@ export const Offers = () => {
                         <span className={cn(
                           "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
                           o.offer_status === "draft" && "bg-slate-500/20 text-slate-400 border border-slate-500/35",
-                          o.offer_status === "not_sent" && "bg-amber-500/20 text-amber-400 border border-amber-500/35",
                           o.offer_status === "sent" && "bg-accent-blue/20 text-accent-blue border border-accent-blue/35",
                           o.offer_status === "accepted" && "bg-emerald-500/20 text-emerald-400 border border-emerald-500/35",
-                          o.offer_status === "declined" && "bg-red-500/20 text-red-400 border border-red-500/35"
-                        )}>
+                          o.offer_status === "rejected" && "bg-red-500/20 text-red-400 border border-red-500/35"
+                        )} data-testid="offer-status-badge">
                           {t(`offers:${o.offer_status}`)}
                         </span>
                       </div>
@@ -1194,7 +1208,7 @@ export const Offers = () => {
                               </button>
                             )}
 
-                            {o.offer_status !== "accepted" && o.offer_status !== "declined" && (
+                            {!isOfferLockedStatus(o.offer_status) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1478,15 +1492,14 @@ export const Offers = () => {
                 <div className="relative">
                   <select
                     value={offerStatus}
-                    onChange={(e) => setOfferStatus(e.target.value as 'draft' | 'not_sent' | 'sent' | 'accepted' | 'declined')}
+                    onChange={(e) => setOfferStatus(e.target.value as 'draft' | 'sent' | 'accepted' | 'rejected')}
                     disabled={!editingOffer}
                     className="w-full bg-primary-light border-2 border-white/5 rounded-xl px-5 py-4 text-white text-sm font-bold focus:outline-none focus:ring-4 focus:ring-accent-blue/10 focus:border-accent-blue transition-all disabled:opacity-50 disabled:cursor-not-allowed appearance-none h-[58px]"
                   >
                     <option value="draft" className="bg-primary-dark text-white">{t("offers:draft")}</option>
-                    <option value="not_sent" className="bg-primary-dark text-white">{t("offers:not_sent")}</option>
                     <option value="sent" className="bg-primary-dark text-white">{t("offers:sent")}</option>
                     <option value="accepted" className="bg-primary-dark text-white">{t("offers:accepted")}</option>
-                    <option value="declined" className="bg-primary-dark text-white">{t("offers:declined")}</option>
+                    <option value="rejected" className="bg-primary-dark text-white">{t("offers:rejected")}</option>
                   </select>
                   <ChevronDown size={16} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                 </div>
@@ -2454,7 +2467,7 @@ export const Offers = () => {
                     <div key={pageIdx} className="bg-white text-slate-950 p-[17.6mm] relative offer-preview font-sans w-[210mm] min-h-[297mm] h-auto border border-slate-200 flex flex-col box-border shadow-md select-none flex-shrink-0">
                       {/* Watermark Draft */}
                       {(() => {
-                        const isDraftStatus = selectedOffer.offer_status === 'draft' || selectedOffer.offer_status === 'not_sent';
+                        const isDraftStatus = selectedOffer.offer_status === 'draft';
                         if (!isDraftStatus) return null;
                         return (
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10 overflow-hidden opacity-[0.06] rotate-[-45deg]">

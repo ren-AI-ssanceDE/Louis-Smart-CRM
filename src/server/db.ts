@@ -24,6 +24,7 @@ import {
   KanbanColumnFullSchema,
   KanbanCardFullSchema
 } from "../lib/schemas.js";
+import { normalizeInvoiceStatus, normalizeOfferStatus } from "../lib/documentStatus.js";
 import { runSeeding } from "../lib/seeding.js";
 import { 
   LouisAiConfig, 
@@ -747,8 +748,9 @@ export function loadFallbackStore() {
               offer.offer_status = offer.status;
               delete offer.status;
             }
-            if (offer.offer_status === 'not_sent') offer.offer_status = 'draft';
-            if (offer.offer_status === 'declined') offer.offer_status = 'rejected';
+            if (offer.offer_status !== undefined) {
+              offer.offer_status = normalizeOfferStatus(offer.offer_status) ?? offer.offer_status;
+            }
           }
         }
       }
@@ -761,8 +763,8 @@ export function loadFallbackStore() {
               inv.payment_status = inv.status;
               delete inv.status;
             }
-            if (inv.payment_status === 'pending' || inv.payment_status === 'open' || inv.payment_status === 'unpaid') {
-              inv.payment_status = 'issued';
+            if (inv.payment_status !== undefined) {
+              inv.payment_status = normalizeInvoiceStatus(inv.payment_status) ?? inv.payment_status;
             }
           }
         }
@@ -1057,7 +1059,7 @@ export async function initDatabase() {
         currency_code TEXT DEFAULT 'EUR',
         leitweg_id TEXT,
         invoice_line_items_json JSONB DEFAULT '[]',
-        payment_status TEXT DEFAULT 'pending',
+        payment_status TEXT DEFAULT 'issued',
         zugferd_xml_metadata TEXT,
         raw_source_data TEXT,
         metadata JSONB DEFAULT '{}'::jsonb,
@@ -1601,7 +1603,7 @@ export async function initDatabase() {
           SELECT 1 FROM information_schema.columns 
           WHERE table_name = 'fiscal_billing_invoices' AND column_name = 'payment_status'
         ) THEN
-          ALTER TABLE fiscal_billing_invoices ADD COLUMN payment_status TEXT DEFAULT 'pending';
+          ALTER TABLE fiscal_billing_invoices ADD COLUMN payment_status TEXT DEFAULT 'issued';
         END IF;
 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='auth_access_identities' AND column_name='account_role_node') THEN
@@ -2305,6 +2307,10 @@ export async function initDatabase() {
       UPDATE fiscal_billing_invoices 
       SET payment_status = 'issued' 
       WHERE payment_status = 'pending' OR payment_status = 'open' OR payment_status = 'unpaid';
+
+      -- Spaltendefault auf den kanonischen Wert heben (idempotent, ändert keine Daten):
+      -- neue Zeilen ohne expliziten Status sind damit "offen" statt eines Legacy-Werts.
+      ALTER TABLE fiscal_billing_invoices ALTER COLUMN payment_status SET DEFAULT 'issued';
 
       UPDATE core_registry_offers SET offer_status = 'draft' WHERE offer_status = 'not_sent';
       UPDATE core_registry_offers SET offer_status = 'rejected' WHERE offer_status = 'declined';
@@ -3130,14 +3136,11 @@ export function cleanDbRow<T = unknown>(row: T): T {
   if (cleaned.status !== undefined && cleaned.payment_status === undefined && cleaned.offer_status === undefined && cleaned.board_id === undefined) {
     cleaned.payment_status = cleaned.status;
   }
-  if (cleaned.payment_status === 'pending') {
-    cleaned.payment_status = 'issued';
+  if (cleaned.payment_status !== undefined) {
+    cleaned.payment_status = normalizeInvoiceStatus(cleaned.payment_status) ?? cleaned.payment_status;
   }
-  if (cleaned.offer_status === 'not_sent') {
-    cleaned.offer_status = 'draft';
-  }
-  if (cleaned.offer_status === 'declined') {
-    cleaned.offer_status = 'rejected';
+  if (cleaned.offer_status !== undefined) {
+    cleaned.offer_status = normalizeOfferStatus(cleaned.offer_status) ?? cleaned.offer_status;
   }
   return cleaned as unknown as T;
 }

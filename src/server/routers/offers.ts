@@ -14,6 +14,7 @@ import {
   cleanLigatureHacksFromValue 
 } from "../db.js";
 import { getEntityStoragePath, ingestFileToRag } from "../storage.js";
+import { normalizeOfferStatus } from "../../lib/documentStatus.js";
 import { 
   OfferInputSchema, 
   OfferUpdateInputSchema,
@@ -56,7 +57,8 @@ export const offersRouter = router({
         return (fallbackStore.offers || [])
           .filter(o => o.tenant_id === ctx.tenantId)
           .map(o => {
-            const fallbackStatus: Offer['offer_status'] = (o.offer_status || (o as { status?: Offer['offer_status'] }).status || 'draft') as Offer['offer_status'];
+            const fallbackStatus: Offer['offer_status'] =
+              normalizeOfferStatus(o.offer_status ?? (o as { status?: unknown }).status) ?? 'draft';
             return {
               ...o,
               offer_status: fallbackStatus,
@@ -99,7 +101,8 @@ export const offersRouter = router({
         if (!found) {
           throw new TRPCError({ code: "NOT_FOUND", message: "offer_not_found" });
         }
-        const fallbackStatus: Offer['offer_status'] = (found.offer_status || (found as { status?: Offer['offer_status'] }).status || 'draft') as Offer['offer_status'];
+        const fallbackStatus: Offer['offer_status'] =
+          normalizeOfferStatus(found.offer_status ?? (found as { status?: unknown }).status) ?? 'draft';
         return {
           ...found,
           offer_status: fallbackStatus,

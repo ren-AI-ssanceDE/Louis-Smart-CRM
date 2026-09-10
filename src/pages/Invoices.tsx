@@ -4,6 +4,7 @@ import {
   FileText, Plus, Download, Tag, Calendar, MoreVertical, 
   Building2, ArrowUpRight, X, Trash2, CheckCircle2, 
   Eye, FileCheck, Info, ChevronDown, Edit2, Mail,
+  AlertTriangle, Ban, Clock,
   Search, ChevronLeft, ChevronRight, Bold, Italic, Underline, List, Sparkles, Columns
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
@@ -13,6 +14,12 @@ import { Invoice, Company, Contact, InvoiceItemTemplate } from '../types';
 import { trpc } from '../lib/trpc';
 import { formatCurrency, calculateInvoiceTotals, calculateLineItemNet, calculateLineItemVat, LineItem } from '../lib/math';
 import { cn, compareInvoiceNumbers, getDueDateStatus, PAYMENT_METHODS } from '../lib/utils';
+import {
+  INVOICE_LIST_FILTERS,
+  matchesInvoiceListFilter,
+  isOpenInvoiceStatus,
+  type InvoiceListFilter,
+} from '../lib/documentStatus';
 import { Dialog } from '../components/ui/Dialog';
 import { MailDialog } from '../components/MailDialog';
 import { BatchExportDialog } from '../components/BatchExportDialog';
@@ -29,7 +36,7 @@ export const Invoices = () => {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   const [selectedInvoice, setSelectedInvoice] = React.useState<Invoice | null>(null);
-  const [statusFilter, setStatusFilter] = React.useState<'all' | 'draft' | 'pending' | 'paid'>('all');
+  const [statusFilter, setStatusFilter] = React.useState<InvoiceListFilter>('all');
 
   // Form State
   const [selectedCompanyId, setSelectedCompanyId] = React.useState('');
@@ -500,9 +507,7 @@ export const Invoices = () => {
 
   const filteredInvoices = React.useMemo(() => {
     return invoices.filter(invoice => {
-      if (statusFilter !== 'all') {
-        if (invoice.payment_status !== statusFilter) return false;
-      }
+      if (!matchesInvoiceListFilter(invoice, statusFilter)) return false;
       const q = searchQuery.toLowerCase().trim();
       if (!q) return true;
       const compName = companies.find(c => c.id_uuid === invoice.associated_company_id)?.full_legal_name || invoice.company_name || '';
@@ -517,6 +522,22 @@ export const Invoices = () => {
   }, [invoices, searchQuery, companies, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / limit));
+
+  // Reiter der Liste: Werte kommen aus der kanonischen Filterliste, Zähler und Filter nutzen
+  // dieselbe Prüffunktion — dadurch können Zähler und Liste nicht mehr auseinanderlaufen.
+  const invoiceStatusTabs = React.useMemo(() => {
+    const labels: Record<InvoiceListFilter, string> = {
+      all: t('all', { defaultValue: 'Alles' }),
+      draft: t('drafts', { defaultValue: 'Entwürfe' }),
+      open: t('open', { defaultValue: 'Offen' }),
+      paid: t('paid', { defaultValue: 'Bezahlt' }),
+    };
+    return INVOICE_LIST_FILTERS.map((value) => ({
+      value,
+      label: labels[value],
+      count: value === 'all' ? undefined : invoices.filter((i) => matchesInvoiceListFilter(i, value)).length,
+    }));
+  }, [invoices, t]);
 
   React.useEffect(() => {
     if (page > totalPages) {
@@ -575,7 +596,7 @@ export const Invoices = () => {
       setIsVatInclusive(false);
       setIntroductoryText('');
       setClosingText('');
-      setStatusFilter('pending');
+      setStatusFilter('open');
       setPage(1);
       utils.getInvoices.invalidate();
       toast.success(t('invoices:create_success', { defaultValue: 'Rechnung erfolgreich erstellt!' }));
@@ -623,7 +644,7 @@ export const Invoices = () => {
   const finalizeDraftMutation = trpc.finalizeDraft.useMutation({
     onSuccess: (data) => {
       toast.success(t('invoices:finalize_draft_success', { defaultValue: `Entwurf erfolgreich gebucht! Rechnungsnummer: ${data.invoice_number}` }));
-      setStatusFilter('pending');
+      setStatusFilter('open');
       setPage(1);
       utils.getInvoices.invalidate();
     },
@@ -1122,7 +1143,7 @@ export const Invoices = () => {
       leitweg_id: leitwegId || null,
       introductory_text: replaceInvoicePlaceholders(introductoryText),
       closing_text: replaceInvoicePlaceholders(closingText),
-      payment_status: 'pending' as 'pending' | 'paid' | 'overdue' | 'draft',
+      payment_status: 'issued',
       invoice_line_items: lineItems.map(item => ({
         description: item.description,
         quantity: item.quantity,
@@ -1142,7 +1163,7 @@ export const Invoices = () => {
       updateInvoiceMutation.mutate({
         ...invoiceData,
         id_uuid: editingInvoiceId,
-        payment_status: originalInvoice?.payment_status || 'pending'
+        payment_status: originalInvoice?.payment_status || 'issued'
       });
     } else if (isDraft) {
       createDraftMutation.mutate({
@@ -1216,14 +1237,10 @@ export const Invoices = () => {
 
       {/* Status FILTER TABS */}
       <div className="flex border-b border-white/5 pb-2 ml-1 gap-4 sm:gap-6 overflow-x-auto no-scrollbar max-w-full">
-        {([
-          { value: 'all', label: t('all', { defaultValue: 'Alles' }), count: undefined },
-          { value: 'draft', label: t('drafts', { defaultValue: 'Entwürfe' }), count: invoices.filter(i => i.payment_status === 'draft').length },
-          { value: 'pending', label: t('pending', { defaultValue: 'Offen' }), count: invoices.filter(i => i.payment_status === 'issued' || (i.payment_status as string) === 'pending').length },
-          { value: 'paid', label: t('paid', { defaultValue: 'Bezahlt' }), count: invoices.filter(i => i.payment_status === 'paid').length }
-        ] as const).map((tab) => (
+        {invoiceStatusTabs.map((tab) => (
           <button
             key={tab.value}
+            data-testid={`invoice-status-tab-${tab.value}`}
             onClick={() => {
               setStatusFilter(tab.value);
               setPage(1);
@@ -1277,6 +1294,7 @@ export const Invoices = () => {
               return (
                 <motion.div
                   key={invoice.id_uuid}
+                  data-testid="invoice-row"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
@@ -1300,6 +1318,21 @@ export const Invoices = () => {
                           <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/35 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 font-sans">
                             <CheckCircle2 size={10} className="text-emerald-400" />
                             {t('invoices:payment_finalized', { defaultValue: 'GEBUCHT' })}
+                          </span>
+                        ) : invoice.payment_status === 'overdue' ? (
+                          <span data-testid="invoice-status-badge" className="bg-red-500/20 text-red-400 border border-red-500/35 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 font-sans">
+                            <AlertTriangle size={10} className="text-red-400" />
+                            {t('invoices:payment_overdue', { defaultValue: 'ÜBERFÄLLIG' })}
+                          </span>
+                        ) : invoice.payment_status === 'cancelled' ? (
+                          <span data-testid="invoice-status-badge" className="bg-slate-500/20 text-slate-300 border border-slate-500/35 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 font-sans">
+                            <Ban size={10} className="text-slate-300" />
+                            {t('invoices:payment_cancelled', { defaultValue: 'STORNIERT' })}
+                          </span>
+                        ) : invoice.payment_status === 'issued' ? (
+                          <span data-testid="invoice-status-badge" className="bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 font-sans">
+                            <Clock size={10} className="text-amber-300" />
+                            {t('invoices:payment_issued', { defaultValue: 'OFFEN' })}
                           </span>
                         ) : null}
                       </div>

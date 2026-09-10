@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { FileText, ArrowRight, Calendar, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { trpc } from '../../lib/trpc';
 import { Invoice } from '../../types';
+import { isOpenInvoiceStatus } from '../../lib/documentStatus';
 import { useTranslation } from 'react-i18next';
 
 interface OpenInvoicesCardProps {
@@ -13,10 +14,8 @@ export const OpenInvoicesCard: React.FC<OpenInvoicesCardProps> = ({ onNavigate }
   const { t } = useTranslation(['common', 'dashboard']);
   const { data: invoices = [], isLoading } = trpc.getInvoices.useQuery();
 
-  // Filter open (issued or overdue) invoices
-  const openInvoices = invoices.filter(
-    (inv) => inv.payment_status === 'issued' || inv.payment_status === 'overdue'
-  );
+  // Filter open invoices — gemeinsame Definition: ausgegeben ODER überfällig (noch nicht bezahlt).
+  const openInvoices = invoices.filter((inv) => isOpenInvoiceStatus(inv.payment_status));
 
   // Helper to determine if an invoice is expired/overdue by date
   const isOverdueByDate = (inv: { payment_status?: string | null; due_date?: string | null }) => {

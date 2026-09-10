@@ -2,6 +2,12 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.16] — 2026-09-10
+
+- **Offene Rechnungen erscheinen wieder zuverlässig unter „Offen":** In der Rechnungsliste blieb der Reiter „Offen" leer, obwohl offene Rechnungen vorhanden waren — auch nach dem Buchen einer Rechnung landete man auf einer leeren Ansicht. Jetzt zeigt der Reiter alle offenen Belege, einschließlich überfälliger, und die Zählung am Reiter passt zur angezeigten Liste.
+- **Klarere Status-Kennzeichnungen:** Offene Rechnungen tragen „OFFEN", überfällige „ÜBERFÄLLIG", stornierte „STORNIERT".
+- **Angebotsliste:** Der Reiter „Abgelehnt" zeigt abgelehnte Angebote, die Kennzeichnung trägt lesbaren Text, und abgelehnte Angebote sind schreibgeschützt.
+
 ## [2.1.15] — 2026-09-03
 
 - **MCP-Zugriffe auf Kanban-Karten führen erteilte Berechtigungen zuverlässig aus:** Wenn ein API-Schlüssel die Berechtigung zum Löschen oder Ändern von Karten besitzt, wird die Aktion jetzt sofort und dauerhaft ausgeführt — vorher erschien in diesen Fällen eine Entwurfs-Meldung, obwohl kein Entwurfs-Workflow vorgesehen war. Auch aus automatisierten Abläufen heraus schreiben Kanban-Schritte jetzt direkt.

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  INVOICE_PAYMENT_STATUSES,
+  OFFER_STATUSES,
+  normalizeInvoiceStatus,
+  normalizeOfferStatus,
+} from './documentStatus.js';
 
 export const CompanySchema = z.object({
   id_uuid: z.string().uuid().optional(),
@@ -151,26 +157,15 @@ export const InvoiceLineItemSchema = z.object({
   unit_code: z.string().optional().default('HUR'),
 });
 
-export const InvoicePaymentStatusEnum = z.enum([
-  'draft',
-  'issued',
-  'paid',
-  'cancelled',
-  'overdue'
-]);
+export const InvoicePaymentStatusEnum = z.enum(INVOICE_PAYMENT_STATUSES);
 export type InvoicePaymentStatus = z.infer<typeof InvoicePaymentStatusEnum>;
 
-export const InvoicePaymentStatusPreprocess = z.preprocess((val) => {
-  if (typeof val === 'string') {
-    const s = val.toLowerCase().trim();
-    if (s === 'pending' || s === 'offen' || s === 'fällig' || s === 'faellig' || s === 'ausstehend' || s === 'issued') return 'issued';
-    if (s === 'bezahlt' || s === 'beglichen' || s === 'paid') return 'paid';
-    if (s === 'storniert' || s === 'abgebrochen' || s === 'cancelled') return 'cancelled';
-    if (s === 'überfällig' || s === 'ueberfaellig' || s === 'overdue') return 'overdue';
-    if (s === 'entwurf' || s === 'draft') return 'draft';
-  }
-  return val;
-}, InvoicePaymentStatusEnum);
+// Legacy-Schreibweisen werden zentral abgebildet (eine Quelle: src/lib/documentStatus.ts);
+// unbekannte Werte laufen unverändert weiter, damit die Enum-Prüfung greift.
+export const InvoicePaymentStatusPreprocess = z.preprocess(
+  (val) => normalizeInvoiceStatus(val) ?? val,
+  InvoicePaymentStatusEnum
+);
 
 export const BaseInvoiceSchema = z.object({
   id_uuid: z.string().uuid().optional(),
@@ -643,24 +638,14 @@ export const OfferLineItemSchema = z.object({
   is_text_position: z.boolean().optional()
 });
 
-export const OfferStatusEnum = z.enum([
-  'draft',
-  'sent',
-  'accepted',
-  'rejected'
-]);
+export const OfferStatusEnum = z.enum(OFFER_STATUSES);
 export type OfferStatus = z.infer<typeof OfferStatusEnum>;
 
-export const OfferStatusPreprocess = z.preprocess((val) => {
-  if (typeof val === 'string') {
-    const s = val.toLowerCase().trim();
-    if (s === 'not_sent' || s === 'angebot_erstellt' || s === 'entwurf' || s === 'draft') return 'draft';
-    if (s === 'gesendet' || s === 'versendet' || s === 'sent') return 'sent';
-    if (s === 'angenommen' || s === 'bestätigt' || s === 'bestaetigt' || s === 'accepted') return 'accepted';
-    if (s === 'declined' || s === 'abgelehnt' || s === 'storniert' || s === 'rejected') return 'rejected';
-  }
-  return val;
-}, OfferStatusEnum);
+// Legacy-Schreibweisen zentral (siehe src/lib/documentStatus.ts) — unbekannte Werte laufen weiter.
+export const OfferStatusPreprocess = z.preprocess(
+  (val) => normalizeOfferStatus(val) ?? val,
+  OfferStatusEnum
+);
 
 export const RawOfferInputSchema = z.object({
   id_uuid: z.string().uuid().optional(),

@@ -1,3 +1,27 @@
+## 🚀 Release v2.1.16: Offene Rechnungen wieder sichtbar
+
+Mit **2.1.16** zeigt die Rechnungsliste offene Belege wieder zuverlässig an: Der Reiter „Offen" listet alle Rechnungen, die noch nicht bezahlt sind — einschließlich überfälliger — und die Zahl am Reiter stimmt mit der angezeigten Liste überein.
+
+**Was sich verbessert:** Bisher blieb der Reiter „Offen" leer, obwohl offene Rechnungen vorhanden waren; nach dem Erstellen oder Buchen einer Rechnung führte der Weg sogar direkt in diese leere Ansicht. Außerdem sind abgelehnte Angebote jetzt klar gekennzeichnet und schreibgeschützt.
+
+## 🚀 Release v2.1.15: Zuverlässige MCP-Zugriffe auf Kanban-Karten
+
+Mit **2.1.15** führen automatisierte Zugriffe auf Ihre Kanban-Pipeline erteilte Berechtigungen jetzt zuverlässig aus, und Karten bleiben jederzeit sauber ihrem Board zugeordnet.
+
+**Was sich verbessert:** Wenn ein API-Schlüssel das Löschen oder Ändern von Karten erlaubt, wird die Aktion nun sofort und dauerhaft ausgeführt — statt einer Entwurfs-Meldung ohne Wirkung. Beim Anlegen und Verschieben von Karten stellt Louis außerdem sicher, dass die Ziel-Spalte wirklich zum gewählten Board gehört; die Datenbank erzwingt diese Konsistenz zusätzlich auf technischer Ebene, sodass Karten nie mehr unsichtbar, aber dennoch mitgezählt werden können.
+
+## 🚀 Release v2.1.14: Notizen aus automatisierten Abläufen
+
+Mit **2.1.14** werden Notizen aus automatisierten Abläufen wieder zuverlässig gespeichert — auch dann, wenn ein Schritt auf die Ergebnisse vorheriger Schritte zugreift.
+
+**Was sich verbessert:** Die eigentliche Anweisung eines Schritts wird sauber vom Kontext vorheriger Schritte getrennt, sodass die Notiz zuverlässig mit dem gewünschten Text entsteht.
+
+## 🚀 Release v2.1.13: Der Rat tagt zuverlässig
+
+Mit **2.1.13** läuft der LLM Council endlich zuverlässig — Debatten landen nicht mehr stumm im Zeitlimit, sondern kommen zu einem echten Ergebnis: Das Timeout ist im Admin-Bereich einstellbar, und ein Berater, der beim ersten Versuch scheitert, bekommt automatisch eine zweite Chance, bevor ehrlich über einen Ausfall berichtet wird.
+
+**Was sich verbessert:** Während einer Debatte sitzen die fünf Berater jetzt sichtbar an einem Tisch und werden einzeln grün, sobald ihre Antwort eintrifft — mit Antwortzeiten und Laufzeit statt eines leeren Ladebalkens. Ein neuer Auto-Modus führt komplette Debatten vom manuellen Start bis zur abschließenden Synthese vollautomatisch durch, ohne dass jede Runde einzeln angestoßen werden muss. Und Datei-Anhänge per Drag & Drop landen zuverlässig im Mail-Entwurf, statt versehentlich heruntergeladen zu werden.
+
 ## 🚀 Release v2.1.12: Präzise Workflow-Automation & ehrliche Fehlermeldungen
 
 Mit **2.1.12** werden gelernte Workflows noch präziser und automatisierte Anbindungen flexibler: Firma-Bedingungen wie „der zur Firma Muster GmbH gehört" treffen jetzt exakt die genannte Firma, und externe Systeme können Abläufe mit den Tool-Namen lernen, die ihnen die Schnittstelle selbst anbietet. Zudem meldet Louis fehlgeschlagene Aufgaben ehrlich als Fehler, statt eine erfundene Erfolgsbestätigung auszugeben.

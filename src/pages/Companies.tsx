@@ -1290,10 +1290,9 @@ export const Companies = () => {
                               const badgeClasses = cn(
                                 "px-2 py-0.5 rounded text-[8px] font-black uppercase border tracking-wider",
                                 off.offer_status === "draft" && "bg-neutral-500/10 text-neutral-400 border-neutral-500/20",
-                                off.offer_status === "not_sent" && "bg-slate-500/10 text-slate-400 border-slate-500/20",
                                 off.offer_status === "sent" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
                                 off.offer_status === "accepted" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-                                off.offer_status === "declined" && "bg-red-500/10 text-red-400 border-red-500/20"
+                                off.offer_status === "rejected" && "bg-red-500/10 text-red-400 border-red-500/20"
                               );
 
                               return (
