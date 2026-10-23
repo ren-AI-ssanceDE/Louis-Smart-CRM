@@ -66,6 +66,7 @@ import { generateContentSafe, generateContentUniversal } from "../ai/geminiHelpe
 import { generateEmbedding, getRagConfig, formatVectorForPostgres } from "../ai/embeddingHelper.js";
 import { forceManualIngest, unindexFileFromRag, isTextBasedFile, mimeTypeFromFilename, intelligentChunkAndProcess, ingestEmailToRag } from "../storage.js";
 import { ChatMessage, Company, Contact, Invoice, Offer, LouisAiConfig, CustomWorkflow, SmtpSettings, WorkflowExecutionLogEntry, KanbanCard } from "../../types.js";
+import { resolveMaxAttachmentBytes, resolveRejectUnauthorized, exceedsAttachmentLimit } from "../../lib/mailGuard.js";
 import { IWorkflowDAG } from "../../types/workflows.js";
 
 interface EntityNote {
@@ -504,7 +505,7 @@ export const louisAiRouter = router({
         embedding_api_key_secret: '',
         embedding_base_url: '',
         embedding_model_name: '',
-        vector_dimensions: 768,
+        vector_dimensions: 1536,
         keep_alive_minutes: 5,
         parallel_slots: 1,
         chunk_size: 500,
@@ -1488,7 +1489,7 @@ export const louisAiRouter = router({
             pass: smtp.smtp_password_secret,
           },
           tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: resolveRejectUnauthorized(smtp.allow_self_signed_tls)
           }
         });
 
@@ -1775,6 +1776,16 @@ export const louisAiRouter = router({
               console.warn(`[SMTP Human-In-The-Loop] Attachment file not found relative to ${source}: ${filename}`);
             }
           }
+        }
+
+        // Größen-Guard — klare Meldung statt stillem Provider-Fehler
+        const maxAttachmentBytes = resolveMaxAttachmentBytes(smtp.max_attachment_mb);
+        const attachmentSizes = attachments.map(a => {
+          try { return fs.statSync(a.path).size; } catch { return 0; }
+        });
+        if (exceedsAttachmentLimit(attachmentSizes, maxAttachmentBytes)) {
+          const maxMb = Math.ceil(maxAttachmentBytes / (1024 * 1024));
+          throw new Error(`Anhang zu groß: Die E-Mail-Anhänge überschreiten das Limit von ${maxMb} MB.`);
         }
 
         await transporter.sendMail({

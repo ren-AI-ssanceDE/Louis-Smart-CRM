@@ -8,6 +8,35 @@ import { ContactSchema, ContactFullSchema } from "../../lib/schemas.js";
 import { workflowEventBus } from "../ai/workflowEventBus.js";
 import { ContactUpdatedPayload } from "../../types.js";
 
+// Tolerante Ausgabe. Alt-Daten mit überlangen Feldern werden beim
+// Lesen truncatiert, statt die zod-Output-Validierung (.max) und damit die ganze Liste
+// scheitern zu lassen. Input-Validierung bleibt strikt (verhindert NEUE Langwerte).
+const CONTACT_OUTPUT_FIELD_MAX_LENGTHS: ReadonlyArray<readonly [string, number]> = [
+  ["first_name", 100],
+  ["last_name", 100],
+  ["responsible_person", 100],
+  ["city", 100],
+  ["house_number", 20],
+  ["postal_code", 20],
+  ["phone_number", 50],
+  ["fax_number", 50],
+  ["mobile_number", 50],
+  ["tax_vat_id", 50],
+  ["iban", 50],
+  ["bic_swift", 20],
+];
+
+export function truncateContactFieldsForOutput<T>(row: T): T {
+  const result = { ...(row as Record<string, unknown>) };
+  for (const [field, max] of CONTACT_OUTPUT_FIELD_MAX_LENGTHS) {
+    const value = result[field];
+    if (typeof value === "string" && value.length > max) {
+      result[field] = value.slice(0, max);
+    }
+  }
+  return result as T;
+}
+
 export const contactsRouter = router({
   getContacts: protectedProcedure
     .output(z.array(ContactFullSchema))
@@ -15,10 +44,10 @@ export const contactsRouter = router({
       if (isUsingFallback) {
         return fallbackStore.contacts.map(c => {
           const comp = fallbackStore.companies.find(co => co.id_uuid === c.associated_company_id);
-          return {
+          return truncateContactFieldsForOutput({
             ...c,
             company_name: comp ? comp.full_legal_name : undefined
-          };
+          });
         });
       }
       const res = await pool.query(`
@@ -36,10 +65,10 @@ export const contactsRouter = router({
             ? JSON.parse(r.labels_json)
             : r.labels_json;
         }
-        return {
+        return truncateContactFieldsForOutput({
           ...r,
           labels: lbls,
-        };
+        });
       });
     }),
 
@@ -121,7 +150,7 @@ export const contactsRouter = router({
     .output(z.object({ success: z.boolean(), updated_at_utc: z.string().or(z.date()).nullable() }))
     .mutation(async ({ input, ctx }) => {
       input = cleanLigatureHacksFromValue(input);
-      const { id_uuid, last_updated_at_utc, overwrite_concurrency, ...data } = input;
+      const { id_uuid, last_updated_at_utc, overwrite_concurrency, is_verified_by_human, created_by_identity, ...data } = input;
       const fullLegalName = `${data.first_name || ''} ${data.last_name}`.trim();
       
       // Generate embedding asynchronously
@@ -191,8 +220,7 @@ export const contactsRouter = router({
             ...data, 
             full_legal_name: fullLegalName, 
             updated_at_utc: fallbackTime,
-            is_verified_by_human: true,
-            created_by_identity: 'human'
+            ...(wasDraft ? { is_verified_by_human: true } : {})
           };
           saveFallbackStore();
         }
@@ -221,8 +249,7 @@ export const contactsRouter = router({
             opt_in_social_media = $22, opt_in_direct_message = $23, opt_in_sms = $24, opt_in_phone = $25,
             tax_vat_id = $26, iban = $27, bic_swift = $28, payment_term = $29, 
             price_list = $30, custom_documents = $31, associated_company_id = $32, 
-            updated_at_utc = CURRENT_TIMESTAMP,
-            is_verified_by_human = TRUE, created_by_identity = 'human'
+            updated_at_utc = CURRENT_TIMESTAMP${wasDraft ? ", is_verified_by_human = TRUE" : ""}
         WHERE id_uuid = $33 AND (tenant_id = $34 OR tenant_id = '1')
         RETURNING updated_at_utc
       `, [
@@ -356,7 +383,6 @@ export const contactsRouter = router({
                 tax_vat_id = $26, iban = $27, bic_swift = $28, 
                 payment_term = $29, price_list = $30, custom_documents = $31, associated_company_id = $32, 
                 updated_at_utc = CURRENT_TIMESTAMP,
-                is_verified_by_human = true, created_by_identity = 'human',
                 tenant_id = $33
             WHERE id_uuid = $34
           `, [

@@ -1,6 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { pool, isUsingFallback, fallbackStore } from "../db.js";
 import { LouisAiConfig } from "../../types.js";
+import { shouldSkipHnsw, PGVECTOR_HNSW_MAX_DIMS } from "../../lib/pgvector.js";
+
+// Default-Vektor-Dimensionen — konsistent mit DDL (vector(1536)) und zod-Schema
+// (vector_dimensions.default(1536)). Verhindert einen zerstörerischen Re-Align,
+// wenn keine vector_dimensions-Config gesetzt ist.
+const DEFAULT_VECTOR_DIMENSIONS = 1536;
 
 interface GeminiEmbedding {
   values: number[];
@@ -96,8 +102,12 @@ export async function ensureTableVectorDimension(tenantId: string, targetDimensi
         [targetDimensions, tenantId]
       );
 
-      // 4. Re-create HNSW index for new dimensions
-      await pool.query(`CREATE INDEX IF NOT EXISTS sys_louis_ai_knowledge_chunks_embedding_hnsw_idx ON sys_louis_ai_knowledge_chunks USING hnsw (embedding vector_cosine_ops)`);
+      // 4. Re-create HNSW index for new dimensions (skip above pgvector's 2000-dim HNSW limit)
+      if (shouldSkipHnsw(targetDimensions)) {
+        console.warn(`[RAG DB Align] HNSW index skipped: vector(${targetDimensions}) exceeds the pgvector HNSW limit (${PGVECTOR_HNSW_MAX_DIMS} dims). Sequential scan fallback active.`);
+      } else {
+        await pool.query(`CREATE INDEX IF NOT EXISTS sys_louis_ai_knowledge_chunks_embedding_hnsw_idx ON sys_louis_ai_knowledge_chunks USING hnsw (embedding vector_cosine_ops)`);
+      }
 
       // 5. Trigger asynchronous queue processing
       processReembeddingQueue(tenantId).catch(err => {
@@ -171,7 +181,7 @@ export async function getRagConfig(tenantId: string) {
   let apiKey = "";
   let baseUrl = "";
   let modelName = "nomic-embed-text";
-  let vectorDimensions = 768;
+  let vectorDimensions = DEFAULT_VECTOR_DIMENSIONS;
   let keepAliveMinutes = 5;
   let parallelSlots = 1;
   let chunkSize = 500;
@@ -186,7 +196,7 @@ export async function getRagConfig(tenantId: string) {
         apiKey = found.embedding_api_key_secret || found.api_key_secret || "";
         baseUrl = found.embedding_base_url || found.base_url || "";
         modelName = found.embedding_model_name || (provider === "gemini" ? "text-embedding-004" : provider === "openai" ? "text-embedding-3-small" : "nomic-embed-text");
-        vectorDimensions = found.vector_dimensions || 768;
+        vectorDimensions = found.vector_dimensions || DEFAULT_VECTOR_DIMENSIONS;
         keepAliveMinutes = found.keep_alive_minutes ?? 5;
         parallelSlots = found.parallel_slots ?? 1;
         chunkSize = found.chunk_size ?? 500;
@@ -203,7 +213,7 @@ export async function getRagConfig(tenantId: string) {
         apiKey = row.embedding_api_key_secret || row.api_key_secret || "";
         baseUrl = row.embedding_base_url || row.base_url || "";
         modelName = row.embedding_model_name || (provider === "gemini" ? "text-embedding-004" : provider === "openai" ? "text-embedding-3-small" : "nomic-embed-text");
-        vectorDimensions = parseInt(row.vector_dimensions || "768");
+        vectorDimensions = parseInt(row.vector_dimensions || String(DEFAULT_VECTOR_DIMENSIONS));
         keepAliveMinutes = parseInt(row.keep_alive_minutes ?? "5");
         parallelSlots = parseInt(row.parallel_slots ?? "1");
         chunkSize = parseInt(row.chunk_size ?? "500");
@@ -282,7 +292,7 @@ export async function generateEmbedding(text: string, tenantId: string): Promise
   console.log(`[EmbeddingHelper] Generating embedding using provider: ${config.provider}, model: ${config.modelName}`);
 
   const cleanText = text.replace(/\s+/g, " ").trim() || " ";
-  const targetDims = config.vectorDimensions || 768;
+  const targetDims = config.vectorDimensions || DEFAULT_VECTOR_DIMENSIONS;
 
   try {
     if (config.provider === "gemini") {

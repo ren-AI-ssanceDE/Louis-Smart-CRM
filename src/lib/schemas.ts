@@ -123,6 +123,8 @@ export const SmtpSettingsSchema = z.object({
   is_secure_connection: z.boolean().default(true),
   sender_email_address: z.string().email(),
   sender_display_name: z.string().optional().nullable(),
+  max_attachment_mb: z.number().int().positive().nullable().optional(),
+  allow_self_signed_tls: z.boolean().nullable().optional(),
   created_by_identity: z.enum(['human', 'ai_assistant', 'system']).default('human'),
   ai_confidence_score: z.number().min(0).max(1).default(1.0),
   is_verified_by_human: z.boolean().default(false),

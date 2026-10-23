@@ -2,6 +2,14 @@
 
 Alle wesentlichen Änderungen pro Version. Format basiert auf [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.17] — 2026-10-23
+
+- **E-Mail-Versand:** Zu große Anhänge werden mit einer klaren Meldung abgefangen (Grenze konfigurierbar); die Zertifikatsprüfung des Servers ist standardmäßig aktiv und lässt sich für eigene Server gezielt lockern.
+- **Kontakt- und Firmenlisten:** Überlange Felder werden beim Anzeigen gekürzt, Listen bleiben vollständig statt leer.
+- **Datenherkunft:** Beim Bearbeiten eines Kontakts bleibt die Kennzeichnung (automatisch oder manuell angelegt) unverändert erhalten.
+- **Vektorsuche:** Sehr große Einbettungsmodelle fallen sauber auf eine fallback-Suche zurück statt abzubrechen.
+- **Eigenbetrieb:** Das Datenbank-Passwort kommt aus der Umgebung statt aus einer festen Vorgabe, und die internen Dienste sind nur noch lokal erreichbar.
+
 ## [2.1.16] — 2026-09-10
 
 - **Offene Rechnungen erscheinen wieder zuverlässig unter „Offen":** In der Rechnungsliste blieb der Reiter „Offen" leer, obwohl offene Rechnungen vorhanden waren — auch nach dem Buchen einer Rechnung landete man auf einer leeren Ansicht. Jetzt zeigt der Reiter alle offenen Belege, einschließlich überfälliger, und die Zählung am Reiter passt zur angezeigten Liste.

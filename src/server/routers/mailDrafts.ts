@@ -10,6 +10,7 @@ import { ingestEmailToRag } from "../storage.js";
 import { EmailCompiler } from "../utils/emailCompiler.js";
 import { resolveAttachmentPhysicalPath } from "../ai/tools/messaging.js";
 import { MailDraft, WorkflowInstance, CustomWorkflow, SmtpSettings } from "../../types.js";
+import { resolveMaxAttachmentBytes, resolveRejectUnauthorized, exceedsAttachmentLimit } from "../../lib/mailGuard.js";
 
 const MailDraftSchema = z.object({
   id_uuid: z.string(),
@@ -140,7 +141,7 @@ export const mailDraftsRouter = router({
               pass: smtp.smtp_password_secret,
             },
             tls: {
-              rejectUnauthorized: false
+              rejectUnauthorized: resolveRejectUnauthorized(smtp.allow_self_signed_tls)
             }
           });
 
@@ -193,6 +194,16 @@ export const mailDraftsRouter = router({
                 }
               }
             }
+          }
+
+          // Größen-Guard — klare Meldung statt stillem Provider-Fehler
+          const maxAttachmentBytes = resolveMaxAttachmentBytes(smtp.max_attachment_mb);
+          const attachmentSizes = nodemailerAttachments.map(a => {
+            try { return fs.statSync(a.path).size; } catch { return 0; }
+          });
+          if (exceedsAttachmentLimit(attachmentSizes, maxAttachmentBytes)) {
+            const maxMb = Math.ceil(maxAttachmentBytes / (1024 * 1024));
+            throw new Error(`Anhang zu groß: Die E-Mail-Anhänge überschreiten das Limit von ${maxMb} MB.`);
           }
 
           let recipientName = "";

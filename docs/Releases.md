@@ -1,3 +1,9 @@
+## 🚀 Release v2.1.17: Robuster im Eigenbetrieb
+
+Mit **2.1.17** wird Louis deutlich robuster, wenn Sie die Software auf dem eigenen Server betreiben — und zuverlässiger im Alltag bei E-Mails, Listen und der Datenherkunft.
+
+**Was sich verbessert:** Zu große E-Mail-Anhänge werden nun mit einer klaren Meldung abgefangen statt still zu scheitern, und die Zertifikatsprüfung beim Versand ist standardmäßig aktiv (mit einer gezielten Ausnahme für eigene Server-Zertifikate). Überlange Kontaktdaten leeren die Listen nicht mehr, die Herkunft eines Kontakts bleibt beim Bearbeiten erhalten, und sehr große Einbettungsmodelle fallen sauber auf eine fallback-Suche zurück statt abzubrechen. Im Eigenbetrieb kommt das Datenbank-Passwort jetzt aus der Umgebung, und die internen Dienste sind nur noch lokal erreichbar.
+
 ## 🚀 Release v2.1.16: Offene Rechnungen wieder sichtbar
 
 Mit **2.1.16** zeigt die Rechnungsliste offene Belege wieder zuverlässig an: Der Reiter „Offen" listet alle Rechnungen, die noch nicht bezahlt sind — einschließlich überfälliger — und die Zahl am Reiter stimmt mit der angezeigten Liste überein.

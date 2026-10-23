@@ -1927,6 +1927,9 @@ export async function initDatabase() {
       ALTER TABLE core_registry_contacts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE fiscal_billing_invoices ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE sys_integrations_smtp_nodes ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+      -- Mail-Größen-Guard + TLS-Opt-out (NULL = Default)
+      ALTER TABLE sys_integrations_smtp_nodes ADD COLUMN IF NOT EXISTS max_attachment_mb INTEGER DEFAULT NULL;
+      ALTER TABLE sys_integrations_smtp_nodes ADD COLUMN IF NOT EXISTS allow_self_signed_tls BOOLEAN DEFAULT FALSE;
       ALTER TABLE core_registry_my_company_table ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE sys_comms_email_templates ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE sys_comms_signatures ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
@@ -2061,9 +2064,25 @@ export async function initDatabase() {
 
       -- embedding column is dynamically checked and self-healed on demand
       -- to avoid dropping all embeddings on startup.
-      CREATE INDEX IF NOT EXISTS sys_louis_ai_knowledge_chunks_embedding_hnsw_idx ON sys_louis_ai_knowledge_chunks USING hnsw (embedding vector_cosine_ops);
-      CREATE INDEX IF NOT EXISTS core_registry_companies_embedding_hnsw_idx ON core_registry_companies USING hnsw (embedding vector_cosine_ops);
-      CREATE INDEX IF NOT EXISTS core_registry_contacts_embedding_hnsw_idx ON core_registry_contacts USING hnsw (embedding vector_cosine_ops);
+      -- HNSW-Indizes: bei >2.000 Dimensionen ausgelassen (pgvector-HNSW-Limit),
+      -- Vektor-Suche fällt dann auf sequenzielle Scans zurück.
+      DO $$
+      DECLARE
+        v_dim INTEGER;
+      BEGIN
+        SELECT atttypmod INTO v_dim FROM pg_attribute WHERE attrelid = 'sys_louis_ai_knowledge_chunks'::regclass AND attname = 'embedding';
+        IF v_dim IS NOT NULL AND v_dim <= 2000 THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS sys_louis_ai_knowledge_chunks_embedding_hnsw_idx ON sys_louis_ai_knowledge_chunks USING hnsw (embedding vector_cosine_ops)';
+        END IF;
+        SELECT atttypmod INTO v_dim FROM pg_attribute WHERE attrelid = 'core_registry_companies'::regclass AND attname = 'embedding';
+        IF v_dim IS NOT NULL AND v_dim <= 2000 THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS core_registry_companies_embedding_hnsw_idx ON core_registry_companies USING hnsw (embedding vector_cosine_ops)';
+        END IF;
+        SELECT atttypmod INTO v_dim FROM pg_attribute WHERE attrelid = 'core_registry_contacts'::regclass AND attname = 'embedding';
+        IF v_dim IS NOT NULL AND v_dim <= 2000 THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS core_registry_contacts_embedding_hnsw_idx ON core_registry_contacts USING hnsw (embedding vector_cosine_ops)';
+        END IF;
+      END $$;
       CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id ON sys_louis_ai_knowledge_chunks (document_id);
       CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_tenant_id ON sys_louis_ai_knowledge_chunks (tenant_id);
       CREATE INDEX IF NOT EXISTS idx_companies_name ON core_registry_companies (full_legal_name);

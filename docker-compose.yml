@@ -5,10 +5,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      # Passwort aus .env (kein hartkodiertes Standard-Passwort mehr)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: louis_crm
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +25,7 @@ services:
     container_name: louis-crm-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -33,7 +34,7 @@ services:
       - PGHOST=db
       - PGPORT=5432
       - PGUSER=user
-      - PGPASSWORD=password
+      - PGPASSWORD=${POSTGRES_PASSWORD:?}
       - PGDATABASE=louis_crm
       
       # Authentication and App Context Settings
@@ -86,7 +87,7 @@ services:
     container_name: louis-whisper-server
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - WHISPER_MODEL=tiny
       - CPU_THREADS=4
@@ -101,7 +102,7 @@ services:
     container_name: louis-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
       - OLLAMA_KEEP_ALIVE=-1

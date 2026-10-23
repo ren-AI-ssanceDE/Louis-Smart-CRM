@@ -16,7 +16,9 @@ export const SmtpSettingsForm = () => {
     smtp_password_secret: '',
     is_secure_connection: true,
     sender_email_address: '',
-    sender_display_name: ''
+    sender_display_name: '',
+    max_attachment_mb: '',
+    allow_self_signed_tls: false
   });
 
   const { data: smtpData } = trpc.getSmtpSettings.useQuery();
@@ -50,7 +52,9 @@ export const SmtpSettingsForm = () => {
         smtp_password_secret: smtpData.smtp_password_secret,
         is_secure_connection: smtpData.is_secure_connection,
         sender_email_address: smtpData.sender_email_address,
-        sender_display_name: smtpData.sender_display_name || ''
+        sender_display_name: smtpData.sender_display_name || '',
+        max_attachment_mb: smtpData.max_attachment_mb ? String(smtpData.max_attachment_mb) : '',
+        allow_self_signed_tls: smtpData.allow_self_signed_tls ?? false
       });
       setIsSubmitAttempted(false);
     }
@@ -74,6 +78,7 @@ export const SmtpSettingsForm = () => {
     setIsSubmitAttempted(false);
     saveSmtpMutation.mutate({
       ...smtpForm,
+      max_attachment_mb: smtpForm.max_attachment_mb.trim() === '' ? null : parseInt(smtpForm.max_attachment_mb, 10),
       id_uuid: smtpData?.id_uuid || undefined
     });
   };
@@ -211,6 +216,36 @@ export const SmtpSettingsForm = () => {
             )} />
           </button>
           <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter italic">{t('smtp.secure')}</span>
+        </div>
+
+        <div className="md:col-span-2 flex items-center gap-4 py-4">
+          <button 
+            type="button"
+            onClick={() => setSmtpForm({...smtpForm, allow_self_signed_tls: !smtpForm.allow_self_signed_tls})}
+            className={cn(
+              "w-12 h-6 rounded-full transition-colors relative",
+              smtpForm.allow_self_signed_tls ? "bg-accent-blue" : "bg-slate-800"
+            )}
+          >
+            <div className={cn(
+              "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+              smtpForm.allow_self_signed_tls ? "right-1" : "left-1"
+            )} />
+          </button>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter italic">{t('smtp.allow_self_signed_tls', { defaultValue: 'Self-Signed-Zertifikate erlauben' })}</span>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-display ml-2">{t('smtp.max_attachment_mb', { defaultValue: 'Max. Anhangsgröße (MB)' })}</label>
+          <input 
+            type="number" 
+            min="1"
+            value={smtpForm.max_attachment_mb}
+            onChange={(e) => setSmtpForm({...smtpForm, max_attachment_mb: e.target.value})}
+            placeholder="25"
+            className="w-full bg-primary-dark/60 border border-white/10 rounded-xl px-6 py-4 text-white font-bold focus:outline-none focus:border-accent-blue transition-colors"
+          />
+          <p className="text-[10px] text-slate-500 font-bold ml-2">{t('smtp.max_attachment_mb_hint', { defaultValue: 'Leer lassen für Standard (25 MB)' })}</p>
         </div>
 
         <div className="md:col-span-2 pt-8 border-t border-white/5 flex justify-end gap-4 font-sans">

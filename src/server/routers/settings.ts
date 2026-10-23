@@ -22,6 +22,7 @@ import {
   FALLBACK_FILE_PATH
 } from "../db.js";
 import { validateIBAN, getBicByIban, getBankByIbanAndBic } from "../../lib/bankUtils.js";
+import { resolveMaxAttachmentBytes, resolveRejectUnauthorized, exceedsAttachmentLimit } from "../../lib/mailGuard.js";
 import {
   SmtpSettingsSchema,
   SmtpSettingsFullSchema,
@@ -478,12 +479,14 @@ export const settingsRouter = router({
           UPDATE sys_integrations_smtp_nodes
           SET smtp_host_name = $1, smtp_port_number = $2, smtp_user_name = $3, smtp_password_secret = $4,
               is_secure_connection = $5, sender_email_address = $6, sender_display_name = $7,
-              is_verified_by_human = $8,
+              max_attachment_mb = $8, allow_self_signed_tls = $9,
+              is_verified_by_human = $10,
               updated_at_utc = CURRENT_TIMESTAMP
-          WHERE id_uuid = $9 AND tenant_id = $10
+          WHERE id_uuid = $11 AND tenant_id = $12
         `, [
           input.smtp_host_name, input.smtp_port_number, input.smtp_user_name, input.smtp_password_secret,
           input.is_secure_connection, input.sender_email_address, input.sender_display_name,
+          input.max_attachment_mb, input.allow_self_signed_tls,
           input.is_verified_by_human, existing.rows[0].id_uuid, ctx.tenantId
         ]);
       } else {
@@ -492,12 +495,14 @@ export const settingsRouter = router({
           INSERT INTO sys_integrations_smtp_nodes (
             id_uuid, tenant_id, smtp_host_name, smtp_port_number, smtp_user_name, smtp_password_secret,
             is_secure_connection, sender_email_address, sender_display_name,
+            max_attachment_mb, allow_self_signed_tls,
             created_by_identity, ai_confidence_score, is_verified_by_human
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         `, [
           insertId, ctx.tenantId, input.smtp_host_name, input.smtp_port_number, input.smtp_user_name, input.smtp_password_secret,
           input.is_secure_connection, input.sender_email_address, input.sender_display_name,
+          input.max_attachment_mb, input.allow_self_signed_tls,
           input.created_by_identity, input.ai_confidence_score, input.is_verified_by_human
         ]);
       }
@@ -541,7 +546,7 @@ export const settingsRouter = router({
           pass: smtp.smtp_password_secret,
         },
         tls: {
-          rejectUnauthorized: false
+          rejectUnauthorized: resolveRejectUnauthorized(smtp.allow_self_signed_tls)
         }
       });
 
@@ -694,6 +699,26 @@ export const settingsRouter = router({
         }
       }
 
+      // Größen-Guard — klare Meldung statt stillem Provider-Fehler
+      const maxAttachmentBytes = resolveMaxAttachmentBytes(smtp.max_attachment_mb);
+      const attachmentSizes: number[] = [];
+      for (const a of attachments) {
+        if (a.path) {
+          try { attachmentSizes.push(fs.statSync(a.path).size); } catch { attachmentSizes.push(0); }
+        } else if (a.content) {
+          attachmentSizes.push(typeof a.content === "object" && "length" in a.content ? (a.content as { length: number }).length : 0);
+        } else {
+          attachmentSizes.push(0);
+        }
+      }
+      if (exceedsAttachmentLimit(attachmentSizes, maxAttachmentBytes)) {
+        const maxMb = Math.ceil(maxAttachmentBytes / (1024 * 1024));
+        throw new TRPCError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: `Anhang zu groß: Die E-Mail-Anhänge überschreiten das Limit von ${maxMb} MB.`
+        });
+      }
+
       let recipientName = "";
       if (isUsingFallback) {
         const foundCo = fallbackStore.companies.find(c => c.email_address?.toLowerCase() === input.recipient_email_address.toLowerCase());
@@ -789,7 +814,7 @@ export const settingsRouter = router({
           pass: smtp.smtp_password_secret,
         },
         tls: {
-          rejectUnauthorized: false
+          rejectUnauthorized: resolveRejectUnauthorized(smtp.allow_self_signed_tls)
         }
       });
 

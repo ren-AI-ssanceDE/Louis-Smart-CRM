@@ -260,6 +260,8 @@ export interface SmtpSettings extends AIMetadata {
   is_secure_connection?: boolean;
   sender_email_address: string;
   sender_display_name?: string;
+  max_attachment_mb?: number | null;
+  allow_self_signed_tls?: boolean | null;
 }
 
 export interface InvoiceItemTemplate extends AIMetadata {

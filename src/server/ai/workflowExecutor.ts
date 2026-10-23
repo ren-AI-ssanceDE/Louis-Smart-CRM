@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import nodemailer from "nodemailer";
 import path from "path";
+import fs from "fs";
 import { pool, isUsingFallback, fallbackStore, saveFallbackStore, logAuditEvent } from "../db.js";
 import { generateContentUniversal } from "./geminiHelper.js";
 import { CustomWorkflow, WorkflowInstance, LouisAiConfig, WorkflowExecutionLogEntry, MailDraftAttachment, SmtpSettings } from "../../types.js";
+import { resolveMaxAttachmentBytes, resolveRejectUnauthorized, exceedsAttachmentLimit } from "../../lib/mailGuard.js";
 import { IWorkflowDAG, IWorkflowContextState } from "../../types/workflows.js";
 import { ingestEmailToRag } from "../storage.js";
 import { resolveAttachmentPhysicalPath } from "./tools/messaging.js";
@@ -1505,7 +1507,7 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         pass: smtp.smtp_password_secret,
       },
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: resolveRejectUnauthorized(smtp.allow_self_signed_tls)
       }
     });
 
@@ -1583,6 +1585,26 @@ IMPORTANT: Output ONLY a valid raw JSON object. Do not wrap in markdown code blo
         return {};
       }).filter((item: { path?: string; content?: string }) => item.path || item.content) : undefined
     };
+
+    // Größen-Guard — klare Meldung statt stillem Provider-Fehler
+    const maxAttachmentBytes = resolveMaxAttachmentBytes(smtp.max_attachment_mb);
+    const mailAttachmentSizes: number[] = [];
+    if (Array.isArray(mailOptions.attachments)) {
+      for (const a of mailOptions.attachments) {
+        const rec = a as { path?: string; content?: string };
+        if (rec.path) {
+          try { mailAttachmentSizes.push(fs.statSync(rec.path).size); } catch { mailAttachmentSizes.push(0); }
+        } else if (typeof rec.content === "string") {
+          mailAttachmentSizes.push(Buffer.byteLength(rec.content, "utf8"));
+        } else {
+          mailAttachmentSizes.push(0);
+        }
+      }
+    }
+    if (exceedsAttachmentLimit(mailAttachmentSizes, maxAttachmentBytes)) {
+      const maxMb = Math.ceil(maxAttachmentBytes / (1024 * 1024));
+      throw new Error(`Anhang zu groß: Die E-Mail-Anhänge überschreiten das Limit von ${maxMb} MB.`);
+    }
 
     await transporter.sendMail(mailOptions);
     try {
